@@ -106,12 +106,3 @@ Settings → Developer settings). The app uses:
 * `GET /api/v1/athlete/{id}/events?category=WORKOUT` to list planned workouts,
 * `GET /api/v1/athlete/{id}/events/{eventId}/download.zwo` to import one,
 * `POST /api/v1/athlete/{id}/activities` (multipart `file`) to upload a ride.
-
-## Roadmap / known gaps
-
-* Remember paired device numbers, and add a device picker when several trainers or meters are in range.
-* Crank-torque-only power meters (page 0x12).
-* Restore the ride screen after a browser reload: the session keeps running server-side, but
-  the route/workout display state is lost.
-* DEM elevation for GPX files without `<ele>`.
-* Trainer calibration / spin-down (FE-C page 1).
