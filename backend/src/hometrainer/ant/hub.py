@@ -29,6 +29,7 @@ class DeviceInfo:
     kind: str  # "trainer" | "power_meter" | "heart_rate"
     connected: bool = False
     device_number: int | None = None
+    wanted: int | None = None  # configured device number (None = first device found)
     last_seen: float = 0.0
 
 
@@ -113,6 +114,6 @@ class SensorHub(ABC):
     def status(self) -> dict:
         self.readings()  # refresh connection flags
         return {
-            k: {"connected": d.connected, "device_number": d.device_number}
+            k: {"connected": d.connected, "device_number": d.device_number, "wanted": d.wanted}
             for k, d in self.devices.items()
         }

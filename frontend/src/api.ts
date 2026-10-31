@@ -18,6 +18,9 @@ export interface Profile {
   headwind_ms: number
   power_source: PowerSource
   power_match: boolean
+  trainer_device_number: number | null
+  power_meter_device_number: number | null
+  heart_rate_device_number: number | null
   grade_curve: [number, number][]
   grade_curve_min_frac: number
   grade_curve_max_frac: number
@@ -26,6 +29,7 @@ export interface Profile {
   intervals_athlete_id: string
   intervals_api_key: string
   intervals_api_key_set?: boolean
+  devices_note?: string
 }
 
 export interface Step {
@@ -90,6 +94,7 @@ export interface Ride {
 export interface DeviceStatus {
   connected: boolean
   device_number: number | null
+  wanted: number | null
 }
 
 export interface SimSettings {

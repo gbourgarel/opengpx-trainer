@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type Profile, type RouteDetail, type Workout } from './api'
+import { api, type DeviceStatus, type Profile, type RouteDetail, type Workout } from './api'
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
 import { SimulatorPanel } from './components/SimulatorPanel'
@@ -15,11 +15,19 @@ const TABS: [Tab, string][] = [
   ['profile', 'Profile'],
 ]
 
-function Dot({ on, label }: { on?: boolean; label: string }) {
+function Dot({ status, label }: { status?: DeviceStatus; label: string }) {
+  const on = status?.connected
+  const num = on ? status?.device_number : status?.wanted
+  const title = on
+    ? `${label}: device ${status?.device_number}${status?.wanted ? ' (configured)' : ' (first found)'}`
+    : status?.wanted
+      ? `${label}: searching for device ${status.wanted}`
+      : `${label}: searching (first found)`
   return (
-    <span className={`dev ${on ? 'on' : ''}`}>
+    <span className={`dev ${on ? 'on' : ''}`} title={title}>
       <i />
       {label}
+      {num != null && <small className="dev-num">{num}</small>}
     </span>
   )
 }
@@ -82,9 +90,9 @@ export default function App() {
           {!connected && <span className="error-inline">backend offline</span>}
           {hub ? (
             <>
-              <Dot on={dev?.trainer.connected} label="Trainer" />
-              <Dot on={dev?.power_meter.connected} label="Power" />
-              <Dot on={dev?.heart_rate.connected} label="HR" />
+              <Dot status={dev?.trainer} label="Trainer" />
+              <Dot status={dev?.power_meter} label="Power" />
+              <Dot status={dev?.heart_rate} label="HR" />
               <span className="muted">{hub === 'simulator' ? 'simulator' : 'ANT+'}</span>
               <button className="ghost" onClick={() => api.disconnect()}>
                 Disconnect
@@ -113,7 +121,7 @@ export default function App() {
         {tab === 'workouts' && <WorkoutsPage profile={profile} canStart={!!hub} onStart={startWorkout} />}
         {tab === 'routes' && <RoutesPage canStart={!!hub} onStart={startRoute} />}
         {tab === 'history' && <HistoryPage />}
-        {tab === 'profile' && <ProfilePage onSaved={setProfile} />}
+        {tab === 'profile' && <ProfilePage onSaved={setProfile} devices={dev} />}
       </main>
     </div>
   )

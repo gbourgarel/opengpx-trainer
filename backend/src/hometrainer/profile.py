@@ -33,6 +33,11 @@ class Profile:
     power_source: PowerSource = "auto"
     # in ERG modes, correct the trainer target so the power meter reads the requested power
     power_match: bool = True
+    # ANT+ device numbers to pair with (None = first device found). The power-meter search
+    # never pairs with the trainer's own power broadcast.
+    trainer_device_number: int | None = None
+    power_meter_device_number: int | None = None
+    heart_rate_device_number: int | None = None
     # GPX pseudo-ERG grade -> power curve
     grade_curve: list[tuple[float, float]] = field(default_factory=lambda: list(DEFAULT_CURVE))
     grade_curve_min_frac: float = 0.30

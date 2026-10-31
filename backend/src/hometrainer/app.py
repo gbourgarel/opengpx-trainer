@@ -58,7 +58,12 @@ class AppState:
             else:
                 from .ant.ant_hub import AntHub
 
-                hub = AntHub()
+                p = self.profile
+                hub = AntHub(
+                    trainer_id=p.trainer_device_number,
+                    power_meter_id=p.power_meter_device_number,
+                    heart_rate_id=p.heart_rate_device_number,
+                )
             try:
                 hub.start()
             except Exception:
@@ -178,14 +183,40 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         if not body.get("intervals_api_key"):
             body.pop("intervals_api_key", None)  # keep stored key unless a new one is sent
         current.update(body)
+        dev_keys = (
+            "trainer_device_number",
+            "power_meter_device_number",
+            "heart_rate_device_number",
+        )
+        for k in dev_keys:
+            v = current.get(k)
+            if v in (None, "", 0):
+                current[k] = None
+            elif not (isinstance(v, int | float) and float(v).is_integer() and 1 <= v <= 65535):
+                raise HTTPException(422, f"{k} must be an ANT+ device number (1-65535) or empty")
+            else:
+                current[k] = int(v)
         try:
             p = Profile.from_dict(current)
             p.grade_power_curve()  # validate
         except (TypeError, ValueError) as e:
             raise HTTPException(422, str(e)) from e
+        devices_changed = any(getattr(p, k) != getattr(st.profile, k) for k in dev_keys)
         st.profile = p
         st.storage.save_profile(p)
-        return p.to_dict(redact_secrets=True)
+        out = p.to_dict(redact_secrets=True)
+        # apply new pairing right away when connected over ANT+ and no ride is in progress
+        riding = st.session is not None and st.session.state in ("running", "paused")
+        if devices_changed and st.hub_kind == "ant":
+            if riding:
+                out["devices_note"] = "Device numbers saved; reconnect after the ride to apply."
+            else:
+                try:
+                    st.connect("ant")
+                    out["devices_note"] = "ANT+ reconnected with the new device numbers."
+                except Exception as e:
+                    out["devices_note"] = f"Saved, but reconnecting failed: {e}"
+        return out
 
     # -- devices ------------------------------------------------------------------------
     @app.post("/api/devices/connect")

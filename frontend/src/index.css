@@ -611,3 +611,27 @@ input.small {
   transition: left 0.25s linear;
 }
 .gauge-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* device pairing */
+.dev-num {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.dev-field {
+  display: flex;
+  gap: 6px;
+}
+.dev-field button {
+  padding: 4px 10px;
+}
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0 0 0 6px;
+  font-size: 12px;
+  text-decoration: underline;
+}
+b.warn {
+  color: var(--zone-high);
+}

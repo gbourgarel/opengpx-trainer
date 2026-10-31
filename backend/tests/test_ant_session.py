@@ -261,3 +261,29 @@ def test_concurrent_connect_is_rejected():
     finally:
         appmod.SimulatedHub = orig
     assert SlowHub.started == 1 and len(errors) == 1
+
+
+def test_power_meter_pinned_to_configured_device():
+    from hometrainer.ant.ant_hub import AntHub
+
+    h = AntHub(power_meter_id=63426)
+    pm_page = [0x10, 1, 0xFF, 90, 0, 0, 200, 0]
+    h._on_power(pm_page + [0x80, 0x39, 0x30, 11, 5])  # some other power meter in range
+    assert h.devices["power_meter"].device_number is None
+    h._on_power(pm_page + [0x80, 63426 & 0xFF, 63426 >> 8, 11, 5])
+    assert h.devices["power_meter"].device_number == 63426
+    assert h.status()["power_meter"]["wanted"] == 63426
+
+
+def test_profile_device_numbers_validation(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from hometrainer.app import create_app
+    from hometrainer.storage import Storage
+
+    with TestClient(create_app(Storage(tmp_path))) as c:
+        r = c.put("/api/profile", json={"power_meter_device_number": 63426})
+        assert r.json()["power_meter_device_number"] == 63426
+        assert c.put("/api/profile", json={"trainer_device_number": 70000}).status_code == 422
+        r = c.put("/api/profile", json={"power_meter_device_number": None})
+        assert r.json()["power_meter_device_number"] is None

@@ -1,12 +1,14 @@
 """Real ANT+ implementation on a USB stick (Garmin/Dynastream ANT USB2 / USB-m) via openant.
 
-One ANT node, three slave channels with wildcard pairing (first device found):
-FE-C trainer, bicycle power meter, heart-rate monitor.
+One ANT node, three slave channels: FE-C trainer, bicycle power meter, heart-rate monitor.
+Each channel pairs with an explicit device number when one is configured (Profile → Devices),
+otherwise with the first device found (wildcard).
 
 Most smart trainers also broadcast a standard ANT+ *power* profile (type 11) with the same device
 number as their FE-C channel. A wildcard power-meter search would then pair with the trainer
 itself instead of the rider's power meter. The power-meter channel is therefore opened only once
-the trainer's device number is known, with that number on an ANT exclusion list.
+the trainer's device number is known, with that number on an ANT exclusion list. When a power-
+meter device number is configured, the channel pairs with that device only.
 
 Set ``HOMETRAINER_ANT_LOG=/path/file.csv`` to log every raw ANT page (for debugging).
 
@@ -35,10 +37,24 @@ class AntUnavailable(RuntimeError):
 class AntHub(SensorHub):
     TARGET_RESEND_S = 2.0  # re-send ERG target periodically (survives trainer reconnects)
 
-    def __init__(self, use_power_meter: bool = True, use_heart_rate: bool = True):
+    def __init__(
+        self,
+        use_power_meter: bool = True,
+        use_heart_rate: bool = True,
+        trainer_id: int | None = None,
+        power_meter_id: int | None = None,
+        heart_rate_id: int | None = None,
+    ):
         super().__init__()
         self.use_power_meter = use_power_meter
         self.use_heart_rate = use_heart_rate
+        self.wanted = {
+            "trainer": trainer_id,
+            "power_meter": power_meter_id,
+            "heart_rate": heart_rate_id,
+        }
+        for kind, num in self.wanted.items():
+            self.devices[kind].wanted = num
         self._node = None
         self._fec = None
         self._node_thread: threading.Thread | None = None
@@ -81,9 +97,16 @@ class AntHub(SensorHub):
             self._raw_log.write("t_s,channel,device_number,b0,b1,b2,b3,b4,b5,b6,b7\n")
             log.info("Logging raw ANT pages to %s", log_path)
 
-        self._fec = self._open_channel(pf.FEC_DEVICE_TYPE, pf.FEC_PERIOD, self._on_fec)
+        self._fec = self._open_channel(
+            pf.FEC_DEVICE_TYPE, pf.FEC_PERIOD, self._on_fec, device_number=self.wanted["trainer"]
+        )
         if self.use_heart_rate:
-            self._open_channel(pf.HRM_DEVICE_TYPE, pf.HRM_PERIOD, self._on_hrm)
+            self._open_channel(
+                pf.HRM_DEVICE_TYPE,
+                pf.HRM_PERIOD,
+                self._on_hrm,
+                device_number=self.wanted["heart_rate"],
+            )
 
         self._running = True
         self._node_thread = threading.Thread(target=node.start, name="ant-node", daemon=True)
@@ -95,7 +118,14 @@ class AntHub(SensorHub):
 
     PM_WAIT_FOR_TRAINER_S = 15.0
 
-    def _open_channel(self, device_type: int, period: int, on_data, exclude: list[int] = ()):
+    def _open_channel(
+        self,
+        device_type: int,
+        period: int,
+        on_data,
+        exclude: list[int] = (),
+        device_number: int | None = None,
+    ):
         from openant.base.message import Message
 
         ch = self._node.new_channel(self._channel_cls.Type.BIDIRECTIONAL_RECEIVE, 0x00, 0x01)
@@ -103,8 +133,9 @@ class AntHub(SensorHub):
         ch.on_burst_data = on_data
         ch.on_acknowledge = on_data
         ch.set_search_timeout(0xFF)
-        ch.set_id(0, device_type, 0)  # wildcard device number & transmission type
-        if exclude:
+        # device number 0 = wildcard; transmission type 0 = wildcard
+        ch.set_id(device_number or 0, device_type, 0)
+        if exclude and not device_number:
             # ANT inclusion/exclusion list: never pair with these device numbers
             for i, num in enumerate(exclude[:4]):
                 ch._ant.write_message(
@@ -123,7 +154,18 @@ class AntHub(SensorHub):
         return ch
 
     def _open_power_meter(self) -> None:
-        """Open the power-meter search once the trainer's device number is known."""
+        """Open the power-meter channel: the configured device, or a wildcard search excluding
+        the trainer (opened once the trainer's device number is known)."""
+        pm_id = self.wanted["power_meter"]
+        if pm_id:
+            try:
+                self._open_channel(
+                    pf.PWR_DEVICE_TYPE, pf.PWR_PERIOD, self._on_power, device_number=pm_id
+                )
+                log.info("Power-meter channel opened, paired to device %s", pm_id)
+            except Exception:
+                log.exception("Could not open power-meter channel")
+            return
         deadline = time.monotonic() + self.PM_WAIT_FOR_TRAINER_S
         while self._running and time.monotonic() < deadline:
             if self.devices["trainer"].device_number is not None:
@@ -171,11 +213,19 @@ class AntHub(SensorHub):
                 t = time.monotonic() - self._t0
                 self._raw_log.write(f"{t:.3f},{channel},{num if num is not None else ''},{row}\n")
 
+    def _accept(self, kind: str, num: int | None) -> bool:
+        """Defensive check: ignore data from any device other than the configured one."""
+        wanted = self.wanted.get(kind)
+        return not wanted or num is None or num == wanted
+
     def _on_fec(self, data) -> None:
         self._log_raw("fec", data)
+        num = self._device_number(data)
+        if not self._accept("trainer", num):
+            return
         msg = pf.decode_fec(data)
         with self._lock:
-            self._seen("trainer", self._device_number(data))
+            self._seen("trainer", num)
             if isinstance(msg, pf.FecTrainer):
                 avg = self._fec_power.update(
                     msg.event_count, msg.accumulated_power_w, msg.instantaneous_power_w
@@ -194,6 +244,8 @@ class AntHub(SensorHub):
         num = self._device_number(data)
         if num is not None and num == self.devices["trainer"].device_number:
             return  # the trainer's own power broadcast, not an independent power meter
+        if not self._accept("power_meter", num):
+            return
         msg = pf.decode_power(data)
         with self._lock:
             self._seen("power_meter", num)
@@ -206,9 +258,12 @@ class AntHub(SensorHub):
 
     def _on_hrm(self, data) -> None:
         self._log_raw("hrm", data)
+        num = self._device_number(data)
+        if not self._accept("heart_rate", num):
+            return
         hr = pf.decode_hrm(data)
         with self._lock:
-            self._seen("heart_rate", self._device_number(data))
+            self._seen("heart_rate", num)
             self._s.heart_rate.set(hr)
 
     # -- transmit -----------------------------------------------------------------------
