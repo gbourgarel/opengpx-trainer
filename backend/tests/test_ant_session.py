@@ -146,3 +146,47 @@ def test_fit_export_roundtrip(tmp_path):
     assert len(recs) == 120
     assert recs[10].power == 200
     assert rec.summary()["normalized_power_w"] > 200
+
+
+def test_simulator_manual_power_and_pm_dropout():
+    from hometrainer.ant.simulator import SimulatedHub
+
+    h = SimulatedHub()
+    h.update_settings(mode="manual", manual_power_w=320, noise=False, pm_bias=0.0)
+    h.set_target_power(150)  # ignored in manual mode
+    h.step()
+    r = h.readings()
+    assert r.trainer_power_w == 320 and r.pm_power_w == 320
+    assert choose_power(r, "auto").source == "power_meter"
+
+    h.update_settings(pedaling=False)
+    h.step()
+    assert h.readings().trainer_power_w == 0 and h.readings().trainer_cadence_rpm == 0
+
+    with pytest.raises(ValueError):
+        h.update_settings(bogus=1)
+
+
+def test_simulator_follow_mode_tracks_target():
+    from hometrainer.ant.simulator import SimulatedHub
+
+    h = SimulatedHub()
+    h.update_settings(noise=False)
+    h.set_target_power(250)
+    for _ in range(80):  # 20 s at 4 Hz, tau 1.5 s
+        h.step()
+    assert h.readings().trainer_power_w == pytest.approx(250, abs=1)
+
+
+def test_simulator_api(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from hometrainer.app import create_app
+    from hometrainer.storage import Storage
+
+    with TestClient(create_app(Storage(tmp_path))) as c:
+        assert c.get("/api/simulator").status_code == 409
+        c.post("/api/devices/connect", json={"kind": "simulator"})
+        r = c.put("/api/simulator", json={"mode": "manual", "manual_power_w": 280})
+        assert r.json()["manual_power_w"] == 280
+        assert c.put("/api/simulator", json={"mode": "turbo"}).status_code == 422

@@ -92,6 +92,17 @@ export interface DeviceStatus {
   device_number: number | null
 }
 
+export interface SimSettings {
+  mode: 'follow' | 'manual'
+  manual_power_w: number
+  cadence_rpm: number
+  pedaling: boolean
+  noise: boolean
+  power_meter: boolean
+  heart_rate: boolean
+  pm_bias: number
+}
+
 export interface Telemetry {
   state: 'disconnected' | 'idle' | 'ready' | 'running' | 'paused' | 'finished'
   hub?: string | null
@@ -126,6 +137,7 @@ export interface Telemetry {
   workout_duration_s?: number
   next_target_w?: number | null
   saved?: { ride_id: number } | null
+  sim?: SimSettings
 }
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
@@ -180,6 +192,8 @@ export const api = {
   stop: (save = true) => req<{ saved: unknown }>('POST', `/api/session/stop?save=${save}`),
   adjust: (a: { intensity_pct?: number; effort_pct?: number; difficulty_pct?: number }) =>
     req('POST', '/api/session/adjust', a),
+
+  setSim: (s: Partial<SimSettings>) => req<SimSettings>('PUT', '/api/simulator', s),
 
   rides: () => req<Ride[]>('GET', '/api/rides'),
   uploadRide: (id: number) => req<{ intervals_activity_id: string }>('POST', `/api/rides/${id}/upload`),

@@ -38,8 +38,20 @@ cd backend && uv run hometrainer --reload      # :8000
 cd frontend && npm run dev                     # :5173, proxies /api and /ws to :8000
 ```
 
-To work without hardware, click **Simulator** instead of **Connect ANT+**. The simulated trainer
-follows the ERG target, and the simulated power meter reads 3 % low so power match can be tested.
+### Testing without hardware (fake power input)
+
+Click **Simulator** instead of **Connect ANT+**. A simulator panel appears on the Ride page:
+
+* **Follow target**: behaves like an ERG trainer, so power tracks the target with a 1.5 s lag.
+* **Manual power**: you set the rider's power with the slider or ±10/±50 buttons, or from the
+  keyboard (↑/↓ ±10 W, Shift ±50 W). Use it to probe the speed model on a GPX route.
+* **Space** toggles pedaling, so you can watch the virtual bike coast and auto-pause.
+* Switches for power meter / HR strap presence (turn the power meter off to see the *auto*
+  source fall back to the trainer), sensor noise, and power-meter bias (default −3 %, which
+  exercises power match).
+
+The same controls are available over the API: `PUT /api/simulator` with e.g.
+`{"mode": "manual", "manual_power_w": 300}`.
 
 Tests: `cd backend && uv run pytest`, lint: `uv run ruff check src tests`.
 

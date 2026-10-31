@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type Profile, type RouteDetail, type Workout } from './api'
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
+import { SimulatorPanel } from './components/SimulatorPanel'
 import { RidePage, type ActiveRide } from './pages/RidePage'
 import { useLive } from './useLive'
 
@@ -101,6 +102,7 @@ export default function App() {
         </div>
       )}
       <main>
+        {tab === 'ride' && tel.sim && <SimulatorPanel key={tel.hub ?? ''} initial={tel.sim} />}
         {tab === 'ride' && <RidePage tel={tel} history={history} active={active} profile={profile} onEnd={() => setActive(null)} />}
         {tab === 'workouts' && <WorkoutsPage profile={profile} canStart={!!hub} onStart={startWorkout} />}
         {tab === 'routes' && <RoutesPage canStart={!!hub} onStart={startRoute} />}

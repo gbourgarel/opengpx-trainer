@@ -504,3 +504,63 @@ table.curve {
 table.curve input {
   width: 90px;
 }
+
+/* simulator panel */
+.sim {
+  border-style: dashed;
+  border-color: var(--power);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sim-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.sim-title {
+  color: var(--power);
+}
+.seg {
+  display: inline-flex;
+}
+.seg button {
+  border-radius: 0;
+}
+.seg button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+.seg button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+.seg button.on {
+  background: var(--power);
+  border-color: var(--power);
+  color: #111;
+}
+.chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+}
+.chk input[type='checkbox'] {
+  width: auto;
+}
+input.small {
+  width: 60px;
+  padding: 3px 6px;
+}
+.slider {
+  flex: 1;
+  min-width: 200px;
+  accent-color: var(--power);
+  padding: 0;
+}
+.sim-power {
+  font-size: 20px;
+  min-width: 70px;
+  font-variant-numeric: tabular-nums;
+}

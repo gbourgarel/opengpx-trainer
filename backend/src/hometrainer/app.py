@@ -7,6 +7,7 @@ import contextlib
 import datetime as dt
 import logging
 import os
+from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
 
@@ -118,6 +119,8 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                     tel = st.idle_telemetry()
                 tel["devices"] = st.hub.status() if st.hub else {}
                 tel["hub"] = st.hub_kind
+                if isinstance(st.hub, SimulatedHub):
+                    tel["sim"] = asdict(st.hub.settings)
                 dead = []
                 for ws in list(st.clients):
                     try:
@@ -180,6 +183,23 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     @app.get("/api/devices")
     def devices():
         return {"hub": st.hub_kind, "devices": st.hub.status() if st.hub else {}}
+
+    # -- simulator (fake power input) -----------------------------------------------------
+    def require_sim() -> SimulatedHub:
+        if not isinstance(st.hub, SimulatedHub):
+            raise HTTPException(409, "Simulator is not the connected hub")
+        return st.hub
+
+    @app.get("/api/simulator")
+    def get_sim():
+        return asdict(require_sim().settings)
+
+    @app.put("/api/simulator")
+    def put_sim(body: dict):
+        try:
+            return asdict(require_sim().update_settings(**body))
+        except (TypeError, ValueError) as e:
+            raise HTTPException(422, str(e)) from e
 
     # -- workouts -----------------------------------------------------------------------
     @app.get("/api/workouts")
