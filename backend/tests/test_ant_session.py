@@ -190,3 +190,74 @@ def test_simulator_api(tmp_path):
         r = c.put("/api/simulator", json={"mode": "manual", "manual_power_w": 280})
         assert r.json()["manual_power_w"] == 280
         assert c.put("/api/simulator", json={"mode": "turbo"}).status_code == 422
+
+
+def test_event_averaged_power_drops_to_zero_when_events_stop():
+    """Regression: stopping pedalling used to freeze the last average (e.g. 230 W forever)."""
+    e = pf.EventAveragedPower(65536, stall_s=3.0)
+    e.update(10, 1000, 230, now=0.0)
+    assert e.update(11, 1230, 230, now=0.25) == pytest.approx(230)
+    # rider stops: sensor repeats the same event count, instantaneous still non-zero
+    assert e.update(11, 1230, 180, now=1.0) == pytest.approx(230)  # within stall window
+    assert e.update(11, 1230, 180, now=3.5) == 0.0  # stalled > 3 s
+    # same, but the sensor reports instantaneous 0 -> zero immediately
+    e2 = pf.EventAveragedPower(65536)
+    e2.update(10, 1000, 230, now=0.0)
+    e2.update(11, 1230, 230, now=0.25)
+    assert e2.update(11, 1230, 0, now=0.5) == 0.0
+    # pedalling again
+    assert e2.update(12, 1430, 200, now=0.75) == pytest.approx(200)
+
+
+def test_power_channel_ignores_trainer_own_broadcast():
+    from hometrainer.ant.ant_hub import AntHub
+
+    h = AntHub()
+    trainer_page = [0x19, 1, 90, 0, 0, 200, 0x30, 0x30]
+    ext = [0x80, 40688 & 0xFF, 40688 >> 8, 17, 5]
+    h._on_fec(trainer_page + ext)
+    assert h.devices["trainer"].device_number == 40688
+    pm_page = [0x10, 1, 0xFF, 90, 0, 0, 200, 0]
+    h._on_power(pm_page + [0x80, 40688 & 0xFF, 40688 >> 8, 11, 5])  # same number -> trainer
+    assert h.devices["power_meter"].device_number is None
+    assert not h.readings().power_meter_connected
+    h._on_power(pm_page + [0x80, 0x39, 0x30, 11, 5])  # a real power meter
+    assert h.devices["power_meter"].device_number == 0x3039
+    assert h.readings().power_meter_connected
+
+
+def test_concurrent_connect_is_rejected():
+    import threading
+
+    from hometrainer.app import AppState, HubBusy
+
+    class SlowHub(FakeHub):
+        started = 0
+
+        def start(self):
+            SlowHub.started += 1
+            time.sleep(0.3)
+
+    st = AppState.__new__(AppState)
+    st.hub, st.hub_kind, st._hub_lock = None, None, threading.Lock()
+    import hometrainer.app as appmod
+
+    orig = appmod.SimulatedHub
+    appmod.SimulatedHub = SlowHub
+    try:
+        errors = []
+
+        def go():
+            try:
+                st.connect("simulator")
+            except HubBusy as e:
+                errors.append(e)
+
+        ts = [threading.Thread(target=go) for _ in range(2)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+    finally:
+        appmod.SimulatedHub = orig
+    assert SlowHub.started == 1 and len(errors) == 1

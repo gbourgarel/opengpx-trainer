@@ -6,6 +6,7 @@ References: ANT+ Device Profiles "Fitness Equipment" (FE-C, device type 17),
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 # --- channel parameters -------------------------------------------------------------------
@@ -158,16 +159,32 @@ class EventAveragedPower:
     """Average power between broadcast events: d(accumulated)/d(event count).
 
     Robust to missed messages, which instantaneous power is not.
+
+    When the rider stops pedalling, many sensors stop incrementing the event count (event-
+    synchronous power meters, and some FE-C trainers) and just repeat the last message. The
+    last average must not be held forever:
+    * no new event and instantaneous power == 0  -> 0 W immediately,
+    * no new event for more than ``stall_s``      -> 0 W.
     """
 
-    def __init__(self, acc_modulo: int):
+    def __init__(self, acc_modulo: int, stall_s: float = 3.0):
         self.mod = acc_modulo
+        self.stall_s = stall_s
         self.last: tuple[int, int] | None = None
+        self.last_event_at: float = 0.0
         self.value: float | None = None
 
-    def update(self, event_count: int, accumulated: int, instantaneous: float | None):
+    def update(
+        self,
+        event_count: int,
+        accumulated: int,
+        instantaneous: float | None,
+        now: float | None = None,
+    ):
+        now = time.monotonic() if now is None else now
         if self.last is None:
             self.last = (event_count, accumulated)
+            self.last_event_at = now
             self.value = instantaneous
             return self.value
         dc = (event_count - self.last[0]) % 256
@@ -175,4 +192,7 @@ class EventAveragedPower:
             da = (accumulated - self.last[1]) % self.mod
             self.value = da / dc
             self.last = (event_count, accumulated)
+            self.last_event_at = now
+        elif instantaneous == 0 or now - self.last_event_at > self.stall_s:
+            self.value = 0.0
         return self.value

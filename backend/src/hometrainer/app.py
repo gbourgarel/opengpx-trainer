@@ -7,6 +7,7 @@ import contextlib
 import datetime as dt
 import logging
 import os
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -30,6 +31,10 @@ log = logging.getLogger(__name__)
 TICK_S = 0.25
 
 
+class HubBusy(RuntimeError):
+    pass
+
+
 class AppState:
     def __init__(self, storage: Storage):
         self.storage = storage
@@ -39,19 +44,35 @@ class AppState:
         self.session: RideSession | None = None
         self.clients: set[WebSocket] = set()
         self.last_ride_id: int | None = None
+        self._hub_lock = threading.Lock()
 
     def connect(self, kind: str) -> None:
-        self.disconnect()
-        if kind == "simulator":
-            hub: SensorHub = SimulatedHub()
-        else:
-            from .ant.ant_hub import AntHub
+        # One connection attempt at a time: two concurrent requests (double click) used to
+        # open two ANT nodes on the same USB stick and leak a reader thread spinning on errors.
+        if not self._hub_lock.acquire(blocking=False):
+            raise HubBusy("A connection is already in progress")
+        try:
+            self._disconnect_locked()
+            if kind == "simulator":
+                hub: SensorHub = SimulatedHub()
+            else:
+                from .ant.ant_hub import AntHub
 
-            hub = AntHub()
-        hub.start()
-        self.hub, self.hub_kind = hub, kind
+                hub = AntHub()
+            try:
+                hub.start()
+            except Exception:
+                hub.stop()  # release the USB device if start failed half-way
+                raise
+            self.hub, self.hub_kind = hub, kind
+        finally:
+            self._hub_lock.release()
 
     def disconnect(self) -> None:
+        with self._hub_lock:
+            self._disconnect_locked()
+
+    def _disconnect_locked(self) -> None:
         if self.hub is not None:
             self.hub.stop()
         self.hub, self.hub_kind = None, None
@@ -171,6 +192,8 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     def connect(body: ConnectBody):
         try:
             st.connect(body.kind)
+        except HubBusy as e:
+            raise HTTPException(409, str(e)) from e
         except Exception as e:
             raise HTTPException(503, str(e)) from e
         return {"hub": st.hub_kind}

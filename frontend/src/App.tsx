@@ -30,6 +30,7 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [active, setActive] = useState<ActiveRide | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
 
   useEffect(() => {
     api.getProfile().then(setProfile).catch(() => {})
@@ -39,8 +40,13 @@ export default function App() {
   const dev = tel.devices
 
   const connect = (kind: 'ant' | 'simulator') => {
+    if (connecting) return
     setError(null)
-    api.connect(kind).catch((e) => setError(e.message))
+    setConnecting(true)
+    api
+      .connect(kind)
+      .catch((e) => setError(e.message))
+      .finally(() => setConnecting(false))
   }
 
   const startWorkout = (w: Workout) =>
@@ -86,10 +92,10 @@ export default function App() {
             </>
           ) : (
             <>
-              <button className="primary" onClick={() => connect('ant')}>
-                Connect ANT+
+              <button className="primary" disabled={connecting} onClick={() => connect('ant')}>
+                {connecting ? 'Connecting…' : 'Connect ANT+'}
               </button>
-              <button className="ghost" onClick={() => connect('simulator')}>
+              <button className="ghost" disabled={connecting} onClick={() => connect('simulator')}>
                 Simulator
               </button>
             </>
