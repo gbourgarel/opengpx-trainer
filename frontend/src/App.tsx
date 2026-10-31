@@ -57,11 +57,34 @@ export default function App() {
       .finally(() => setConnecting(false))
   }
 
+  // Rebuild the ride view from the server's session when this client doesn't know it
+  // (page reload, second browser/tablet, or a ride started elsewhere).
+  const sessionId = tel.session_id
+  const { mode, workout_id: workoutId, route_id: routeId } = tel
+  useEffect(() => {
+    if (!sessionId || !mode || active?.sessionId === sessionId) return
+    let cancelled = false
+    const load =
+      mode === 'erg' && workoutId != null
+        ? api.workout(workoutId).then((workout) => ({ sessionId, mode, workout }) as ActiveRide)
+        : mode === 'gpx' && routeId != null
+          ? api.route(routeId).then((route) => ({ sessionId, mode, route }) as ActiveRide)
+          : null
+    load
+      ?.then((a) => {
+        if (!cancelled) setActive(a)
+      })
+      .catch((e: Error) => !cancelled && setError(`Cannot restore the ride view: ${e.message}`))
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, mode, workoutId, routeId, active?.sessionId])
+
   const startWorkout = (w: Workout) =>
     api
       .start({ mode: 'erg', workout_id: w.id })
-      .then(() => {
-        setActive({ mode: 'erg', workout: w })
+      .then((res) => {
+        setActive({ sessionId: res.session_id, mode: 'erg', workout: w })
         setTab('ride')
       })
       .catch((e) => setError(e.message))
@@ -69,8 +92,8 @@ export default function App() {
   const startRoute = (r: RouteDetail) =>
     api
       .start({ mode: 'gpx', route_id: r.id })
-      .then(() => {
-        setActive({ mode: 'gpx', route: r })
+      .then((res) => {
+        setActive({ sessionId: res.session_id, mode: 'gpx', route: r })
         setTab('ride')
       })
       .catch((e) => setError(e.message))

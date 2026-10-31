@@ -17,6 +17,7 @@ the ERG target sent to the trainer is corrected so that the *power meter* reads 
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -108,6 +109,8 @@ class RideSession:
         workout: Workout | None = None,
         route: Route | None = None,
         name: str | None = None,
+        workout_id: int | None = None,
+        route_id: int | None = None,
     ):
         if mode == "erg" and workout is None:
             raise ValueError("ERG mode needs a workout")
@@ -119,6 +122,10 @@ class RideSession:
         self.workout = workout
         self.route = route
         self.name = name or (workout.name if workout else route.name if route else "Ride")
+        # identify the ride so any client (after a reload, another device) can rebuild its view
+        self.id = uuid.uuid4().hex
+        self.workout_id = workout_id
+        self.route_id = route_id
         self.state: State = "ready"
         self.started_at: datetime | None = None
         self.elapsed_s = 0.0
@@ -299,6 +306,9 @@ class RideSession:
         f = st.forces
         v = st.speed_ms
         out = {
+            "session_id": self.id,
+            "workout_id": self.workout_id,
+            "route_id": self.route_id,
             "mode": self.mode,
             "state": self.state,
             "name": self.name,

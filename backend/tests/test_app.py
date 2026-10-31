@@ -73,3 +73,16 @@ def test_reconnect_rebinds_existing_session_to_new_hub(client):
     client.post("/api/devices/connect", json={"kind": "simulator"})
     assert client.st.hub is not old_hub
     assert client.st.session.hub is client.st.hub
+
+
+def test_session_identity_lets_a_client_rebuild_the_ride_view(client):
+    """Review #3: after a reload the ride screen was lost (view state lived only in React)."""
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    wid = client.post("/api/workouts/import", files={"file": ("w.zwo", ZWO)}).json()["id"]
+    res = client.post("/api/session/start", json={"mode": "erg", "workout_id": wid}).json()
+    tel = client.st.session.tick()
+    assert tel["session_id"] == res["session_id"]
+    assert (tel["mode"], tel["workout_id"], tel["route_id"]) == ("erg", wid, None)
+    w = client.get(f"/api/workouts/{wid}").json()
+    assert w["id"] == wid and w["steps"]
+    assert client.get("/api/workouts/9999").status_code == 404

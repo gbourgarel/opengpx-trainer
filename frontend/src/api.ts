@@ -109,6 +109,9 @@ export interface SimSettings {
 }
 
 export interface Telemetry {
+  session_id?: string
+  workout_id?: number | null
+  route_id?: number | null
   state: 'disconnected' | 'idle' | 'ready' | 'running' | 'paused' | 'finished'
   hub?: string | null
   devices?: Record<'trainer' | 'power_meter' | 'heart_rate', DeviceStatus>
@@ -196,7 +199,8 @@ export const api = {
   deleteRoute: (id: number) => req('DELETE', `/api/routes/${id}`),
 
   start: (body: { mode: 'erg' | 'gpx'; workout_id?: number; route_id?: number }) =>
-    req('POST', '/api/session/start', body),
+    req<{ ok: boolean; name: string; session_id: string }>('POST', '/api/session/start', body),
+  workout: (id: number) => req<Workout>('GET', `/api/workouts/${id}`),
   pause: () => req('POST', '/api/session/pause'),
   resume: () => req('POST', '/api/session/resume'),
   stop: (save = true) => req<{ saved: unknown }>('POST', `/api/session/stop?save=${save}`),

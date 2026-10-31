@@ -269,6 +269,13 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         wid = st.storage.add_workout(w.to_dict())
         return {"id": wid, **w.to_dict()}
 
+    @app.get("/api/workouts/{wid}")
+    def get_workout(wid: int):
+        d = st.storage.get_workout(wid)
+        if d is None:
+            raise HTTPException(404, "Workout not found")
+        return {"id": wid, **d}
+
     @app.delete("/api/workouts/{wid}")
     def delete_workout(wid: int):
         st.storage.delete_workout(wid)
@@ -353,8 +360,16 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             workout = Workout.from_dict(d)
         else:
             route = load_route(body.route_id or -1)
-        st.session = RideSession(st.hub, st.profile, body.mode, workout=workout, route=route)
-        return {"ok": True, "name": st.session.name}
+        st.session = RideSession(
+            st.hub,
+            st.profile,
+            body.mode,
+            workout=workout,
+            route=route,
+            workout_id=body.workout_id if workout else None,
+            route_id=body.route_id if route else None,
+        )
+        return {"ok": True, "name": st.session.name, "session_id": st.session.id}
 
     def require_session() -> RideSession:
         if st.session is None:

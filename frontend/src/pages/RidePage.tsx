@@ -8,6 +8,7 @@ import { targetZone } from '../targetZone'
 import type { HistoryPoint } from '../useLive'
 
 export interface ActiveRide {
+  sessionId: string
   mode: 'erg' | 'gpx'
   workout?: Workout
   route?: RouteDetail
