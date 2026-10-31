@@ -1,0 +1,199 @@
+import { useEffect, useState } from 'react'
+import { api, type Profile } from '../api'
+
+type NumKey = Exclude<{ [K in keyof Profile]-?: Profile[K] extends number | null ? K : never }[keyof Profile], undefined>
+
+type Setter = <K extends keyof Profile>(k: K, v: Profile[K]) => void
+
+function Num({ p, k, label, step = 1, help, scale = 1, set }: { p: Profile; k: NumKey; label: string; step?: number; help?: string; scale?: number; set: Setter }) {
+  const v = p[k] as number | null
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        type="number"
+        step={step}
+        defaultValue={v == null ? '' : +(v * scale).toFixed(6)}
+        onChange={(e) => set(k, (e.target.value === '' ? null : Number(e.target.value) / scale) as Profile[typeof k])}
+      />
+      {help && <small>{help}</small>}
+    </label>
+  )
+}
+
+/** Speed (km/h) at a given power/grade, steady state, same equation as the backend (for preview). */
+function steadySpeed(p: Profile, watts: number, grade: number) {
+  const m = p.rider_mass_kg + p.bike_mass_kg
+  const rho = 1.2
+  const s = grade / Math.hypot(1, grade)
+  const c = 1 / Math.hypot(1, grade)
+  const f = (v: number) => (m * 9.80665 * (p.crr * c + s) + 0.5 * rho * p.cda_m2 * v * v) * v - p.drivetrain_efficiency * watts
+  let lo = 0
+  let hi = 40
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2
+    if (f(mid) < 0) lo = mid
+    else hi = mid
+  }
+  return Math.min(lo * 3.6, p.max_speed_kmh)
+}
+
+export function ProfilePage({ onSaved }: { onSaved: (p: Profile) => void }) {
+  const [p, setP] = useState<Profile | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const set: Setter = (k, v) => setP((prev) => (prev ? { ...prev, [k]: v } : prev))
+  useEffect(() => {
+    api.getProfile().then(setP)
+  }, [])
+  if (!p) return <p className="muted">Loading…</p>
+
+  const save = () =>
+    api
+      .putProfile(p)
+      .then((np) => {
+        setP(np)
+        onSaved(np)
+        setMsg('Saved')
+        setTimeout(() => setMsg(null), 2000)
+      })
+      .catch((e) => setMsg(e.message))
+
+  const curve = p.grade_curve
+  const setCurve = (c: [number, number][]) => set('grade_curve', c)
+
+  return (
+    <div className="profile">
+      <div className="card">
+        <h3>Rider & bike</h3>
+        <div className="fields">
+          <Num set={set} p={p} k="rider_mass_kg" label="Rider weight (kg)" step={0.1} />
+          <Num set={set} p={p} k="bike_mass_kg" label="Bike weight (kg)" step={0.1} />
+          <Num set={set} p={p} k="ftp_w" label="FTP (W)" />
+          <Num set={set} p={p} k="max_hr_bpm" label="Max HR (bpm)" />
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Speed model</h3>
+        <p className="muted">
+          η·P = m·g·v·(Crr·cosθ + sinθ) + ½·ρ·CdA·(v+v<sub>w</sub>)²·v + m<sub>eff</sub>·a·v, integrated in time (momentum carried across grade
+          changes); m<sub>eff</sub> = m + I/r²; ρ from route altitude, temperature & humidity.
+        </p>
+        <div className="fields">
+          <Num set={set} p={p} k="cda_m2" label="CdA (m²)" step={0.005} help="hoods ≈ 0.32–0.40 · drops ≈ 0.28 · TT ≈ 0.22" />
+          <Num set={set} p={p} k="crr" label="Crr" step={0.0005} help="good road tyres ≈ 0.003–0.005" />
+          <Num set={set} p={p} k="drivetrain_efficiency" label="Drivetrain efficiency" step={0.001} help="clean chain ≈ 0.97–0.98" />
+          <Num set={set} p={p} k="wheel_inertia_kg_m2" label="Wheel inertia, both (kg·m²)" step={0.01} />
+          <Num set={set} p={p} k="wheel_diameter_m" label="Wheel diameter (m)" step={0.001} />
+          <Num set={set} p={p} k="max_speed_kmh" label="Descent braking cap (km/h)" />
+          <Num set={set} p={p} k="temperature_c" label="Air temperature (°C)" step={0.5} />
+          <Num set={set} p={p} k="relative_humidity" label="Relative humidity (%)" scale={100} />
+          <Num set={set} p={p} k="headwind_ms" label="Headwind (m/s, − = tail)" step={0.5} />
+        </div>
+        <div className="preview">
+          {[
+            [200, 0],
+            [250, 0],
+            [300, 0.05],
+            [300, 0.08],
+            [0, -0.06],
+          ].map(([w, g]) => (
+            <span key={`${w}${g}`}>
+              {w} W @ {(g * 100).toFixed(0)}% → <b>{steadySpeed(p, w, g).toFixed(1)} km/h</b>
+            </span>
+          ))}
+          <small className="muted">(steady state, sea level ρ = 1.2)</small>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Power source</h3>
+        <div className="fields">
+          <label className="field">
+            <span>Power used for speed & recording</span>
+            <select
+              defaultValue={p.power_source}
+              onChange={(e) => set('power_source', e.target.value as Profile['power_source'])}
+            >
+              <option value="auto">Auto: power meter if detected, else trainer</option>
+              <option value="power_meter">Power meter only</option>
+              <option value="trainer">Trainer only</option>
+            </select>
+          </label>
+          <label className="field check">
+            <input
+              type="checkbox"
+              defaultChecked={p.power_match}
+              onChange={(e) => set('power_match', e.target.checked)}
+            />
+            <span>Power match: correct the ERG target so the power meter reads the requested power</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>GPX mode — grade → target power</h3>
+        <p className="muted">Target = FTP × f(look-ahead grade) × effort, clamped and rate-limited (piecewise linear, flat beyond the end points).</p>
+        <table className="curve">
+          <thead>
+            <tr>
+              <th>Grade %</th>
+              <th>% FTP</th>
+              <th>W</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {curve.map(([g, f], i) => (
+              <tr key={i}>
+                <td>
+                  <input type="number" step={0.5} value={g} onChange={(e) => setCurve(curve.map((c, j) => (j === i ? [Number(e.target.value), c[1]] : c)))} />
+                </td>
+                <td>
+                  <input type="number" step={1} value={Math.round(f * 100)} onChange={(e) => setCurve(curve.map((c, j) => (j === i ? [c[0], Number(e.target.value) / 100] : c)))} />
+                </td>
+                <td className="muted">{Math.round(f * p.ftp_w)}</td>
+                <td>
+                  <button className="ghost" disabled={curve.length <= 2} onClick={() => setCurve(curve.filter((_, j) => j !== i))}>
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button className="ghost" onClick={() => setCurve([...curve, [(curve[curve.length - 1]?.[0] ?? 0) + 2, curve[curve.length - 1]?.[1] ?? 0.7]])}>
+          + point
+        </button>
+        <div className="fields">
+          <Num set={set} p={p} k="grade_curve_min_frac" label="Floor (% FTP)" scale={100} />
+          <Num set={set} p={p} k="grade_curve_max_frac" label="Ceiling (% FTP)" scale={100} />
+          <Num set={set} p={p} k="grade_lookahead_m" label="Grade look-ahead (m)" />
+          <Num set={set} p={p} k="target_ramp_w_per_s" label="Max target change (W/s)" />
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>intervals.icu</h3>
+        <div className="fields">
+          <label className="field">
+            <span>Athlete ID</span>
+            <input defaultValue={p.intervals_athlete_id} onChange={(e) => set('intervals_athlete_id', e.target.value)} />
+            <small>e.g. i12345 — "0" = owner of the API key</small>
+          </label>
+          <label className="field">
+            <span>API key {p.intervals_api_key_set && <em className="muted">(stored — leave blank to keep)</em>}</span>
+            <input type="password" placeholder="Settings → Developer settings" onChange={(e) => set('intervals_api_key', e.target.value)} />
+          </label>
+        </div>
+      </div>
+
+      <div className="toolbar sticky">
+        <button className="primary" onClick={save}>
+          Save profile
+        </button>
+        {msg && <span className="hint">{msg}</span>}
+      </div>
+    </div>
+  )
+}
