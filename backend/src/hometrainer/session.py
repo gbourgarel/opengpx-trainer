@@ -138,8 +138,17 @@ class RideSession:
         self.requested_target_w: float | None = None
         self.sent_target_w: float | None = None
         self.last: dict = {}
+        self.attach_hub(hub)
+
+    def attach_hub(self, hub: SensorHub) -> None:
+        """(Re)bind the session to a sensor hub, e.g. after an ANT+ reconnection.
+
+        The new hub starts with no trainer command, so the next tick re-sends the current
+        target; the rider configuration is sent again as well.
+        """
+        self.hub = hub
         hub.set_user_configuration(
-            profile.rider_mass_kg, profile.bike_mass_kg, profile.wheel_diameter_m
+            self.profile.rider_mass_kg, self.profile.bike_mass_kg, self.profile.wheel_diameter_m
         )
 
     # -- controls -----------------------------------------------------------------------

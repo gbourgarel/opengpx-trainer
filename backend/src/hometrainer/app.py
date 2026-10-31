@@ -70,6 +70,10 @@ class AppState:
                 hub.stop()  # release the USB device if start failed half-way
                 raise
             self.hub, self.hub_kind = hub, kind
+            if self.session is not None:
+                # keep an existing ride driving the trainer through the *new* hub; otherwise
+                # it would keep reading/commanding the stopped one
+                self.session.attach_hub(hub)
         finally:
             self._hub_lock.release()
 
