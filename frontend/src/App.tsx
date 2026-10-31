@@ -17,17 +17,25 @@ const TABS: [Tab, string][] = [
 
 function Dot({ status, label }: { status?: DeviceStatus; label: string }) {
   const on = status?.connected
-  const num = on ? status?.device_number : status?.wanted
+  const ble = status?.transport === 'ble'
+  // what identifies the device: ANT+ number, or the Bluetooth name
+  const ident = ble ? (status?.name ?? (typeof status?.wanted === 'string' ? status.wanted.slice(0, 8) : null)) : on ? status?.device_number : status?.wanted
+  const proto = ble ? 'Bluetooth' : status?.transport === 'sim' ? 'simulator' : 'ANT+'
   const title = on
-    ? `${label}: device ${status?.device_number}${status?.wanted ? ' (configured)' : ' (first found)'}`
+    ? `${label}: ${proto} ${ident ?? ''}${status?.wanted ? ' (configured)' : ' (first found)'}`
     : status?.wanted
-      ? `${label}: searching for device ${status.wanted}`
+      ? `${label}: searching for ${proto} ${ident ?? status.wanted}`
       : `${label}: searching (first found)`
   return (
     <span className={`dev ${on ? 'on' : ''}`} title={title}>
       <i />
       {label}
-      {num != null && <small className="dev-num">{num}</small>}
+      {ident != null && (
+        <small className="dev-num">
+          {ble && 'ᛒ '}
+          {ident}
+        </small>
+      )}
     </span>
   )
 }
@@ -47,12 +55,13 @@ export default function App() {
   const hub = tel.hub
   const dev = tel.devices
 
-  const connect = (kind: 'ant' | 'simulator') => {
+  const connect = (kind: 'devices' | 'simulator') => {
     if (connecting) return
     setError(null)
     setConnecting(true)
     api
       .connect(kind)
+      .then((res) => res.warnings?.length && setError(res.warnings.join(' · ')))
       .catch((e) => setError(e.message))
       .finally(() => setConnecting(false))
   }
@@ -119,15 +128,15 @@ export default function App() {
               <Dot status={dev?.trainer} label="Trainer" />
               <Dot status={dev?.power_meter} label="Power" />
               <Dot status={dev?.heart_rate} label="HR" />
-              <span className="muted">{hub === 'simulator' ? 'simulator' : 'ANT+'}</span>
+              <span className="muted">{hub === 'simulator' ? 'simulator' : 'sensors'}</span>
               <button className="ghost" onClick={() => api.disconnect()}>
                 Disconnect
               </button>
             </>
           ) : (
             <>
-              <button className="primary" disabled={connecting} onClick={() => connect('ant')}>
-                {connecting ? 'Connecting…' : 'Connect ANT+'}
+              <button className="primary" disabled={connecting} onClick={() => connect('devices')} title="Connect the sensors chosen in Profile → Devices (ANT+ and/or Bluetooth)">
+                {connecting ? 'Connecting…' : 'Connect sensors'}
               </button>
               <button className="ghost" disabled={connecting} onClick={() => connect('simulator')}>
                 Simulator

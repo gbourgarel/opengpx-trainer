@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type DeviceStatus, type Profile } from '../api'
-
-type DeviceKind = 'trainer' | 'power_meter' | 'heart_rate'
+import { DevicesCard, type DeviceRole } from '../components/DevicesCard'
 
 type NumKey = Exclude<{ [K in keyof Profile]-?: Profile[K] extends number | null ? K : never }[keyof Profile], undefined>
 
@@ -23,45 +22,6 @@ function Num({ p, k, label, step = 1, help, scale = 1, set }: { p: Profile; k: N
   )
 }
 
-function DeviceField({ label, value, onChange, live, help }: { label: string; value: number | null; onChange: (v: number | null) => void; live?: DeviceStatus; help?: string }) {
-  const detected = live?.connected ? live.device_number : null
-  return (
-    <label className="field">
-      <span>{label}</span>
-      <div className="dev-field">
-        <input
-          type="number"
-          min={1}
-          max={65535}
-          placeholder="first found"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
-        />
-        {value != null && (
-          <button className="ghost" type="button" onClick={() => onChange(null)} title="Clear: pair with the first device found">
-            ✕
-          </button>
-        )}
-      </div>
-      <small>
-        {detected != null ? (
-          <>
-            connected: <b className={value != null && value !== detected ? 'warn' : ''}>{detected}</b>
-            {value !== detected && (
-              <button className="link" type="button" onClick={() => onChange(detected)}>
-                use this one
-              </button>
-            )}
-          </>
-        ) : (
-          'not connected'
-        )}
-        {help && <> · {help}</>}
-      </small>
-    </label>
-  )
-}
-
 /** Speed (km/h) at a given power/grade, steady state, same equation as the backend (for preview). */
 function steadySpeed(p: Profile, watts: number, grade: number) {
   const m = p.rider_mass_kg + p.bike_mass_kg
@@ -79,7 +39,7 @@ function steadySpeed(p: Profile, watts: number, grade: number) {
   return Math.min(lo * 3.6, p.max_speed_kmh)
 }
 
-export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => void; devices?: Record<DeviceKind, DeviceStatus> }) {
+export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => void; devices?: Record<DeviceRole, DeviceStatus> }) {
   const [p, setP] = useState<Profile | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const set: Setter = (k, v) => setP((prev) => (prev ? { ...prev, [k]: v } : prev))
@@ -147,18 +107,7 @@ export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => voi
         </div>
       </div>
 
-      <div className="card">
-        <h3>Devices (ANT+)</h3>
-        <p className="muted">
-          Device number to pair with for each sensor; empty = first device found. The trainer's own power broadcast is never used as the power meter. Saving
-          reconnects ANT+ when no ride is in progress.
-        </p>
-        <div className="fields">
-          <DeviceField label="Trainer (FE-C)" value={p.trainer_device_number} onChange={(v) => set('trainer_device_number', v)} live={devices?.trainer} />
-          <DeviceField label="Power meter" value={p.power_meter_device_number} onChange={(v) => set('power_meter_device_number', v)} live={devices?.power_meter} />
-          <DeviceField label="Heart rate" value={p.heart_rate_device_number} onChange={(v) => set('heart_rate_device_number', v)} live={devices?.heart_rate} />
-        </div>
-      </div>
+      <DevicesCard p={p} set={set} devices={devices} />
 
       <div className="card">
         <h3>Power source</h3>

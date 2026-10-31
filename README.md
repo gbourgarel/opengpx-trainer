@@ -1,18 +1,23 @@
 # Home Trainer
 
-Personal indoor-cycling app that drives an ANT+ FE-C smart trainer from a USB ANT+ stick.
+Personal indoor-cycling app that drives a smart trainer over ANT+ (FE-C, USB stick) or
+Bluetooth LE (FTMS), with power meter and heart-rate sensors on either protocol.
 
 * **ERG workouts**: planned workouts fetched from intervals.icu (or imported `.zwo` / `.erg` / `.mrc`),
   with a live intensity % adjustment.
 * **GPX routes** (pseudo-ERG): the trainer target power follows a configurable *grade → %FTP* curve
-  on the look-ahead grade. Virtual speed and position on the trace come from a dynamic physics model
-  fed with the measured power × (1 + difficulty %).
+  on the look-ahead grade, or a target set by hand. Virtual speed and position on the trace come
+  from a dynamic physics model fed with the measured power × (1 + difficulty %). Climb rate (VAM)
+  and elevation gain are shown.
+* **Workout on a route**: a GPX ride can follow a workout. The workout sets the target, the route
+  gives speed and position, and the route loops while the workout lasts.
+* Power is also shown in **W/kg** (rider mass).
 * **Power source**: the power meter if one is detected (or forced), else the trainer. With a
   power meter, *power match* corrects the ERG target so the meter reads the requested power.
 * Rides are recorded to `.fit` (cycling / virtual activity) and can be uploaded to intervals.icu.
 
 ```
-backend/   Python 3.12 · FastAPI · openant · numpy · SQLite   (uv)
+backend/   Python 3.12 · FastAPI · openant · bleak · numpy · SQLite   (uv)
 frontend/  React · Vite · TypeScript · Leaflet · uPlot
 samples/   sample GPX route and ZWO workout
 ```
@@ -21,6 +26,13 @@ samples/   sample GPX route and ZWO workout
 
 Prerequisites: [uv](https://docs.astral.sh/uv/), Node ≥ 20, and `brew install libusb` for the ANT+ stick.
 Quit Garmin Express (and Zwift/TrainerRoad…) so that nothing else holds the stick.
+For Bluetooth on macOS, allow Bluetooth for the app that runs the server (Terminal, iTerm, VS Code…)
+in System Settings → Privacy & Security → Bluetooth. Without it, scans never answer. A Bluetooth
+sensor also usually accepts a single connection, so disconnect it from other apps.
+
+Sensors are chosen in **Profile → Devices**. For each role (trainer, power meter, heart rate),
+pick ANT+ or Bluetooth and the device, from a **Scan** that lists both protocols. Then click
+**Connect sensors**.
 
 ```bash
 # one-off
@@ -40,7 +52,7 @@ cd frontend && npm run dev                     # :5173, proxies /api and /ws to 
 
 ### Testing without hardware (fake power input)
 
-Click **Simulator** instead of **Connect ANT+**. A simulator panel appears on the Ride page:
+Click **Simulator** instead of **Connect sensors**. A simulator panel appears on the Ride page:
 
 * **Follow target**: behaves like an ERG trainer, so power tracks the target with a 1.5 s lag.
 * **Manual power**: you set the rider's power with the slider or ±10/±50 buttons, or from the
@@ -97,6 +109,19 @@ One ANT node, three slave channels with wildcard pairing (the first device found
 
 Commands go out as acknowledged messages from a single sender thread, which coalesces requests
 and re-sends the target every 2 s.
+
+## Bluetooth LE
+
+Handled in the backend with [bleak](https://github.com/hbldh/bleak), in its own thread and
+asyncio loop. Each device gets one connection that reconnects by itself. Standard services:
+
+| Role        | Service           | Characteristics used                                               |
+|-------------|-------------------|--------------------------------------------------------------------|
+| Trainer     | FTMS (0x1826)     | Indoor Bike Data 0x2AD2 (power, cadence, speed) · Control Point 0x2AD9: request control, start, set target power (ERG), indoor-bike simulation at 0 % for free ride |
+| Power meter | Cycling Power (0x1818) | Measurement 0x2A63 (power; cadence from crank revolutions, 0 after 3 s without a new crank event) |
+| Heart rate  | Heart Rate (0x180D) | Measurement 0x2A37                                                |
+
+FTMS has no rider-weight command, so the user configuration is only sent over ANT+.
 
 ## intervals.icu
 

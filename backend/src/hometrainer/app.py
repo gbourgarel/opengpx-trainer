@@ -18,9 +18,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .ant.hub import SensorHub
+from .ant.scan import scan_ant
 from .ant.simulator import SimulatedHub
+from .ble.scan import scan_ble
 from .gpx.route import Route
 from .profile import Profile, ProfileError
+from .sensors import MultiHub
 from .session import RideSession, choose_power, w_per_kg
 from .storage import Storage
 from .workouts.intervals_icu import IntervalsIcuClient
@@ -60,14 +63,9 @@ class AppState:
             if kind == "simulator":
                 hub: SensorHub = SimulatedHub()
             else:
-                from .ant.ant_hub import AntHub
-
-                p = self.profile
-                hub = AntHub(
-                    trainer_id=p.trainer_device_number,
-                    power_meter_id=p.power_meter_device_number,
-                    heart_rate_id=p.heart_rate_device_number,
-                )
+                # real sensors: each role on ANT+ or Bluetooth, as chosen in the profile
+                kind = "devices"
+                hub = MultiHub(self.profile)
             try:
                 hub.start()
             except Exception:
@@ -129,7 +127,8 @@ class AppState:
 # --------------------------------------------------------------------------------------
 # request bodies
 class ConnectBody(BaseModel):
-    kind: Literal["ant", "simulator"] = "ant"
+    # "devices": the real sensors from the profile (ANT+ and/or BLE); "ant" kept as an alias
+    kind: Literal["devices", "ant", "simulator"] = "devices"
 
 
 class StartBody(BaseModel):
@@ -200,10 +199,10 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         if not body.get("intervals_api_key"):
             body.pop("intervals_api_key", None)  # keep stored key unless a new one is sent
         current.update(body)
-        dev_keys = (
-            "trainer_device_number",
-            "power_meter_device_number",
-            "heart_rate_device_number",
+        dev_keys = tuple(
+            f"{role}_{what}"
+            for role in ("trainer", "power_meter", "heart_rate")
+            for what in ("transport", "device_number", "ble_id")
         )
         try:
             p = Profile.from_dict(current)  # validates types and bounds of every field
@@ -213,15 +212,15 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         st.profile = p
         st.storage.save_profile(p)
         out = p.to_dict(redact_secrets=True)
-        # apply new pairing right away when connected over ANT+ and no ride is in progress
+        # apply the new device choice right away when connected and no ride is in progress
         riding = st.session is not None and st.session.state in ("running", "paused")
-        if devices_changed and st.hub_kind == "ant":
+        if devices_changed and st.hub_kind == "devices":
             if riding:
-                out["devices_note"] = "Device numbers saved; reconnect after the ride to apply."
+                out["devices_note"] = "Devices saved; reconnect after the ride to apply."
             else:
                 try:
-                    st.connect("ant")
-                    out["devices_note"] = "ANT+ reconnected with the new device numbers."
+                    st.connect("devices")
+                    out["devices_note"] = "Sensors reconnected with the new devices."
                 except Exception as e:
                     out["devices_note"] = f"Saved, but reconnecting failed: {e}"
         return out
@@ -236,7 +235,41 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         except Exception as e:
             log.exception("Connecting %s failed", body.kind)
             raise HTTPException(503, str(e)) from e
-        return {"hub": st.hub_kind}
+        return {"hub": st.hub_kind, "warnings": getattr(st.hub, "warnings", [])}
+
+    @app.post("/api/devices/scan")
+    async def scan(seconds: float = 6.0):
+        """List ANT+ and BLE sensors in range. The ANT+ stick is exclusive, so the current
+        connection is closed during the scan and reopened afterwards."""
+        seconds = max(2.0, min(seconds, 20.0))
+        with st.session_lock:
+            if st.session is not None and st.session.state in ("running", "paused"):
+                raise HTTPException(409, "Not during a ride")
+        previous = st.hub_kind
+        await asyncio.to_thread(st.disconnect)
+        result: dict = {"ant": [], "ble": [], "errors": {}}
+
+        async def ant_part():
+            try:
+                result["ant"] = await asyncio.to_thread(scan_ant, seconds)
+            except Exception as e:
+                result["errors"]["ant"] = str(e)
+
+        async def ble_part():
+            try:
+                result["ble"] = await scan_ble(seconds)
+            except Exception as e:
+                result["errors"]["ble"] = str(e)
+
+        try:
+            await asyncio.gather(ant_part(), ble_part())
+        finally:
+            if previous is not None:
+                try:
+                    await asyncio.to_thread(st.connect, previous)
+                except Exception as e:
+                    result["errors"]["reconnect"] = str(e)
+        return result
 
     @app.post("/api/devices/disconnect")
     def disconnect():

@@ -21,6 +21,15 @@ export interface Profile {
   trainer_device_number: number | null
   power_meter_device_number: number | null
   heart_rate_device_number: number | null
+  trainer_transport: Transport
+  power_meter_transport: Transport
+  heart_rate_transport: Transport
+  trainer_ble_id: string | null
+  power_meter_ble_id: string | null
+  heart_rate_ble_id: string | null
+  trainer_ble_name: string | null
+  power_meter_ble_name: string | null
+  heart_rate_ble_name: string | null
   grade_curve: [number, number][]
   grade_curve_min_frac: number
   grade_curve_max_frac: number
@@ -91,10 +100,36 @@ export interface Ride {
   summary: Record<string, number | null>
 }
 
+export type Transport = 'ant' | 'ble'
+
 export interface DeviceStatus {
   connected: boolean
+  transport: Transport | 'sim' | null
   device_number: number | null
-  wanted: number | null
+  ble_id: string | null
+  name: string | null
+  wanted: number | string | null
+}
+
+export interface ScanDevice {
+  transport: Transport
+  roles: string[]
+  // ANT+
+  device_number?: number
+  device_type?: number
+  label?: string
+  note?: string | null
+  messages?: number
+  // BLE
+  ble_id?: string
+  name?: string
+  rssi?: number
+}
+
+export interface ScanResult {
+  ant: ScanDevice[]
+  ble: ScanDevice[]
+  errors: Record<string, string>
 }
 
 export interface SimSettings {
@@ -191,7 +226,8 @@ export const api = {
   getProfile: () => req<Profile>('GET', '/api/profile'),
   putProfile: (p: Partial<Profile>) => req<Profile>('PUT', '/api/profile', p),
 
-  connect: (kind: 'ant' | 'simulator') => req<{ hub: string }>('POST', '/api/devices/connect', { kind }),
+  connect: (kind: 'devices' | 'simulator') => req<{ hub: string; warnings?: string[] }>('POST', '/api/devices/connect', { kind }),
+  scan: (seconds = 6) => req<ScanResult>('POST', `/api/devices/scan?seconds=${seconds}`),
   disconnect: () => req('POST', '/api/devices/disconnect'),
 
   workouts: () => req<Workout[]>('GET', '/api/workouts'),

@@ -44,8 +44,11 @@ class AntHub(SensorHub):
         trainer_id: int | None = None,
         power_meter_id: int | None = None,
         heart_rate_id: int | None = None,
+        use_trainer: bool = True,
+        shared: SensorHub | None = None,
     ):
-        super().__init__()
+        super().__init__(shared)
+        self.use_trainer = use_trainer
         self.use_power_meter = use_power_meter
         self.use_heart_rate = use_heart_rate
         self.wanted = {
@@ -53,8 +56,14 @@ class AntHub(SensorHub):
             "power_meter": power_meter_id,
             "heart_rate": heart_rate_id,
         }
+        roles = {
+            "trainer": use_trainer,
+            "power_meter": use_power_meter,
+            "heart_rate": use_heart_rate,
+        }
         for kind, num in self.wanted.items():
-            self.devices[kind].wanted = num
+            if roles[kind]:  # only the roles served over ANT+
+                self.devices[kind].wanted = num
         self._node = None
         self._fec = None
         self._node_thread: threading.Thread | None = None
@@ -121,9 +130,13 @@ class AntHub(SensorHub):
             self._raw_log.write("t_s,channel,device_number,b0,b1,b2,b3,b4,b5,b6,b7\n")
             log.info("Logging raw ANT pages to %s", log_path)
 
-        self._fec = self._open_channel(
-            pf.FEC_DEVICE_TYPE, pf.FEC_PERIOD, self._on_fec, device_number=self.wanted["trainer"]
-        )
+        if self.use_trainer:
+            self._fec = self._open_channel(
+                pf.FEC_DEVICE_TYPE,
+                pf.FEC_PERIOD,
+                self._on_fec,
+                device_number=self.wanted["trainer"],
+            )
         if self.use_heart_rate:
             self._open_channel(
                 pf.HRM_DEVICE_TYPE,
@@ -190,7 +203,8 @@ class AntHub(SensorHub):
             except Exception:
                 log.exception("Could not open power-meter channel")
             return
-        deadline = time.monotonic() + self.PM_WAIT_FOR_TRAINER_S
+        # wait for the ANT+ trainer (if it is on ANT+) so its number can be excluded
+        deadline = time.monotonic() + (self.PM_WAIT_FOR_TRAINER_S if self.use_trainer else 0)
         while self._running and time.monotonic() < deadline:
             if self.devices["trainer"].device_number is not None:
                 break
@@ -250,7 +264,7 @@ class AntHub(SensorHub):
             return
         msg = pf.decode_fec(data)
         with self._lock:
-            self._seen("trainer", num)
+            self._seen("trainer", num, transport="ant")
             if isinstance(msg, pf.FecTrainer):
                 avg = self._fec_power.update(
                     msg.event_count, msg.accumulated_power_w, msg.instantaneous_power_w
@@ -273,7 +287,7 @@ class AntHub(SensorHub):
             return
         msg = pf.decode_power(data)
         with self._lock:
-            self._seen("power_meter", num)
+            self._seen("power_meter", num, transport="ant")
             if msg is not None:
                 avg = self._pm_power.update(
                     msg.event_count, msg.accumulated_power_w, msg.instantaneous_power_w
@@ -288,7 +302,7 @@ class AntHub(SensorHub):
             return
         hr = pf.decode_hrm(data)
         with self._lock:
-            self._seen("heart_rate", num)
+            self._seen("heart_rate", num, transport="ant")
             self._s.heart_rate.set(hr)
 
     # -- transmit -----------------------------------------------------------------------

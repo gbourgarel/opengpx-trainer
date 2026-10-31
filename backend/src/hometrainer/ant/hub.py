@@ -28,8 +28,11 @@ class SensorValue:
 class DeviceInfo:
     kind: str  # "trainer" | "power_meter" | "heart_rate"
     connected: bool = False
-    device_number: int | None = None
-    wanted: int | None = None  # configured device number (None = first device found)
+    transport: str | None = None  # "ant" | "ble" | "sim"
+    device_number: int | None = None  # ANT+ device number
+    ble_id: str | None = None  # BLE address (a UUID on macOS)
+    name: str | None = None  # BLE advertised name
+    wanted: int | str | None = None  # configured ANT number / BLE id (None = first found)
     last_seen: float = 0.0
 
 
@@ -58,15 +61,21 @@ class _Store:
     heart_rate: SensorValue = field(default_factory=SensorValue)
 
 
+ROLES = ("trainer", "power_meter", "heart_rate")
+
+
 class SensorHub(ABC):
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._s = _Store()
-        self.devices = {
-            "trainer": DeviceInfo("trainer"),
-            "power_meter": DeviceInfo("power_meter"),
-            "heart_rate": DeviceInfo("heart_rate"),
-        }
+    def __init__(self, shared: SensorHub | None = None) -> None:
+        """``shared``: write into another hub's state (lock, values, device info). Used by
+        MultiHub so that ANT+ and BLE transports feed one set of readings."""
+        if shared is not None:
+            self._lock = shared._lock
+            self._s = shared._s
+            self.devices = shared.devices
+        else:
+            self._lock = threading.Lock()
+            self._s = _Store()
+            self.devices = {k: DeviceInfo(k) for k in ROLES}
 
     # -- lifecycle ----------------------------------------------------------------------
     @abstractmethod
@@ -86,12 +95,25 @@ class SensorHub(ABC):
     def set_user_configuration(self, rider_kg: float, bike_kg: float, wheel_d_m: float) -> None: ...
 
     # -- readings -----------------------------------------------------------------------
-    def _seen(self, kind: str, device_number: int | None = None) -> None:
+    def _seen(
+        self,
+        kind: str,
+        device_number: int | None = None,
+        transport: str | None = None,
+        ble_id: str | None = None,
+        name: str | None = None,
+    ) -> None:
         dev = self.devices[kind]
         dev.last_seen = time.monotonic()
         dev.connected = True
         if device_number is not None:
             dev.device_number = device_number
+        if transport is not None:
+            dev.transport = transport
+        if ble_id is not None:
+            dev.ble_id = ble_id
+        if name is not None:
+            dev.name = name
 
     def readings(self) -> Readings:
         now = time.monotonic()
@@ -114,6 +136,13 @@ class SensorHub(ABC):
     def status(self) -> dict:
         self.readings()  # refresh connection flags
         return {
-            k: {"connected": d.connected, "device_number": d.device_number, "wanted": d.wanted}
+            k: {
+                "connected": d.connected,
+                "transport": d.transport,
+                "device_number": d.device_number,
+                "ble_id": d.ble_id,
+                "name": d.name,
+                "wanted": d.wanted,
+            }
             for k, d in self.devices.items()
         }

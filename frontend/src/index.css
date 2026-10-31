@@ -624,6 +624,46 @@ input.small {
 .gauge-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
 
 /* device pairing */
+.role-row {
+  display: grid;
+  grid-template-columns: 110px auto minmax(220px, 1fr) minmax(200px, auto);
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--grid);
+}
+.role-label {
+  font-weight: 600;
+}
+.role-row .seg button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.ble-choice {
+  align-items: center;
+}
+.warn-text {
+  color: var(--zone-high);
+  font-size: 13px;
+}
+.scan-bar {
+  margin-top: 12px;
+}
+.scan-table tr.dim td {
+  opacity: 0.5;
+}
+.scan-table td.row-end-cell {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+@media (max-width: 900px) {
+  .role-row {
+    grid-template-columns: 1fr;
+  }
+}
 .dev-num {
   color: var(--muted);
   font-variant-numeric: tabular-nums;

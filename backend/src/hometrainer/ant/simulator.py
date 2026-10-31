@@ -105,16 +105,16 @@ class SimulatedHub(SensorHub):
         self._hr += (60 + 0.38 * p - self._hr) * (1 - math.exp(-self.dt / 30))
         pm_noise = random.gauss(0, 3) if (s.noise and s.pedaling) else 0.0
         with self._lock:
-            self._seen("trainer", 12345)
+            self._seen("trainer", 12345, transport="sim")
             self._s.trainer_power.set(p)
             self._s.trainer_cadence.set(cad)
             self._s.trainer_speed.set(p / 30)
             if s.power_meter:
-                self._seen("power_meter", 54321)
+                self._seen("power_meter", 54321, transport="sim")
                 self._s.pm_power.set(max(0.0, p * (1 + s.pm_bias) + pm_noise))
                 self._s.pm_cadence.set(cad)
             if s.heart_rate:
-                self._seen("heart_rate", 777)
+                self._seen("heart_rate", 777, transport="sim")
                 self._s.heart_rate.set(round(self._hr))
 
     def _loop(self) -> None:

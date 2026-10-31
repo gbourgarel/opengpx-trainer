@@ -10,6 +10,11 @@ from .physics.model import ModelParams
 
 PowerSource = Literal["auto", "trainer", "power_meter"]
 POWER_SOURCES = ("auto", "trainer", "power_meter")
+Transport = Literal["ant", "ble"]
+TRANSPORTS = ("ant", "ble")
+_ROLES = ("trainer", "power_meter", "heart_rate")
+_TRANSPORT_FIELDS = {f"{r}_transport" for r in _ROLES}
+_BLE_TEXT_FIELDS = {f"{r}_ble_id" for r in _ROLES} | {f"{r}_ble_name" for r in _ROLES}
 
 
 class ProfileError(ValueError):
@@ -69,6 +74,16 @@ def _validate_field(name: str, value):
         if not lo <= v <= hi:
             raise ValueError(f"must be between {lo} and {hi}")
         return int(round(v)) if name in _INTS else float(v)
+    if name in _TRANSPORT_FIELDS:
+        if value not in TRANSPORTS:
+            raise ValueError("must be 'ant' or 'ble'")
+        return value
+    if name in _BLE_TEXT_FIELDS:
+        if value in (None, ""):
+            return None
+        if not isinstance(value, str) or len(value) > 100:
+            raise ValueError("must be text (max 100 characters) or empty")
+        return value.strip()
     if name == "power_source":
         if value not in POWER_SOURCES:
             raise ValueError(f"must be one of {', '.join(POWER_SOURCES)}")
@@ -121,6 +136,16 @@ class Profile:
     trainer_device_number: int | None = None
     power_meter_device_number: int | None = None
     heart_rate_device_number: int | None = None
+    # transport per role, and the chosen Bluetooth device (id = address, a UUID on macOS)
+    trainer_transport: Transport = "ant"
+    power_meter_transport: Transport = "ant"
+    heart_rate_transport: Transport = "ant"
+    trainer_ble_id: str | None = None
+    power_meter_ble_id: str | None = None
+    heart_rate_ble_id: str | None = None
+    trainer_ble_name: str | None = None
+    power_meter_ble_name: str | None = None
+    heart_rate_ble_name: str | None = None
     # GPX pseudo-ERG grade -> power curve
     grade_curve: list[tuple[float, float]] = field(default_factory=lambda: list(DEFAULT_CURVE))
     grade_curve_min_frac: float = 0.30
