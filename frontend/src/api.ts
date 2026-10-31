@@ -120,6 +120,8 @@ export interface Telemetry {
   elapsed_s?: number
   power_w?: number | null
   power_source?: string
+  power_wkg?: number | null
+  target_wkg?: number | null
   cadence_source?: string
   trainer_power_w?: number | null
   pm_power_w?: number | null

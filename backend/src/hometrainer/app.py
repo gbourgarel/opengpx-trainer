@@ -21,7 +21,7 @@ from .ant.hub import SensorHub
 from .ant.simulator import SimulatedHub
 from .gpx.route import Route
 from .profile import Profile, ProfileError
-from .session import RideSession, choose_power
+from .session import RideSession, choose_power, w_per_kg
 from .storage import Storage
 from .workouts.intervals_icu import IntervalsIcuClient
 from .workouts.model import Workout
@@ -116,6 +116,7 @@ class AppState:
         return {
             "state": "idle",
             "power_w": pc.power_w and round(pc.power_w),
+            "power_wkg": w_per_kg(pc.power_w, self.profile.rider_mass_kg),
             "power_source": pc.source,
             "cadence_source": pc.cadence_source,
             "trainer_power_w": r.trainer_power_w and round(r.trainer_power_w),

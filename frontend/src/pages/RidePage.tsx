@@ -66,6 +66,7 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
         {tel.state !== 'disconnected' && (
           <div className="row">
             <Metric label="Power" value={tel.power_w} unit="W" sub={tel.power_source} />
+            <Metric label="W/kg" value={tel.power_wkg?.toFixed(2)} unit="W/kg" />
             <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" sub={tel.cadence_source && tel.cadence_source !== 'none' ? tel.cadence_source.replace('_', ' ') : undefined} />
             <Metric label="Heart rate" value={tel.heart_rate_bpm} unit="bpm" />
           </div>
@@ -109,6 +110,7 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
       <div className="metrics">
         <Metric big label="Power" className={zone ? `zone-${zone}` : ''} value={tel.power_w} unit="W" sub={tel.pm_power_w != null && tel.trainer_power_w != null ? `PM ${tel.pm_power_w} · trainer ${tel.trainer_power_w}` : undefined} />
         <Metric big label="Target" value={tel.target_w} unit="W" sub={tel.sent_target_w != null && tel.sent_target_w !== tel.target_w ? `sent ${tel.sent_target_w} W (match ${tel.power_match_offset_w! > 0 ? '+' : ''}${tel.power_match_offset_w} W)` : undefined} />
+        <Metric big label="W/kg" value={tel.power_wkg?.toFixed(2)} unit="W/kg" sub={tel.target_wkg != null ? `target ${tel.target_wkg.toFixed(2)} W/kg` : undefined} />
         <Metric big label="Speed" value={tel.speed_kmh?.toFixed(1)} unit="km/h" />
         <Metric label="Time" value={fmtTime(tel.elapsed_s)} />
         <Metric label="Distance" value={((tel.distance_m ?? 0) / 1000).toFixed(2)} unit="km" sub={remainingDist != null ? `${(remainingDist / 1000).toFixed(2)} km to go` : undefined} />

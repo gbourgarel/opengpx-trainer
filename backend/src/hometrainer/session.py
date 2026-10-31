@@ -55,6 +55,13 @@ def _first_cadence(*candidates: tuple[float | None, str]) -> tuple[float | None,
     return None, "none"
 
 
+def w_per_kg(watts: float | None, rider_mass_kg: float) -> float | None:
+    """Power-to-weight ratio, by convention relative to the rider's mass only (no bike)."""
+    if watts is None or rider_mass_kg <= 0:
+        return None
+    return round(watts / rider_mass_kg, 2)
+
+
 def choose_power(r: Readings, preference: str) -> PowerChoice:
     """Pick power and cadence from the same sensor (the power meter when it is the power
     source). Cadence falls back to the other sensor only when the preferred one provides none."""
@@ -315,6 +322,8 @@ class RideSession:
             "name": self.name,
             "elapsed_s": round(self.elapsed_s, 2),
             "power_w": None if pc.power_w is None else round(pc.power_w),
+            "power_wkg": w_per_kg(pc.power_w, self.profile.rider_mass_kg),
+            "target_wkg": w_per_kg(self.requested_target_w, self.profile.rider_mass_kg),
             "power_source": pc.source,
             "cadence_source": pc.cadence_source,
             "trainer_power_w": r.trainer_power_w and round(r.trainer_power_w),

@@ -404,3 +404,15 @@ def test_manual_target_rejected_in_erg_mode():
     s = RideSession(h, Profile(), "erg", workout=Workout("w", [Step(60, 0.5, 0.5)]))
     with pytest.raises(ValueError):
         s.adjust(manual_target_w=200)
+
+
+def test_power_to_weight_uses_rider_mass_only():
+    h = FakeHub()
+    prof = Profile(rider_mass_kg=70, bike_mass_kg=8, ftp_w=280, power_match=False)
+    s = RideSession(h, prof, "erg", workout=Workout("w", [Step(600, 1.0, 1.0)]))
+    t = 1000.0
+    for _ in range(8):
+        h.feed(trainer=210, pm=210)
+        tel = s.tick(t := t + 0.25)
+    assert tel["power_wkg"] == pytest.approx(3.0)  # 210 W / 70 kg
+    assert tel["target_wkg"] == pytest.approx(4.0)  # 280 W / 70 kg
