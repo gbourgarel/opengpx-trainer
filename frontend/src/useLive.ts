@@ -18,6 +18,7 @@ export function useLive() {
   const [connected, setConnected] = useState(false)
   const history = useRef<HistoryPoint[]>([])
   const lastElapsed = useRef(-1)
+  const recent = useRef<{ at: number; p: number }[]>([])
 
   useEffect(() => {
     let ws: WebSocket | null = null
@@ -51,6 +52,13 @@ export function useLive() {
         } else if (m.elapsed_s == null) {
           lastElapsed.current = -1
         }
+        // 3 s moving average (wall clock) so the target gauge doesn't flicker on every sample
+        const now = performance.now()
+        if (m.power_w != null) recent.current.push({ at: now, p: m.power_w })
+        recent.current = recent.current.filter((x) => now - x.at <= 3000)
+        m.power_avg3_w = recent.current.length
+          ? recent.current.reduce((a, x) => a + x.p, 0) / recent.current.length
+          : null
         setTel(m)
       }
     }

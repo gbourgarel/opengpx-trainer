@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { api, fmtTime, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ElevationProfile, LiveChart, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
+import { TargetGauge } from '../components/TargetGauge'
+import { targetZone } from '../targetZone'
 import type { HistoryPoint } from '../useLive'
 
 export interface ActiveRide {
@@ -10,9 +12,9 @@ export interface ActiveRide {
   route?: RouteDetail
 }
 
-function Metric({ label, value, unit, big, sub }: { label: string; value: string | number | null | undefined; unit?: string; big?: boolean; sub?: string }) {
+function Metric({ label, value, unit, big, sub, className = '' }: { label: string; value: string | number | null | undefined; unit?: string; big?: boolean; sub?: string; className?: string }) {
   return (
-    <div className={`metric ${big ? 'big' : ''}`}>
+    <div className={`metric ${big ? 'big' : ''} ${className}`}>
       <div className="label">{label}</div>
       <div className="value">
         {value ?? '—'}
@@ -71,6 +73,8 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
   }
 
   const split = tel.power_split_w
+  const showGauge = tel.target_w != null && (tel.state === 'running' || tel.state === 'paused')
+  const zone = showGauge ? targetZone(tel.power_avg3_w ?? 0, tel.target_w!) : null
   const totalSplit = split ? Math.max(1, split.gravity + split.rolling + split.aero) : 1
   const remainingDist = route && tel.distance_m != null ? route.distance_m - tel.distance_m : null
 
@@ -101,7 +105,7 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
       {tel.state === 'finished' && <div className="hint ok">Finished! Ride saved{tel.saved ? ` (#${tel.saved.ride_id})` : ''}.</div>}
 
       <div className="metrics">
-        <Metric big label="Power" value={tel.power_w} unit="W" sub={tel.pm_power_w != null && tel.trainer_power_w != null ? `PM ${tel.pm_power_w} · trainer ${tel.trainer_power_w}` : undefined} />
+        <Metric big label="Power" className={zone ? `zone-${zone}` : ''} value={tel.power_w} unit="W" sub={tel.pm_power_w != null && tel.trainer_power_w != null ? `PM ${tel.pm_power_w} · trainer ${tel.trainer_power_w}` : undefined} />
         <Metric big label="Target" value={tel.target_w} unit="W" sub={tel.sent_target_w != null && tel.sent_target_w !== tel.target_w ? `sent ${tel.sent_target_w} W (match ${tel.power_match_offset_w! > 0 ? '+' : ''}${tel.power_match_offset_w} W)` : undefined} />
         <Metric big label="Speed" value={tel.speed_kmh?.toFixed(1)} unit="km/h" />
         <Metric label="Time" value={fmtTime(tel.elapsed_s)} />
@@ -111,6 +115,8 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
         {tel.mode === 'gpx' && <Metric label="Grade" value={((tel.grade ?? 0) * 100).toFixed(1)} unit="%" sub={`${tel.altitude_m?.toFixed(0)} m`} />}
         {tel.mode === 'erg' && <Metric label="Step left" value={fmtTime(tel.step_remaining_s)} sub={tel.next_target_w != null ? `next ${tel.next_target_w} W` : undefined} />}
       </div>
+
+      {showGauge && <TargetGauge power={tel.power_avg3_w} target={tel.target_w} />}
 
       <div className="card adjust">
         {tel.mode === 'erg' ? (

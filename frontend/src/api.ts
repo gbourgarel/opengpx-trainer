@@ -138,6 +138,8 @@ export interface Telemetry {
   next_target_w?: number | null
   saved?: { ride_id: number } | null
   sim?: SimSettings
+  /** client-side: 3 s moving average of power_w */
+  power_avg3_w?: number | null
 }
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
