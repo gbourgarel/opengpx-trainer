@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .profile import Profile
+from .profile import Profile, ProfileError
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -73,7 +76,15 @@ class Storage:
     # -- profile ------------------------------------------------------------------------
     def load_profile(self) -> Profile:
         row = self._exec("SELECT value FROM settings WHERE key='profile'").fetchone()
-        return Profile.from_dict(json.loads(row["value"])) if row else Profile()
+        if not row:
+            return Profile()
+        data = json.loads(row["value"])
+        try:
+            return Profile.from_dict(data)
+        except ProfileError as e:
+            # never refuse to start because of a bad stored value: fall back to defaults
+            log.warning("Stored profile has invalid fields, using defaults for: %s", e)
+            return Profile.from_dict(data, strict=False)
 
     def save_profile(self, p: Profile) -> None:
         self._exec(

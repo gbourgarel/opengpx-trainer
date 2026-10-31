@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from .ant.hub import SensorHub
 from .ant.simulator import SimulatedHub
 from .gpx.route import Route
-from .profile import Profile
+from .profile import Profile, ProfileError
 from .session import RideSession, choose_power
 from .storage import Storage
 from .workouts.intervals_icu import IntervalsIcuClient
@@ -195,19 +195,10 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             "power_meter_device_number",
             "heart_rate_device_number",
         )
-        for k in dev_keys:
-            v = current.get(k)
-            if v in (None, "", 0):
-                current[k] = None
-            elif not (isinstance(v, int | float) and float(v).is_integer() and 1 <= v <= 65535):
-                raise HTTPException(422, f"{k} must be an ANT+ device number (1-65535) or empty")
-            else:
-                current[k] = int(v)
         try:
-            p = Profile.from_dict(current)
-            p.grade_power_curve()  # validate
-        except (TypeError, ValueError) as e:
-            raise HTTPException(422, str(e)) from e
+            p = Profile.from_dict(current)  # validates types and bounds of every field
+        except ProfileError as e:
+            raise HTTPException(422, f"Invalid profile: {e}") from e
         devices_changed = any(getattr(p, k) != getattr(st.profile, k) for k in dev_keys)
         st.profile = p
         st.storage.save_profile(p)

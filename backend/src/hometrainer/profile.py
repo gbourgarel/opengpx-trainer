@@ -9,6 +9,89 @@ from .physics.grade_power import DEFAULT_CURVE, GradePowerCurve
 from .physics.model import ModelParams
 
 PowerSource = Literal["auto", "trainer", "power_meter"]
+POWER_SOURCES = ("auto", "trainer", "power_meter")
+
+
+class ProfileError(ValueError):
+    def __init__(self, errors: dict[str, str]):
+        self.errors = errors
+        super().__init__("; ".join(f"{k}: {v}" for k, v in errors.items()))
+
+
+# Physically sensible bounds (inclusive). Optional fields accept None.
+_BOUNDS: dict[str, tuple[float, float]] = {
+    "rider_mass_kg": (20, 250),
+    "bike_mass_kg": (1, 50),
+    "ftp_w": (30, 1000),
+    "max_hr_bpm": (80, 250),
+    "cda_m2": (0.1, 1.0),
+    "crr": (0.0005, 0.03),
+    "drivetrain_efficiency": (0.8, 1.0),
+    "wheel_inertia_kg_m2": (0.0, 1.0),
+    "wheel_diameter_m": (0.3, 1.0),
+    "max_speed_kmh": (10, 150),
+    "temperature_c": (-30, 50),
+    "relative_humidity": (0.0, 1.0),
+    "headwind_ms": (-30, 30),
+    "grade_curve_min_frac": (0.0, 2.0),
+    "grade_curve_max_frac": (0.1, 3.0),
+    "grade_lookahead_m": (0, 1000),
+    "target_ramp_w_per_s": (1, 500),
+}
+_OPTIONAL = {"max_hr_bpm"}
+_DEVICE_NUMBERS = {"trainer_device_number", "power_meter_device_number", "heart_rate_device_number"}
+_INTS = {"max_hr_bpm"} | _DEVICE_NUMBERS
+
+
+def _number(value) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("must be a number")
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ValueError("must be a finite number")
+    return value
+
+
+def _validate_field(name: str, value):
+    if name in _DEVICE_NUMBERS:
+        if value in (None, "", 0):
+            return None  # first device found
+        v = _number(value)
+        if not float(v).is_integer() or not 1 <= v <= 65535:
+            raise ValueError("must be an ANT+ device number (1-65535) or empty")
+        return int(v)
+    if name in _BOUNDS:
+        if value is None and name in _OPTIONAL:
+            return None
+        if value is None:
+            raise ValueError("is required")
+        v = _number(value)
+        lo, hi = _BOUNDS[name]
+        if not lo <= v <= hi:
+            raise ValueError(f"must be between {lo} and {hi}")
+        return int(round(v)) if name in _INTS else float(v)
+    if name == "power_source":
+        if value not in POWER_SOURCES:
+            raise ValueError(f"must be one of {', '.join(POWER_SOURCES)}")
+        return value
+    if name == "power_match":
+        if not isinstance(value, bool):
+            raise ValueError("must be true or false")
+        return value
+    if name in ("intervals_athlete_id", "intervals_api_key"):
+        if not isinstance(value, str):
+            raise ValueError("must be text")
+        return value.strip()
+    if name == "grade_curve":
+        try:
+            pts = [(float(_number(g)), float(_number(f))) for g, f in value]
+        except (TypeError, ValueError) as e:
+            raise ValueError("must be a list of [grade %, fraction of FTP] pairs") from e
+        if len(pts) < 2:
+            raise ValueError("needs at least two points")
+        if any(not -50 <= g <= 50 or not 0 <= f <= 3 for g, f in pts):
+            raise ValueError("grades must be within ±50 % and fractions within 0-3")
+        return pts
+    return value
 
 
 @dataclass
@@ -49,12 +132,32 @@ class Profile:
     intervals_api_key: str = ""
 
     @classmethod
-    def from_dict(cls, d: dict) -> Profile:
+    def from_dict(cls, d: dict, strict: bool = True) -> Profile:
+        """Build and validate a profile.
+
+        strict=True raises ProfileError listing every invalid field (API input).
+        strict=False replaces invalid fields with their defaults (loading stored data, so a bad
+        value saved by an older version can never stop the app from starting).
+        """
         names = {f.name for f in fields(cls)}
         clean = {k: v for k, v in d.items() if k in names}
-        if "grade_curve" in clean:
-            clean["grade_curve"] = [tuple(p) for p in clean["grade_curve"]]
-        return cls(**clean)
+        errors: dict[str, str] = {}
+        defaults = cls()
+        out: dict = {}
+        for name, value in clean.items():
+            try:
+                out[name] = _validate_field(name, value)
+            except ValueError as e:
+                errors[name] = str(e)
+                out[name] = getattr(defaults, name)
+        p = cls(**out)
+        if p.grade_curve_min_frac > p.grade_curve_max_frac:
+            errors["grade_curve_min_frac"] = "floor must not exceed ceiling"
+            p.grade_curve_min_frac = defaults.grade_curve_min_frac
+            p.grade_curve_max_frac = max(defaults.grade_curve_max_frac, p.grade_curve_min_frac)
+        if errors and strict:
+            raise ProfileError(errors)
+        return p
 
     def to_dict(self, redact_secrets: bool = False) -> dict:
         d = asdict(self)
