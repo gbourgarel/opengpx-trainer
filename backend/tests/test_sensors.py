@@ -147,3 +147,130 @@ def test_scan_endpoint_merges_results_and_reconnects(tmp_path, monkeypatch):
         assert r["ant"][0]["device_number"] == 40688 and r["ble"][0]["name"] == "Assioma"
         assert r["errors"] == {}
         assert app.state.st.hub_kind == "simulator"  # previous connection restored
+
+
+# --- ANT+ scan without disconnecting --------------------------------------------------------
+class FakeChannel:
+    class Type:
+        BIDIRECTIONAL_RECEIVE = 0
+
+    def __init__(self, cid):
+        self.id = cid
+        self.events: list[str] = []
+
+    def __getattr__(self, name):  # set_id, set_period, ... just recorded
+        return lambda *a, **k: self.events.append(name)
+
+    def open(self):
+        self.events.append("open")
+
+    def close(self):
+        self.events.append("close")
+
+
+class FakeNode:
+    def __init__(self):
+        self.channels: list[FakeChannel] = []
+
+    def new_channel(self, *_a):
+        ch = FakeChannel(len(self.channels))
+        self.channels.append(ch)
+        return ch
+
+
+def _ext(num, dtype):
+    return [0] * 8 + [0x80, num & 0xFF, num >> 8, dtype, 5]
+
+
+def test_ant_hub_scan_uses_an_extra_channel_and_reuses_it(monkeypatch):
+    """The scan used to disconnect ANT+ for ~15 s (and could fail on the stick's reset)."""
+    from hometrainer.ant import ant_hub as ah
+
+    hub = ah.AntHub()
+    hub._node, hub._running, hub._channel_cls = FakeNode(), True, FakeChannel
+    hub._node.new_channel()  # existing hub channels (trainer, PM, HR)
+    hub._node.new_channel()
+    hub._node.new_channel()
+
+    def fake_sleep(_s):  # devices broadcasting during the scan window
+        hub._on_scan(_ext(40688, 17))
+        hub._on_scan(_ext(40688, 11))
+        hub._on_scan(_ext(63426, 11))
+
+    monkeypatch.setattr(ah.time, "sleep", fake_sleep)
+    found = hub.scan(1)
+    pm = {d["device_number"]: d for d in found if d["device_type"] == 11}
+    assert pm[40688]["roles"] == [] and "own power" in pm[40688]["note"]
+    assert pm[63426]["roles"] == ["power_meter"]
+    hub.scan(1)  # second scan
+    assert len(hub._node.channels) == 4  # one scan channel, created once, never removed
+    scan_ch = hub._node.channels[3]
+    assert scan_ch.events.count("open") == 2 and scan_ch.events.count("close") == 2
+    hub._on_scan(_ext(1, 120))  # data after the scan is ignored
+    assert hub._scan_sink is None
+
+
+def test_scan_endpoint_keeps_ant_connected(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import hometrainer.app as appmod
+    from hometrainer.storage import Storage
+
+    monkeypatch.setattr(appmod, "scan_ant", lambda s: pytest.fail("stick must not be reopened"))
+
+    async def no_ble(s):
+        return []
+
+    monkeypatch.setattr(appmod, "scan_ble", no_ble)
+    app = appmod.create_app(Storage(tmp_path))
+    st = app.state.st
+
+    class FakeAnt:
+        _running = True
+
+        def scan(self, s):
+            return [{"transport": "ant", "device_number": 63426, "roles": ["power_meter"]}]
+
+    class ConnectedHub:
+        ant = FakeAnt()
+
+        def stop(self):
+            pytest.fail("the sensors must stay connected during a scan")
+
+    with TestClient(app) as c:
+        st.hub, st.hub_kind = ConnectedHub(), "devices"
+        try:
+            r = c.post("/api/devices/scan?seconds=2").json()
+            assert r["ant"][0]["device_number"] == 63426 and r["errors"] == {}
+            assert st.hub_kind == "devices"
+        finally:
+            st.hub, st.hub_kind = None, None
+
+
+def test_standalone_ant_scan_retries_after_missed_first_command(monkeypatch):
+    import openant.easy.node as node_mod
+    from openant.easy.exception import AntException
+
+    from hometrainer.ant import scan as scan_mod
+
+    attempts, stopped = [], []
+
+    class FlakyNode(FakeNode):
+        def __init__(self):
+            super().__init__()
+            attempts.append(self)
+
+        def set_network_key(self, *_):
+            if len(attempts) == 1:
+                raise AntException("Timed out while waiting for message")
+
+        def start(self):
+            pass
+
+        def stop(self):
+            stopped.append(self)
+
+    monkeypatch.setattr(node_mod, "Node", FlakyNode)
+    monkeypatch.setattr(scan_mod.time, "sleep", lambda _s: None)
+    assert scan_mod.scan_ant(1) == []
+    assert len(attempts) == 2 and stopped == attempts  # retried, every node released

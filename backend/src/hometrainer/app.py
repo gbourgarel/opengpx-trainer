@@ -83,6 +83,20 @@ class AppState:
         with self._hub_lock:
             self._disconnect_locked()
 
+    def scan_ant_devices(self, seconds: float) -> list[dict]:
+        """ANT+ scan without interrupting anything: on the connected hub's own node when ANT+
+        is in use, otherwise stand-alone on the free stick (holding the hub lock so a
+        concurrent connect cannot grab the stick mid-scan)."""
+        ant = getattr(self.hub, "ant", None)
+        if ant is not None and getattr(ant, "_running", False):
+            return ant.scan(seconds)
+        if not self._hub_lock.acquire(blocking=False):
+            raise HubBusy("A connection is in progress, try again")
+        try:
+            return scan_ant(seconds)
+        finally:
+            self._hub_lock.release()
+
     def _disconnect_locked(self) -> None:
         if self.hub is not None:
             self.hub.stop()
@@ -239,19 +253,16 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
     @app.post("/api/devices/scan")
     async def scan(seconds: float = 6.0):
-        """List ANT+ and BLE sensors in range. The ANT+ stick is exclusive, so the current
-        connection is closed during the scan and reopened afterwards."""
+        """List ANT+ and BLE sensors in range, without disconnecting the current sensors."""
         seconds = max(2.0, min(seconds, 20.0))
         with st.session_lock:
             if st.session is not None and st.session.state in ("running", "paused"):
                 raise HTTPException(409, "Not during a ride")
-        previous = st.hub_kind
-        await asyncio.to_thread(st.disconnect)
         result: dict = {"ant": [], "ble": [], "errors": {}}
 
         async def ant_part():
             try:
-                result["ant"] = await asyncio.to_thread(scan_ant, seconds)
+                result["ant"] = await asyncio.to_thread(st.scan_ant_devices, seconds)
             except Exception as e:
                 result["errors"]["ant"] = str(e)
 
@@ -261,14 +272,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             except Exception as e:
                 result["errors"]["ble"] = str(e)
 
-        try:
-            await asyncio.gather(ant_part(), ble_part())
-        finally:
-            if previous is not None:
-                try:
-                    await asyncio.to_thread(st.connect, previous)
-                except Exception as e:
-                    result["errors"]["reconnect"] = str(e)
+        await asyncio.gather(ant_part(), ble_part())
         return result
 
     @app.post("/api/devices/disconnect")

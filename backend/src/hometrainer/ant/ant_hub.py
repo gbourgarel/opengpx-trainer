@@ -74,6 +74,12 @@ class AntHub(SensorHub):
         self._user_cfg: list[int] | None = None
         self._fec_ch = None
         self._channel_cls = None
+        # openant numbers channels len(node.channels) and dispatches by list index: channels
+        # must be created one at a time and never removed (closed channels are reused)
+        self._channel_lock = threading.Lock()
+        self._scan_lock = threading.Lock()
+        self._scan_ch = None
+        self._scan_sink = None
         self._raw_log = None
         self._raw_lock = threading.Lock()
         self._t0 = time.monotonic()
@@ -165,7 +171,8 @@ class AntHub(SensorHub):
     ):
         from openant.base.message import Message
 
-        ch = self._node.new_channel(self._channel_cls.Type.BIDIRECTIONAL_RECEIVE, 0x00, 0x01)
+        with self._channel_lock:
+            ch = self._node.new_channel(self._channel_cls.Type.BIDIRECTIONAL_RECEIVE, 0x00, 0x01)
         ch.on_broadcast_data = on_data
         ch.on_burst_data = on_data
         ch.on_acknowledge = on_data
@@ -218,6 +225,37 @@ class AntHub(SensorHub):
             log.info("Power-meter search opened (excluding trainer %s)", trainer_num)
         except Exception:
             log.exception("Could not open power-meter channel")
+
+    # -- scan (while connected) ----------------------------------------------------------
+    def scan(self, duration_s: float = 6.0) -> list[dict]:
+        """List the ANT+ devices in range without disconnecting: an extra background-scanning
+        channel on this node, opened for the scan then closed (kept for the next scan)."""
+        from .scan import ScanCollector, configure_scan_channel
+
+        if self._node is None or not self._running:
+            raise AntUnavailable("ANT+ is not connected")
+        collector = ScanCollector()
+        with self._scan_lock:
+            self._scan_sink = collector.on_data
+            if self._scan_ch is None:
+                with self._channel_lock:
+                    ch = self._node.new_channel(
+                        self._channel_cls.Type.BIDIRECTIONAL_RECEIVE, 0x00, 0x01
+                    )
+                configure_scan_channel(ch, self._on_scan)
+                self._scan_ch = ch
+            self._scan_ch.open()
+            try:
+                time.sleep(duration_s)
+            finally:
+                self._scan_ch.close()
+                self._scan_sink = None
+        return collector.summary()
+
+    def _on_scan(self, data) -> None:
+        sink = self._scan_sink
+        if sink is not None:
+            sink(data)
 
     def stop(self) -> None:
         self._running = False

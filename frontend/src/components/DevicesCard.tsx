@@ -128,7 +128,7 @@ export function DevicesCard({ p, set, devices }: { p: Profile; set: Setter; devi
         <button type="button" onClick={scan} disabled={scanning}>
           {scanning ? 'Scanning ANT+ and Bluetooth… (6 s)' : 'Scan for devices'}
         </button>
-        <small className="muted">The ANT+ connection is paused during the scan.</small>
+        <small className="muted">Connected sensors stay connected during the scan.</small>
       </div>
       {error && <div className="error">{error}</div>}
       {result && (
