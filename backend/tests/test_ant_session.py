@@ -416,3 +416,34 @@ def test_power_to_weight_uses_rider_mass_only():
         tel = s.tick(t := t + 0.25)
     assert tel["power_wkg"] == pytest.approx(3.0)  # 210 W / 70 kg
     assert tel["target_wkg"] == pytest.approx(4.0)  # 280 W / 70 kg
+
+
+def test_climb_tracker_vam_and_gain():
+    from hometrainer.session import ClimbTracker
+
+    c = ClimbTracker(window_s=30, min_span_s=5)
+    c.update(0, 100.0)
+    c.update(2, 101.0)
+    assert c.vam_mh is None  # not enough data yet
+    for t in range(3, 61):  # steady 0.5 m/s rise
+        c.update(t, 100.0 + 0.5 * t)
+    assert c.vam_mh == pytest.approx(1800)  # 0.5 m/s * 3600
+    c.update(61, 50.0)  # a descent does not reduce the gain
+    assert c.elevation_gain_m == pytest.approx(30.0)
+
+
+def test_gpx_session_reports_vam_consistent_with_model():
+    h, s = _gpx_session(grade=0.06)
+    t = 1000.0
+    for _ in range(4 * 90):  # 90 s at constant power on a constant 6 % climb
+        h.feed(trainer=250, pm=250)
+        tel = s.tick(t := t + 0.25)
+    assert tel["vam_mh"] > 500
+    # in steady state the 30 s VAM equals the model's instantaneous v·sinθ
+    assert tel["vam_mh"] == pytest.approx(tel["vam_instant_mh"], rel=0.03)
+    assert tel["elevation_gain_m"] > 0
+    # ERG rides have no route, hence no VAM
+    h2 = FakeHub()
+    s2 = RideSession(h2, Profile(), "erg", workout=Workout("w", [Step(60, 0.5, 0.5)]))
+    h2.feed(trainer=150, pm=150)
+    assert "vam_mh" not in s2.tick(1.0)

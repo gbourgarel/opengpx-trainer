@@ -16,8 +16,10 @@ the ERG target sent to the trainer is corrected so that the *power meter* reads 
 
 from __future__ import annotations
 
+import math
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -107,6 +109,38 @@ class PowerMatch:
         return max(0.0, target_w + self.offset_w)
 
 
+class ClimbTracker:
+    """Climb rate (VAM, m/h) and cumulative elevation gain along the virtual route.
+
+    VAM over a sliding window from the altitude actually travelled; it needs a few seconds of
+    data before it is reported, so it does not jump around at the start of a ride.
+    """
+
+    def __init__(self, window_s: float = 30.0, min_span_s: float = 5.0):
+        self.window_s = window_s
+        self.min_span_s = min_span_s
+        self._hist: deque[tuple[float, float]] = deque()  # (elapsed s, altitude m)
+        self.elevation_gain_m = 0.0
+
+    def update(self, elapsed_s: float, altitude_m: float) -> None:
+        if self._hist:
+            rise = altitude_m - self._hist[-1][1]
+            if rise > 0:
+                self.elevation_gain_m += rise
+        self._hist.append((elapsed_s, altitude_m))
+        while self._hist and elapsed_s - self._hist[0][0] > self.window_s:
+            self._hist.popleft()
+
+    @property
+    def vam_mh(self) -> float | None:
+        if len(self._hist) < 2:
+            return None
+        (t0, a0), (t1, a1) = self._hist[0], self._hist[-1]
+        if t1 - t0 < self.min_span_s:
+            return None
+        return (a1 - a0) / (t1 - t0) * 3600.0
+
+
 class RideSession:
     def __init__(
         self,
@@ -150,6 +184,7 @@ class RideSession:
         self.recorder = Recorder()
         self._idle_s = 0.0
         self._last_tick: float | None = None
+        self.climb = ClimbTracker()
         self.requested_target_w: float | None = None
         self.sent_target_w: float | None = None
         self.last: dict = {}
@@ -272,6 +307,8 @@ class RideSession:
         if running:
             self.bike.step((pc.power_w or 0.0) * mult, dt)
         st = self.bike.state
+        if running and self.mode == "gpx":
+            self.climb.update(self.elapsed_s, st.altitude_m)
 
         # auto pause: no power, no cadence, (virtually) stopped
         if running and not pedaling and st.speed_ms < 0.5:
@@ -355,6 +392,14 @@ class RideSession:
                 lon=point.lon,
                 heading_deg=round(point.heading_deg, 1),
                 route_distance_m=round(self.route.total_distance_m, 1),
+            )
+            vam = self.climb.vam_mh
+            # instantaneous vertical speed from the model: v·sin(θ), tan(θ) = grade
+            vam_instant = st.speed_ms * math.sin(math.atan(st.grade)) * 3600.0
+            out.update(
+                vam_mh=None if vam is None else round(vam),
+                vam_instant_mh=round(vam_instant),
+                elevation_gain_m=round(self.climb.elevation_gain_m, 1),
             )
         if self.workout is not None:
             pos = self.workout.position(self.elapsed_s)
