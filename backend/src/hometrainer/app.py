@@ -45,6 +45,10 @@ class AppState:
         self.clients: set[WebSocket] = set()
         self.last_ride_id: int | None = None
         self._hub_lock = threading.Lock()
+        # Serialises everything that touches the current session: the engine tick (event
+        # loop thread) and the sync endpoints (threadpool) used to race, e.g. a ride finishing
+        # on its own while "Stop & save" was clicked got saved twice.
+        self.session_lock = threading.RLock()
 
     def connect(self, kind: str) -> None:
         # One connection attempt at a time: two concurrent requests (double click) used to
@@ -86,19 +90,23 @@ class AppState:
             self.hub.stop()
         self.hub, self.hub_kind = None, None
 
-    def save_session(self) -> dict | None:
-        s = self.session
-        if s is None or not s.recorder.samples:
-            return None
-        started = s.started_at or dt.datetime.now(dt.UTC)
-        fname = f"{started:%Y%m%d-%H%M%S}-{s.mode}.fit"
-        path = s.recorder.write_fit(self.storage.rides_dir / fname)
-        summary = s.recorder.summary()
-        rid = self.storage.add_ride(
-            started.isoformat(timespec="seconds"), s.mode, s.name, summary, str(path)
-        )
-        self.last_ride_id = rid
-        return {"ride_id": rid, **summary}
+    def save_session(self, s: RideSession) -> dict | None:
+        """Write the ride's FIT file and history row, at most once per session."""
+        with self.session_lock:
+            if s.saved is not None:
+                return s.saved
+            if not s.recorder.samples:
+                return None
+            started = s.started_at or dt.datetime.now(dt.UTC)
+            fname = f"{started:%Y%m%d-%H%M%S}-{s.mode}-{s.id[:6]}.fit"
+            path = s.recorder.write_fit(self.storage.rides_dir / fname)
+            summary = s.recorder.summary()
+            rid = self.storage.add_ride(
+                started.isoformat(timespec="seconds"), s.mode, s.name, summary, str(path)
+            )
+            self.last_ride_id = rid
+            s.saved = {"ride_id": rid, **summary}
+            return s.saved
 
     def idle_telemetry(self) -> dict:
         if self.hub is None:
@@ -143,13 +151,14 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     async def engine_loop():
         while True:
             try:
-                if st.session is not None and st.hub is not None:
-                    was_finished = st.session.state == "finished"
-                    tel = st.session.tick()
-                    if tel["state"] == "finished" and not was_finished:
-                        tel["saved"] = st.save_session()
-                else:
-                    tel = st.idle_telemetry()
+                with st.session_lock:
+                    s = st.session  # read once: stop() may clear it from another thread
+                    if s is not None and st.hub is not None:
+                        tel = s.tick()
+                        if tel["state"] == "finished":
+                            tel["saved"] = st.save_session(s)  # idempotent
+                    else:
+                        tel = st.idle_telemetry()
                 tel["devices"] = st.hub.status() if st.hub else {}
                 tel["hub"] = st.hub_kind
                 if isinstance(st.hub, SimulatedHub):
@@ -346,12 +355,10 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         return {"ok": True}
 
     # -- session ------------------------------------------------------------------------
+    # Every endpoint below holds st.session_lock while it reads or changes the session, so it
+    # never interleaves with an engine tick (which runs on the event loop thread).
     @app.post("/api/session/start")
     def start_session(body: StartBody):
-        if st.hub is None:
-            raise HTTPException(409, "Connect sensors first")
-        if st.session is not None and st.session.state in ("running", "paused"):
-            raise HTTPException(409, "A session is already in progress")
         workout = route = None
         if body.mode == "erg":
             d = st.storage.get_workout(body.workout_id or -1)
@@ -359,17 +366,22 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 raise HTTPException(404, "Workout not found")
             workout = Workout.from_dict(d)
         else:
-            route = load_route(body.route_id or -1)
-        st.session = RideSession(
-            st.hub,
-            st.profile,
-            body.mode,
-            workout=workout,
-            route=route,
-            workout_id=body.workout_id if workout else None,
-            route_id=body.route_id if route else None,
-        )
-        return {"ok": True, "name": st.session.name, "session_id": st.session.id}
+            route = load_route(body.route_id or -1)  # parsing a GPX: done outside the lock
+        with st.session_lock:
+            if st.hub is None:
+                raise HTTPException(409, "Connect sensors first")
+            if st.session is not None and st.session.state in ("running", "paused"):
+                raise HTTPException(409, "A session is already in progress")
+            st.session = RideSession(
+                st.hub,
+                st.profile,
+                body.mode,
+                workout=workout,
+                route=route,
+                workout_id=body.workout_id if workout else None,
+                route_id=body.route_id if route else None,
+            )
+            return {"ok": True, "name": st.session.name, "session_id": st.session.id}
 
     def require_session() -> RideSession:
         if st.session is None:
@@ -378,44 +390,49 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
     @app.post("/api/session/pause")
     def pause():
-        require_session().pause()
+        with st.session_lock:
+            require_session().pause()
         return {"ok": True}
 
     @app.post("/api/session/resume")
     def resume():
-        require_session().resume()
+        with st.session_lock:
+            require_session().resume()
         return {"ok": True}
 
     @app.post("/api/session/adjust")
     def adjust(body: AdjustBody):
-        s = require_session()
-        try:
-            s.adjust(
-                body.intensity_pct,
-                body.effort_pct,
-                body.difficulty_pct,
-                body.target_mode,
-                body.manual_target_w,
-            )
-        except ValueError as e:
-            raise HTTPException(422, str(e)) from e
-        return {
-            "intensity_pct": s.intensity_pct,
-            "effort_pct": s.effort_pct,
-            "difficulty_pct": s.difficulty_pct,
-            "target_mode": s.target_mode,
-            "manual_target_w": s.manual_target_w,
-        }
+        with st.session_lock:
+            s = require_session()
+            try:
+                s.adjust(
+                    body.intensity_pct,
+                    body.effort_pct,
+                    body.difficulty_pct,
+                    body.target_mode,
+                    body.manual_target_w,
+                )
+            except ValueError as e:
+                raise HTTPException(422, str(e)) from e
+            return {
+                "intensity_pct": s.intensity_pct,
+                "effort_pct": s.effort_pct,
+                "difficulty_pct": s.difficulty_pct,
+                "target_mode": s.target_mode,
+                "manual_target_w": s.manual_target_w,
+            }
 
     @app.post("/api/session/stop")
     def stop(save: bool = True):
-        s = require_session()
-        already = s.state == "finished"
-        s.finish()
-        saved = None if (already or not save) else st.save_session()
-        st.session = None
-        if st.hub:
-            st.hub.set_basic_resistance(0)
+        with st.session_lock:
+            s = require_session()
+            s.finish()
+            # save_session is idempotent: a ride that already finished on its own (and was
+            # saved by the engine) is not saved a second time
+            saved = st.save_session(s) if save else s.saved
+            st.session = None
+            if st.hub:
+                st.hub.set_basic_resistance(0)
         return {"saved": saved}
 
     # -- rides --------------------------------------------------------------------------

@@ -126,6 +126,7 @@ class RideSession:
         self.id = uuid.uuid4().hex
         self.workout_id = workout_id
         self.route_id = route_id
+        self.saved: dict | None = None  # set once the ride is written to history (save once)
         self.state: State = "ready"
         self.started_at: datetime | None = None
         self.elapsed_s = 0.0

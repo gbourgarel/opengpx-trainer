@@ -86,3 +86,48 @@ def test_session_identity_lets_a_client_rebuild_the_ride_view(client):
     w = client.get(f"/api/workouts/{wid}").json()
     assert w["id"] == wid and w["steps"]
     assert client.get("/api/workouts/9999").status_code == 404
+
+
+SHORT_ZWO = """<workout_file><name>Short</name><workout>
+<SteadyState Duration="2" Power="0.5"/>
+</workout></workout_file>"""
+
+
+def test_ride_finished_by_engine_then_stopped_is_saved_once(client):
+    """Review #5: engine auto-save + 'Stop & save' produced two history rows / FIT files."""
+    import time
+
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    wid = client.post("/api/workouts/import", files={"file": ("s.zwo", SHORT_ZWO)}).json()["id"]
+    client.post("/api/session/start", json={"mode": "erg", "workout_id": wid})
+    deadline = time.monotonic() + 10
+    while client.st.session.state != "finished" and time.monotonic() < deadline:
+        time.sleep(0.1)  # the real engine loop is ticking in the background
+    assert client.st.session.state == "finished"
+    time.sleep(0.6)  # a few more "finished" ticks
+    saved = client.post("/api/session/stop").json()["saved"]
+    rides = client.get("/api/rides").json()
+    assert len(rides) == 1 and saved["ride_id"] == rides[0]["id"]
+
+
+def test_concurrent_saves_write_a_single_ride(client):
+    import threading
+
+    start_erg(client)
+    s = client.st.session
+    with client.st.session_lock:  # keep the background engine out while we prepare
+        s.finish()
+    if not s.recorder.samples:  # make sure there is something to save
+        from hometrainer.recording import Sample
+
+        s.recorder.add(Sample(1e9, 1.0, 150, 90, 120, 8.0, 8.0))
+    results = []
+    threads = [
+        threading.Thread(target=lambda: results.append(client.st.save_session(s))) for _ in range(8)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(client.get("/api/rides").json()) == 1
+    assert len({r["ride_id"] for r in results}) == 1
