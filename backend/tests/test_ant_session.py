@@ -287,3 +287,33 @@ def test_profile_device_numbers_validation(tmp_path):
         assert c.put("/api/profile", json={"trainer_device_number": 70000}).status_code == 422
         r = c.put("/api/profile", json={"power_meter_device_number": None})
         assert r.json()["power_meter_device_number"] is None
+
+
+def test_ant_start_releases_stick_and_retries_on_timeout(monkeypatch):
+    """Regression: a timeout during setup left openant's reader thread holding the USB stick."""
+    import openant.easy.node as node_mod
+    from openant.easy.exception import AntException
+
+    from hometrainer.ant import ant_hub
+    from hometrainer.ant.ant_hub import AntHub, AntUnavailable
+
+    created, stopped = [], []
+
+    class FlakyNode:
+        def __init__(self):
+            created.append(self)
+
+        def set_network_key(self, *_):
+            raise AntException("Timed out while waiting for message")
+
+        def stop(self):
+            stopped.append(self)
+
+    monkeypatch.setattr(node_mod, "Node", FlakyNode)
+    monkeypatch.setattr(ant_hub.time, "sleep", lambda _s: None)
+    h = AntHub()
+    with pytest.raises(AntUnavailable, match="Unplug it"):
+        h.start()
+    assert len(created) == AntHub.START_ATTEMPTS
+    assert stopped == created  # every node released, none leaked
+    assert h._node is None

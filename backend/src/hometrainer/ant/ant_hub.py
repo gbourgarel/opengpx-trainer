@@ -73,26 +73,50 @@ class AntHub(SensorHub):
         self.last_command_status: pf.FecCommandStatus | None = None
 
     # -- lifecycle ----------------------------------------------------------------------
+    START_ATTEMPTS = 3
+
     def start(self) -> None:
+        """Open the stick and the channels. Retries: a stick left in a bad state (e.g. by a
+        killed process) often times out on the first configuration message after a reset."""
         try:
-            from openant.devices import ANTPLUS_NETWORK_KEY
-            from openant.easy.channel import Channel
-            from openant.easy.node import Node
+            from openant.easy.exception import AntException
         except ImportError as e:  # pragma: no cover
             raise AntUnavailable(f"openant not installed: {e}") from e
+        for attempt in range(1, self.START_ATTEMPTS + 1):
+            try:
+                self._start_once()
+                return
+            except AntException as e:
+                log.warning("ANT+ start attempt %d/%d failed: %s", attempt, self.START_ATTEMPTS, e)
+                self.stop()  # always release the USB device before retrying
+                if attempt == self.START_ATTEMPTS:
+                    raise AntUnavailable(
+                        f"The ANT+ stick did not answer ({e}). Unplug it, plug it back in and "
+                        "try again."
+                    ) from e
+                time.sleep(1.5)
+
+    def _start_once(self) -> None:
+        from openant.devices import ANTPLUS_NETWORK_KEY
+        from openant.easy.channel import Channel
+        from openant.easy.node import Node
+
         try:
             node = Node()
-        except Exception as e:  # usb.core.NoBackendError, DriverNotFound, ...
+        except Exception as e:  # usb.core.NoBackendError, DriverNotFound, USBError ...
             raise AntUnavailable(
-                f"No ANT+ USB stick found ({e}). Is it plugged in, libusb installed "
-                "(brew install libusb) and Garmin Express closed?"
+                f"No usable ANT+ USB stick ({e}). Is it plugged in, libusb installed "
+                "(brew install libusb) and Garmin Express / Zwift closed?"
             ) from e
-        node.set_network_key(0x00, ANTPLUS_NETWORK_KEY)
+        # Register the node *before* any call that can fail, so stop() can always release the
+        # USB device. (Otherwise openant's reader thread keeps the stick busy forever.)
         self._node = node
+        self._running = True
+        node.set_network_key(0x00, ANTPLUS_NETWORK_KEY)
 
         self._channel_cls = Channel
         log_path = os.environ.get("HOMETRAINER_ANT_LOG")
-        if log_path:
+        if log_path and self._raw_log is None:
             self._raw_log = open(log_path, "a", buffering=1)  # noqa: SIM115 (closed in stop)
             self._raw_log.write("t_s,channel,device_number,b0,b1,b2,b3,b4,b5,b6,b7\n")
             log.info("Logging raw ANT pages to %s", log_path)
@@ -108,9 +132,9 @@ class AntHub(SensorHub):
                 device_number=self.wanted["heart_rate"],
             )
 
-        self._running = True
         self._node_thread = threading.Thread(target=node.start, name="ant-node", daemon=True)
         self._node_thread.start()
+        self._tx_queue = queue.Queue()
         self._tx_thread = threading.Thread(target=self._tx_loop, name="ant-tx", daemon=True)
         self._tx_thread.start()
         if self.use_power_meter:
@@ -188,12 +212,13 @@ class AntHub(SensorHub):
             with self._raw_lock:
                 self._raw_log.close()
                 self._raw_log = None
-        if self._node is not None:
+        node, self._node = self._node, None
+        if node is not None:
             try:
-                self._node.stop()
+                node.stop()
             except Exception:  # pragma: no cover
                 log.exception("Error stopping ANT node")
-            self._node = None
+        self._fec = None
 
     # -- receive ------------------------------------------------------------------------
     @staticmethod

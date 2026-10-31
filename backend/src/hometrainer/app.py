@@ -226,6 +226,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         except HubBusy as e:
             raise HTTPException(409, str(e)) from e
         except Exception as e:
+            log.exception("Connecting %s failed", body.kind)
             raise HTTPException(503, str(e)) from e
         return {"hub": st.hub_kind}
 
