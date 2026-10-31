@@ -134,6 +134,8 @@ export interface Telemetry {
   intensity_pct?: number
   effort_pct?: number
   difficulty_pct?: number
+  target_mode?: 'slope' | 'manual'
+  manual_target_w?: number | null
   lat?: number
   lon?: number
   heading_deg?: number
@@ -198,7 +200,13 @@ export const api = {
   pause: () => req('POST', '/api/session/pause'),
   resume: () => req('POST', '/api/session/resume'),
   stop: (save = true) => req<{ saved: unknown }>('POST', `/api/session/stop?save=${save}`),
-  adjust: (a: { intensity_pct?: number; effort_pct?: number; difficulty_pct?: number }) =>
+  adjust: (a: {
+    intensity_pct?: number
+    effort_pct?: number
+    difficulty_pct?: number
+    target_mode?: 'slope' | 'manual'
+    manual_target_w?: number
+  }) =>
     req('POST', '/api/session/adjust', a),
 
   setSim: (s: Partial<SimSettings>) => req<SimSettings>('PUT', '/api/simulator', s),

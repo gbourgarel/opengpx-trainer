@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api, fmtTime, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ElevationProfile, LiveChart, WorkoutProfile } from '../components/charts'
+import { ManualTarget } from '../components/ManualTarget'
 import { RouteMap } from '../components/RouteMap'
 import { TargetGauge } from '../components/TargetGauge'
 import { targetZone } from '../targetZone'
@@ -123,7 +124,19 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
         ) : (
           <>
-            <Stepper label="Effort (target power)" value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
+            <div className="seg target-mode" title="How the trainer target is set">
+              <button className={tel.target_mode !== 'manual' ? 'on' : ''} onClick={() => act(() => api.adjust({ target_mode: 'slope' }))}>
+                Slope
+              </button>
+              <button className={tel.target_mode === 'manual' ? 'on' : ''} onClick={() => act(() => api.adjust({ target_mode: 'manual' }))}>
+                Manual
+              </button>
+            </div>
+            {tel.target_mode === 'manual' && tel.manual_target_w != null ? (
+              <ManualTarget key={tel.name} initial={tel.manual_target_w} onError={setError} />
+            ) : (
+              <Stepper label="Effort (target power)" value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
+            )}
             <Stepper label="Difficulty (speed = P×)" value={tel.difficulty_pct ?? 0} step={1} signed onChange={(v) => act(() => api.adjust({ difficulty_pct: v }))} />
           </>
         )}

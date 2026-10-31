@@ -3,7 +3,8 @@
 Modes
 -----
 * ``erg``: target power from a structured workout x intensity %. Virtual speed on flat road.
-* ``gpx``: pseudo-ERG; target power from the grade->power curve on the look-ahead grade x effort %.
+* ``gpx``: pseudo-ERG; target power from the grade->power curve on the look-ahead grade x effort %
+  (``target_mode="slope"``), or set directly by the rider in watts (``target_mode="manual"``).
   Virtual speed comes from the dynamic model fed with ``measured power x (1 + difficulty %)``.
 
 Power source
@@ -29,6 +30,8 @@ from .recording import Recorder, Sample
 from .workouts.model import Workout
 
 Mode = Literal["erg", "gpx"]
+TargetMode = Literal["slope", "manual"]
+MAX_MANUAL_TARGET_W = 2000.0
 State = Literal["ready", "running", "paused", "finished"]
 
 FREE_RIDE_RESISTANCE_PCT = 20.0
@@ -122,6 +125,8 @@ class RideSession:
         self.intensity_pct = 100.0  # ERG: scales workout targets
         self.effort_pct = 100.0  # GPX: scales the grade->power curve target
         self.difficulty_pct = 0.0  # GPX: speed model uses P * (1 + difficulty)
+        self.target_mode: TargetMode = "slope"  # GPX: grade curve, or rider-set watts
+        self.manual_target_w: float | None = None
         self.curve = profile.grade_power_curve()
         self.limiter = RateLimiter(self.curve.max_ramp_w_per_s)
         self.power_match = PowerMatch()
@@ -150,7 +155,31 @@ class RideSession:
     def finish(self) -> None:
         self.state = "finished"
 
-    def adjust(self, intensity_pct=None, effort_pct=None, difficulty_pct=None) -> None:
+    def adjust(
+        self,
+        intensity_pct=None,
+        effort_pct=None,
+        difficulty_pct=None,
+        target_mode=None,
+        manual_target_w=None,
+    ) -> None:
+        if target_mode is not None:
+            if target_mode not in ("slope", "manual"):
+                raise ValueError("target_mode must be 'slope' or 'manual'")
+            if self.mode != "gpx":
+                raise ValueError("target_mode only applies to GPX rides")
+            if target_mode == "manual" and self.manual_target_w is None:
+                # start from the current target so switching mode causes no jump
+                current = self.requested_target_w
+                if current is None:
+                    current = self.curve.target_watts(0.0, self.profile.ftp_w)
+                self.manual_target_w = float(round(current))
+            self.target_mode = target_mode
+        if manual_target_w is not None:
+            if self.mode != "gpx":
+                raise ValueError("manual_target_w only applies to GPX rides")
+            self.manual_target_w = max(0.0, min(float(manual_target_w), MAX_MANUAL_TARGET_W))
+            self.target_mode = "manual"
         if intensity_pct is not None:
             self.intensity_pct = max(10.0, min(float(intensity_pct), 200.0))
         if effort_pct is not None:
@@ -168,6 +197,11 @@ class RideSession:
         if self.mode == "erg":
             t = self.workout.target_watts(self.elapsed_s, ftp)
             return None if t is None else t * self.intensity_pct / 100.0
+        if self.target_mode == "manual" and self.manual_target_w is not None:
+            # applied immediately (no ramp); keep the limiter in sync so going back to
+            # "slope" ramps smoothly from the manual value
+            self.limiter.value = self.manual_target_w
+            return self.manual_target_w
         d = self.bike.state.distance_m
         g = self.route.mean_grade(d, self.curve.lookahead_m)
         raw = self.curve.target_watts(g, ftp, self.effort_pct / 100.0)
@@ -283,6 +317,8 @@ class RideSession:
             "intensity_pct": self.intensity_pct,
             "effort_pct": self.effort_pct,
             "difficulty_pct": self.difficulty_pct,
+            "target_mode": self.target_mode,
+            "manual_target_w": self.manual_target_w,
         }
         if point is not None:
             out.update(

@@ -361,3 +361,46 @@ def test_stalled_power_meter_reports_zero_cadence():
         assert h._s.pm_cadence.value == 0 and h._s.pm_power.value == 0
     finally:
         prof.time.monotonic = monkey_time
+
+
+def _gpx_session(grade=0.06):
+    from hometrainer.gpx.route import Route
+    from tests.test_gpx_workouts import make_gpx
+
+    h = FakeHub()
+    s = RideSession(
+        h, Profile(ftp_w=250, power_match=False), "gpx", route=Route.from_gpx(make_gpx(grade=grade))
+    )
+    return h, s
+
+
+def test_gpx_manual_target_overrides_slope_and_is_immediate():
+    h, s = _gpx_session(grade=0.06)
+    t = 1000.0
+    for _ in range(80):  # 20 s on a 6 % climb: slope target ~ 92 % FTP
+        h.feed(trainer=220, pm=220)
+        tel = s.tick(t := t + 0.25)
+    slope_target = tel["target_w"]
+    assert slope_target == pytest.approx(0.92 * 250, abs=3)
+
+    s.adjust(target_mode="manual")  # starts from the current target: no jump
+    tel = s.tick(t := t + 0.25)
+    assert tel["target_mode"] == "manual" and tel["target_w"] == round(slope_target)
+
+    s.adjust(manual_target_w=150)  # immediate, no 15 W/s ramp
+    tel = s.tick(t := t + 0.25)
+    assert tel["target_w"] == 150 and h.targets[-1] == 150
+
+    speed_before = tel["speed_kmh"]
+    s.adjust(target_mode="slope")  # back to the curve: ramps from 150 W at 15 W/s
+    tel = s.tick(t := t + 1.0)
+    assert tel["target_mode"] == "slope"
+    assert tel["target_w"] == pytest.approx(150 + 15, abs=1)
+    assert speed_before > 0  # speed model unaffected by the target mode
+
+
+def test_manual_target_rejected_in_erg_mode():
+    h = FakeHub()
+    s = RideSession(h, Profile(), "erg", workout=Workout("w", [Step(60, 0.5, 0.5)]))
+    with pytest.raises(ValueError):
+        s.adjust(manual_target_w=200)
