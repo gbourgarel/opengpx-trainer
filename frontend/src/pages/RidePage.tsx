@@ -50,11 +50,13 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
   const workout = active?.workout
   const ftp = profile?.ftp_w ?? 250
 
+  // position within the current lap (the route loops in GPX + workout rides)
+  const routePos = tel.route_position_m ?? tel.distance_m
   const doneIdx = useMemo(() => {
-    if (!route || tel.distance_m == null) return 0
-    const k = route.profile_distance_m.findIndex((d) => d >= tel.distance_m!)
+    if (!route || routePos == null) return 0
+    const k = route.profile_distance_m.findIndex((d) => d >= routePos)
     return k < 0 ? route.latlon.length - 1 : k
-  }, [route, tel.distance_m])
+  }, [route, routePos])
 
   const act = (f: () => Promise<unknown>) => f().catch((e: Error) => setError(e.message))
 
@@ -79,7 +81,9 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
   const showGauge = tel.target_w != null && (tel.state === 'running' || tel.state === 'paused')
   const zone = showGauge ? targetZone(tel.power_avg3_w ?? 0, tel.target_w!) : null
   const totalSplit = split ? Math.max(1, split.gravity + split.rolling + split.aero) : 1
-  const remainingDist = route && tel.distance_m != null ? route.distance_m - tel.distance_m : null
+  const remainingDist = route && routePos != null ? route.distance_m - routePos : null
+  const lap = tel.lap ?? 1
+  const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : 'GPX · pseudo-ERG'
 
   return (
     <div className="ride">
@@ -87,7 +91,8 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
         <div>
           <h2>{tel.name}</h2>
           <span className={`badge state-${tel.state}`}>{tel.state}</span>
-          <span className="badge">{tel.mode === 'erg' ? 'ERG workout' : 'GPX · pseudo-ERG'}</span>
+          <span className="badge">{modeLabel}</span>
+          {lap > 1 && <span className="badge">lap {lap}</span>}
           <span className="badge">power: {tel.power_source}</span>
         </div>
         <div className="controls">
@@ -113,7 +118,12 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
         <Metric big label="W/kg" value={tel.power_wkg?.toFixed(2)} unit="W/kg" sub={tel.target_wkg != null ? `target ${tel.target_wkg.toFixed(2)} W/kg` : undefined} />
         <Metric big label="Speed" value={tel.speed_kmh?.toFixed(1)} unit="km/h" />
         <Metric label="Time" value={fmtTime(tel.elapsed_s)} />
-        <Metric label="Distance" value={((tel.distance_m ?? 0) / 1000).toFixed(2)} unit="km" sub={remainingDist != null ? `${(remainingDist / 1000).toFixed(2)} km to go` : undefined} />
+        <Metric
+          label="Distance"
+          value={((tel.distance_m ?? 0) / 1000).toFixed(2)}
+          unit="km"
+          sub={remainingDist != null ? `${(remainingDist / 1000).toFixed(2)} km to ${workout && lap > 1 ? 'end of lap' : workout ? 'end of route' : 'go'}` : undefined}
+        />
         <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" sub={tel.cadence_source && tel.cadence_source !== 'none' ? tel.cadence_source.replace('_', ' ') : undefined} />
         <Metric label="Heart rate" value={tel.heart_rate_bpm} unit="bpm" />
         {tel.mode === 'gpx' && <Metric label="Grade" value={((tel.grade ?? 0) * 100).toFixed(1)} unit="%" sub={`${tel.altitude_m?.toFixed(0)} m`} />}
@@ -125,7 +135,12 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
             sub={`now ${tel.vam_instant_mh ?? '—'} m/h · +${(tel.elevation_gain_m ?? 0).toFixed(0)} m`}
           />
         )}
-        {tel.mode === 'erg' && <Metric label="Step left" value={fmtTime(tel.step_remaining_s)} sub={tel.next_target_w != null ? `next ${tel.next_target_w} W` : undefined} />}
+        {workout &&
+          (tel.workout_duration_s != null && (tel.elapsed_s ?? 0) >= tel.workout_duration_s ? (
+            <Metric label="Workout" value="done" sub="slope target until end of lap" />
+          ) : (
+            <Metric label="Step left" value={fmtTime(tel.step_remaining_s)} sub={tel.next_target_w != null ? `next ${tel.next_target_w} W` : undefined} />
+          ))}
       </div>
 
       {showGauge && <TargetGauge power={tel.power_avg3_w} target={tel.target_w} />}
@@ -135,6 +150,9 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
         ) : (
           <>
+            {workout && (
+              <Stepper label="Workout intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
+            )}
             <div className="seg target-mode" title="How the trainer target is set">
               <button className={tel.target_mode !== 'manual' ? 'on' : ''} onClick={() => act(() => api.adjust({ target_mode: 'slope' }))}>
                 Slope
@@ -146,7 +164,7 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
             {tel.target_mode === 'manual' && tel.manual_target_w != null ? (
               <ManualTarget key={tel.name} initial={tel.manual_target_w} onError={setError} />
             ) : (
-              <Stepper label="Effort (target power)" value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
+              <Stepper label={workout ? 'Slope effort' : 'Effort (target power)'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
             )}
             <Stepper label="Difficulty (speed = P×)" value={tel.difficulty_pct ?? 0} step={1} signed onChange={(v) => act(() => api.adjust({ difficulty_pct: v }))} />
           </>
@@ -184,7 +202,7 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
             <RouteMap latlon={route.latlon} position={tel.lat != null ? [tel.lat, tel.lon!] : undefined} follow={follow} done={doneIdx} height={340} />
           </div>
           <div className="card">
-            <ElevationProfile distance={route.profile_distance_m} altitude={route.altitude_m} grade={route.grade} position={tel.distance_m} height={160} />
+            <ElevationProfile distance={route.profile_distance_m} altitude={route.altitude_m} grade={route.grade} position={routePos} height={160} />
             <small className="muted">
               {(route.distance_m / 1000).toFixed(1)} km · +{route.ascent_m.toFixed(0)} m
             </small>

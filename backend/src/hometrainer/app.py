@@ -361,12 +361,13 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     @app.post("/api/session/start")
     def start_session(body: StartBody):
         workout = route = None
-        if body.mode == "erg":
+        # ERG needs a workout; GPX needs a route and may also follow a workout (mixed mode)
+        if body.mode == "erg" or body.workout_id is not None:
             d = st.storage.get_workout(body.workout_id or -1)
             if d is None:
                 raise HTTPException(404, "Workout not found")
             workout = Workout.from_dict(d)
-        else:
+        if body.mode == "gpx":
             route = load_route(body.route_id or -1)  # parsing a GPX: done outside the lock
         with st.session_lock:
             if st.hub is None:

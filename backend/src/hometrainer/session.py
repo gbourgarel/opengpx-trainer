@@ -6,6 +6,9 @@ Modes
 * ``gpx``: pseudo-ERG; target power from the grade->power curve on the look-ahead grade x effort %
   (``target_mode="slope"``), or set directly by the rider in watts (``target_mode="manual"``).
   Virtual speed comes from the dynamic model fed with ``measured power x (1 + difficulty %)``.
+* ``gpx`` + workout (mixed): the workout sets the target (x intensity %) while the route gives
+  speed, position, grade and VAM; free-ride steps use the slope curve. The route loops while the
+  workout lasts; once the workout is over, the slope curve takes over until the end of the lap.
 
 Power source
 ------------
@@ -131,6 +134,11 @@ class ClimbTracker:
         while self._hist and elapsed_s - self._hist[0][0] > self.window_s:
             self._hist.popleft()
 
+    def break_continuity(self) -> None:
+        """Forget the window (e.g. the route wrapped back to its start): the next altitude is
+        a new baseline, neither gain nor VAM."""
+        self._hist.clear()
+
     @property
     def vam_mh(self) -> float | None:
         if len(self._hist) < 2:
@@ -162,7 +170,10 @@ class RideSession:
         self.mode: Mode = mode
         self.workout = workout
         self.route = route
-        self.name = name or (workout.name if workout else route.name if route else "Ride")
+        if name is None:
+            parts = [x.name for x in (route, workout) if x is not None]
+            name = " · ".join(parts) or "Ride"
+        self.name = name
         # identify the ride so any client (after a reload, another device) can rebuild its view
         self.id = uuid.uuid4().hex
         self.workout_id = workout_id
@@ -179,8 +190,17 @@ class RideSession:
         self.curve = profile.grade_power_curve()
         self.limiter = RateLimiter(self.curve.max_ramp_w_per_s)
         self.power_match = PowerMatch()
-        grade_fn = route.grade_and_altitude if route else flat_road
+        if route is not None:
+            lap_m = route.total_distance_m
+
+            def grade_fn(d: float) -> tuple[float, float]:
+                # the route repeats (laps) when a workout outlasts it
+                return route.grade_and_altitude(d % lap_m)
+        else:
+            grade_fn = flat_road
         self.bike = VirtualBike(profile.model_params(), grade_fn)
+        self._lap = 0  # completed laps of the route
+        self._workout_end_lap: int | None = None  # lap index when the workout ended
         self.recorder = Recorder()
         self._idle_s = 0.0
         self._last_tick: float | None = None
@@ -250,19 +270,39 @@ class RideSession:
         if self.started_at is None:
             self.started_at = datetime.now(UTC)
 
+    # -- route / workout progress ---------------------------------------------------------
+    @property
+    def route_position_m(self) -> float:
+        """Position on the route within the current lap."""
+        if self.route is None:
+            return 0.0
+        return self.bike.state.distance_m % self.route.total_distance_m
+
+    @property
+    def workout_done(self) -> bool:
+        return self.workout is not None and self.elapsed_s >= self.workout.duration_s
+
     # -- target computation -------------------------------------------------------------
+    def _workout_target(self) -> float | None:
+        t = self.workout.target_watts(self.elapsed_s, self.profile.ftp_w)
+        return None if t is None else t * self.intensity_pct / 100.0
+
     def _target(self, dt: float) -> float | None:
         ftp = self.profile.ftp_w
         if self.mode == "erg":
-            t = self.workout.target_watts(self.elapsed_s, ftp)
-            return None if t is None else t * self.intensity_pct / 100.0
+            return self._workout_target()
         if self.target_mode == "manual" and self.manual_target_w is not None:
             # applied immediately (no ramp); keep the limiter in sync so going back to
             # "slope" ramps smoothly from the manual value
             self.limiter.value = self.manual_target_w
             return self.manual_target_w
-        d = self.bike.state.distance_m
-        g = self.route.mean_grade(d, self.curve.lookahead_m)
+        if self.workout is not None and not self.workout_done:
+            # GPX + workout: the workout sets the target; free-ride steps use the slope
+            t = self._workout_target()
+            if t is not None:
+                self.limiter.value = t  # smooth hand-over to the slope curve later
+                return t
+        g = self.route.mean_grade(self.route_position_m, self.curve.lookahead_m)
         raw = self.curve.target_watts(g, ftp, self.effort_pct / 100.0)
         return self.limiter(raw, dt)
 
@@ -307,6 +347,12 @@ class RideSession:
         if running:
             self.bike.step((pc.power_w or 0.0) * mult, dt)
         st = self.bike.state
+        if self.route is not None:
+            lap = int(st.distance_m // self.route.total_distance_m)
+            if lap != self._lap:
+                # back at the start of the route: the altitude jump is not climbing
+                self.climb.break_continuity()
+                self._lap = lap
         if running and self.mode == "gpx":
             self.climb.update(self.elapsed_s, st.altitude_m)
 
@@ -318,11 +364,22 @@ class RideSession:
         elif pedaling:
             self._idle_s = 0.0 if self.state == "running" else self._idle_s
 
-        point = self.route.point_at(st.distance_m) if self.route else None
-        if self.mode == "gpx" and st.distance_m >= self.route.total_distance_m - 0.5:
+        point = self.route.point_at(self.route_position_m) if self.route else None
+        if self.mode == "erg" and self.workout_done and running:
             self.state = "finished"
-        if self.mode == "erg" and self.elapsed_s >= self.workout.duration_s and running:
-            self.state = "finished"
+        if self.mode == "gpx":
+            lap_m = self.route.total_distance_m
+            if self.workout is None:
+                end_m = lap_m  # plain GPX ride: one pass over the route
+            elif self.workout_done:
+                # workout over: carry on with the slope until the end of the current lap
+                if self._workout_end_lap is None:
+                    self._workout_end_lap = self._lap
+                end_m = (self._workout_end_lap + 1) * lap_m
+            else:
+                end_m = None  # workout still running: the route loops
+            if end_m is not None and st.distance_m >= end_m - 0.5:
+                self.state = "finished"
 
         if running:
             self.recorder.add(
@@ -392,6 +449,8 @@ class RideSession:
                 lon=point.lon,
                 heading_deg=round(point.heading_deg, 1),
                 route_distance_m=round(self.route.total_distance_m, 1),
+                route_position_m=round(self.route_position_m, 1),
+                lap=self._lap + 1,
             )
             vam = self.climb.vam_mh
             # instantaneous vertical speed from the model: v·sin(θ), tan(θ) = grade

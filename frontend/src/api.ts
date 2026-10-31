@@ -122,6 +122,8 @@ export interface Telemetry {
   power_source?: string
   power_wkg?: number | null
   target_wkg?: number | null
+  route_position_m?: number
+  lap?: number
   vam_mh?: number | null
   vam_instant_mh?: number
   elevation_gain_m?: number

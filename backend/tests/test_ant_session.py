@@ -240,6 +240,7 @@ def test_concurrent_connect_is_rejected():
 
     st = AppState.__new__(AppState)
     st.hub, st.hub_kind, st._hub_lock = None, None, threading.Lock()
+    st.session = None
     import hometrainer.app as appmod
 
     orig = appmod.SimulatedHub
@@ -447,3 +448,74 @@ def test_gpx_session_reports_vam_consistent_with_model():
     s2 = RideSession(h2, Profile(), "erg", workout=Workout("w", [Step(60, 0.5, 0.5)]))
     h2.feed(trainer=150, pm=150)
     assert "vam_mh" not in s2.tick(1.0)
+
+
+# --- GPX + workout (mixed mode) ----------------------------------------------------------
+def _mixed_session(steps, n_points=40, grade=0.0):
+    """Short route (~430 m for 40 points) so laps happen quickly."""
+    from hometrainer.gpx.route import Route
+    from tests.test_gpx_workouts import make_gpx
+
+    h = FakeHub()
+    route = Route.from_gpx(make_gpx(n=n_points, grade=grade))
+    s = RideSession(
+        h, Profile(ftp_w=250, power_match=False), "gpx", route=route, workout=Workout("W", steps)
+    )
+    return h, s, route
+
+
+def _ride(h, s, seconds, t0=1000.0, watts=250):
+    t, tel = t0, None
+    for _ in range(int(seconds * 4)):
+        h.feed(trainer=watts, pm=watts)
+        tel = s.tick(t := t + 0.25)
+    return t, tel
+
+
+def test_mixed_target_follows_workout_not_slope():
+    h, s, _ = _mixed_session([Step(600, 0.5, 0.5)], grade=0.06)
+    s.adjust(intensity_pct=110)
+    _, tel = _ride(h, s, 10)
+    assert tel["target_w"] == round(0.5 * 250 * 1.1)  # workout x intensity, slope ignored
+    assert tel["name"] == "Test climb · W"
+    assert tel["step_remaining_s"] > 0 and "vam_mh" in tel
+
+
+def test_mixed_free_ride_step_uses_slope_curve():
+    h, s, _ = _mixed_session([Step(5, 0.5, 0.5), Step(600, None, None)], grade=0.06)
+    _, tel = _ride(h, s, 20)
+    assert tel["target_w"] > 0.5 * 250 + 20  # ramping towards the 6 % slope target
+    assert h.targets[-1] != ("res", 20.0)  # ERG kept, no free-ride basic resistance
+
+
+def test_mixed_route_loops_then_finishes_at_end_of_lap_after_workout():
+    h, s, route = _mixed_session([Step(80, 0.8, 0.8)])
+    lap_m = route.total_distance_m
+    t, tel = _ride(h, s, 70)
+    assert s.state == "running" and tel["lap"] >= 2  # looped while the workout lasts
+    assert tel["distance_m"] > lap_m and tel["route_position_m"] < lap_m
+    # workout ends at 80 s: carry on (slope target) until the end of the current lap
+    t, tel = _ride(h, s, 12, t0=t)
+    assert s.workout_done and s.state == "running"
+    end_lap = tel["lap"]
+    t, tel = _ride(h, s, 120, t0=t)
+    assert s.state == "finished"
+    assert tel["distance_m"] == pytest.approx(end_lap * lap_m, abs=15)
+
+
+def test_mixed_lap_wrap_does_not_count_as_climbing():
+    h, s, route = _mixed_session([Step(600, 1.0, 1.0)], grade=0.06)
+    _, tel = _ride(h, s, 240, watts=300)
+    assert tel["lap"] >= 2
+    # gain ~ horizontal distance x grade; the drop back to the start is not counted as gain
+    assert tel["elevation_gain_m"] == pytest.approx(tel["distance_m"] * 0.06, rel=0.1)
+
+
+def test_plain_gpx_ride_still_ends_at_route_end():
+    h, s = _gpx_session(grade=0.0)
+    t, tel = 1000.0, None
+    while s.state != "finished" and t < 1000 + 600:
+        h.feed(trainer=300, pm=300)
+        tel = s.tick(t := t + 0.25)
+    assert s.state == "finished"  # no workout: one pass, no loop
+    assert tel["distance_m"] == pytest.approx(s.route.total_distance_m, abs=5)

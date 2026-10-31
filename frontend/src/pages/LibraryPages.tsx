@@ -108,14 +108,18 @@ export function WorkoutsPage({ profile, canStart, onStart }: { profile: Profile 
 }
 
 // ---------------------------------------------------------------------------------------
-export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: (r: RouteDetail) => void }) {
+export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: (r: RouteDetail, w?: Workout) => void }) {
   const [list, setList] = useState<RouteSummary[]>([])
   const [sel, setSel] = useState<RouteDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [workouts, setWorkouts] = useState<Workout[]>([])
+  const [workoutId, setWorkoutId] = useState<number | null>(null) // optional: GPX + workout
   const reload = useCallback(() => api.routes().then(setList).catch((e) => setError(e.message)), [])
   useEffect(() => {
     reload()
+    api.workouts().then(setWorkouts).catch(() => {})
   }, [reload])
+  const chosenWorkout = workouts.find((w) => w.id === workoutId)
   const open = (id: number) => api.route(id).then(setSel).catch((e) => setError(e.message))
 
   return (
@@ -171,8 +175,19 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
               >
                 Delete
               </button>
-              <button className="primary" disabled={!canStart} title={canStart ? '' : 'Connect sensors first'} onClick={() => onStart(sel)}>
-                Ride this route
+              <label className="workout-pick" title="Follow a workout on this route: the workout sets the target, the route gives speed and position">
+                <span className="muted">Workout</span>
+                <select value={workoutId ?? ''} onChange={(e) => setWorkoutId(e.target.value === '' ? null : Number(e.target.value))}>
+                  <option value="">none (slope target)</option>
+                  {workouts.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} · {fmtTime(w.duration_s)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="primary" disabled={!canStart} title={canStart ? '' : 'Connect sensors first'} onClick={() => onStart(sel, chosenWorkout)}>
+                {chosenWorkout ? 'Ride with workout' : 'Ride this route'}
               </button>
             </div>
           </div>

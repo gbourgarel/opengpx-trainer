@@ -64,11 +64,14 @@ export default function App() {
   useEffect(() => {
     if (!sessionId || !mode || active?.sessionId === sessionId) return
     let cancelled = false
+    // ERG: workout only; GPX: route, plus the workout in mixed mode
     const load =
       mode === 'erg' && workoutId != null
         ? api.workout(workoutId).then((workout) => ({ sessionId, mode, workout }) as ActiveRide)
         : mode === 'gpx' && routeId != null
-          ? api.route(routeId).then((route) => ({ sessionId, mode, route }) as ActiveRide)
+          ? Promise.all([api.route(routeId), workoutId != null ? api.workout(workoutId) : Promise.resolve(undefined)]).then(
+              ([route, workout]) => ({ sessionId, mode, route, workout }) as ActiveRide,
+            )
           : null
     load
       ?.then((a) => {
@@ -89,11 +92,11 @@ export default function App() {
       })
       .catch((e) => setError(e.message))
 
-  const startRoute = (r: RouteDetail) =>
+  const startRoute = (r: RouteDetail, w?: Workout) =>
     api
-      .start({ mode: 'gpx', route_id: r.id })
+      .start({ mode: 'gpx', route_id: r.id, workout_id: w?.id })
       .then((res) => {
-        setActive({ sessionId: res.session_id, mode: 'gpx', route: r })
+        setActive({ sessionId: res.session_id, mode: 'gpx', route: r, workout: w })
         setTab('ride')
       })
       .catch((e) => setError(e.message))

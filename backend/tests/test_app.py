@@ -88,6 +88,22 @@ def test_session_identity_lets_a_client_rebuild_the_ride_view(client):
     assert client.get("/api/workouts/9999").status_code == 404
 
 
+def test_start_gpx_ride_with_workout(client):
+    from tests.test_gpx_workouts import make_gpx
+
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    wid = client.post("/api/workouts/import", files={"file": ("w.zwo", ZWO)}).json()["id"]
+    rid = client.post("/api/routes/import", files={"file": ("r.gpx", make_gpx())}).json()["id"]
+    r = client.post("/api/session/start", json={"mode": "gpx", "route_id": rid, "workout_id": wid})
+    assert r.status_code == 200
+    tel = client.st.session.tick()
+    assert (tel["mode"], tel["route_id"], tel["workout_id"]) == ("gpx", rid, wid)
+    assert "step_remaining_s" in tel and "lap" in tel
+    client.post("/api/session/stop?save=false")
+    bad = {"mode": "gpx", "route_id": rid, "workout_id": 999}
+    assert client.post("/api/session/start", json=bad).status_code == 404
+
+
 SHORT_ZWO = """<workout_file><name>Short</name><workout>
 <SteadyState Duration="2" Power="0.5"/>
 </workout></workout_file>"""
