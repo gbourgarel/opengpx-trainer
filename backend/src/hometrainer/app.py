@@ -105,6 +105,7 @@ class AppState:
             "state": "idle",
             "power_w": pc.power_w and round(pc.power_w),
             "power_source": pc.source,
+            "cadence_source": pc.cadence_source,
             "trainer_power_w": r.trainer_power_w and round(r.trainer_power_w),
             "pm_power_w": r.pm_power_w and round(r.pm_power_w),
             "cadence_rpm": pc.cadence_rpm and round(pc.cadence_rpm),

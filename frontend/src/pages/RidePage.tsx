@@ -64,7 +64,7 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
         {tel.state !== 'disconnected' && (
           <div className="row">
             <Metric label="Power" value={tel.power_w} unit="W" sub={tel.power_source} />
-            <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" />
+            <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" sub={tel.cadence_source && tel.cadence_source !== 'none' ? tel.cadence_source.replace('_', ' ') : undefined} />
             <Metric label="Heart rate" value={tel.heart_rate_bpm} unit="bpm" />
           </div>
         )}
@@ -110,7 +110,7 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
         <Metric big label="Speed" value={tel.speed_kmh?.toFixed(1)} unit="km/h" />
         <Metric label="Time" value={fmtTime(tel.elapsed_s)} />
         <Metric label="Distance" value={((tel.distance_m ?? 0) / 1000).toFixed(2)} unit="km" sub={remainingDist != null ? `${(remainingDist / 1000).toFixed(2)} km to go` : undefined} />
-        <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" />
+        <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" sub={tel.cadence_source && tel.cadence_source !== 'none' ? tel.cadence_source.replace('_', ' ') : undefined} />
         <Metric label="Heart rate" value={tel.heart_rate_bpm} unit="bpm" />
         {tel.mode === 'gpx' && <Metric label="Grade" value={((tel.grade ?? 0) * 100).toFixed(1)} unit="%" sub={`${tel.altitude_m?.toFixed(0)} m`} />}
         {tel.mode === 'erg' && <Metric label="Step left" value={fmtTime(tel.step_remaining_s)} sub={tel.next_target_w != null ? `next ${tel.next_target_w} W` : undefined} />}

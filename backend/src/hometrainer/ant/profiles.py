@@ -173,6 +173,7 @@ class EventAveragedPower:
         self.last: tuple[int, int] | None = None
         self.last_event_at: float = 0.0
         self.value: float | None = None
+        self.stalled = False  # no new event for > stall_s: the sensor is repeating itself
 
     def update(
         self,
@@ -186,6 +187,7 @@ class EventAveragedPower:
             self.last = (event_count, accumulated)
             self.last_event_at = now
             self.value = instantaneous
+            self.stalled = False
             return self.value
         dc = (event_count - self.last[0]) % 256
         if dc:
@@ -193,6 +195,16 @@ class EventAveragedPower:
             self.value = da / dc
             self.last = (event_count, accumulated)
             self.last_event_at = now
-        elif instantaneous == 0 or now - self.last_event_at > self.stall_s:
-            self.value = 0.0
+            self.stalled = False
+        else:
+            self.stalled = now - self.last_event_at > self.stall_s
+            if instantaneous == 0 or self.stalled:
+                self.value = 0.0
         return self.value
+
+    def cadence(self, reported: int | None) -> int | None:
+        """Cadence to trust alongside this power: a stalled sensor keeps repeating its last
+        cadence (e.g. 61 rpm while the rider is stopped), so report 0 instead."""
+        if reported is None:
+            return None
+        return 0 if self.stalled else reported

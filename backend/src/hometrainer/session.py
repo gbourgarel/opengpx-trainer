@@ -39,20 +39,35 @@ AUTO_PAUSE_AFTER_S = 3.0
 class PowerChoice:
     power_w: float | None
     cadence_rpm: float | None
-    source: str  # "power_meter" | "trainer" | "none"
+    source: str  # power source: "power_meter" | "trainer" | "none"
+    cadence_source: str = "none"  # "power_meter" | "trainer" | "none"
+
+
+def _first_cadence(*candidates: tuple[float | None, str]) -> tuple[float | None, str]:
+    # "is not None", not truthiness: 0 rpm is a valid reading, not a missing one
+    for value, name in candidates:
+        if value is not None:
+            return value, name
+    return None, "none"
 
 
 def choose_power(r: Readings, preference: str) -> PowerChoice:
+    """Pick power and cadence from the same sensor (the power meter when it is the power
+    source). Cadence falls back to the other sensor only when the preferred one provides none."""
     pm_ok = r.power_meter_connected and r.pm_power_w is not None
     tr_ok = r.trainer_connected and r.trainer_power_w is not None
+    pm_cad = (r.pm_cadence_rpm if r.power_meter_connected else None, "power_meter")
+    tr_cad = (r.trainer_cadence_rpm if r.trainer_connected else None, "trainer")
     use_pm = preference == "power_meter" or (preference == "auto" and pm_ok)
     if use_pm:
+        cad, cad_src = _first_cadence(pm_cad, tr_cad)
         if not pm_ok:
-            return PowerChoice(None, r.trainer_cadence_rpm, "none")
-        return PowerChoice(r.pm_power_w, r.pm_cadence_rpm or r.trainer_cadence_rpm, "power_meter")
+            return PowerChoice(None, cad, "none", cad_src)
+        return PowerChoice(r.pm_power_w, cad, "power_meter", cad_src)
+    cad, cad_src = _first_cadence(tr_cad, pm_cad)
     if tr_ok:
-        return PowerChoice(r.trainer_power_w, r.trainer_cadence_rpm or r.pm_cadence_rpm, "trainer")
-    return PowerChoice(None, r.pm_cadence_rpm, "none")
+        return PowerChoice(r.trainer_power_w, cad, "trainer", cad_src)
+    return PowerChoice(None, cad, "none", cad_src)
 
 
 class PowerMatch:
@@ -247,6 +262,7 @@ class RideSession:
             "elapsed_s": round(self.elapsed_s, 2),
             "power_w": None if pc.power_w is None else round(pc.power_w),
             "power_source": pc.source,
+            "cadence_source": pc.cadence_source,
             "trainer_power_w": r.trainer_power_w and round(r.trainer_power_w),
             "pm_power_w": r.pm_power_w and round(r.pm_power_w),
             "cadence_rpm": pc.cadence_rpm and round(pc.cadence_rpm),

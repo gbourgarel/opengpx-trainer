@@ -256,7 +256,7 @@ class AntHub(SensorHub):
                     msg.event_count, msg.accumulated_power_w, msg.instantaneous_power_w
                 )
                 self._s.trainer_power.set(avg if avg is not None else msg.instantaneous_power_w)
-                self._s.trainer_cadence.set(msg.cadence_rpm)
+                self._s.trainer_cadence.set(self._fec_power.cadence(msg.cadence_rpm))
             elif isinstance(msg, pf.FecGeneral):
                 self._s.trainer_speed.set(msg.speed_ms)
                 if msg.heart_rate and not self.devices["heart_rate"].connected:
@@ -279,7 +279,7 @@ class AntHub(SensorHub):
                     msg.event_count, msg.accumulated_power_w, msg.instantaneous_power_w
                 )
                 self._s.pm_power.set(avg)
-                self._s.pm_cadence.set(msg.cadence_rpm)
+                self._s.pm_cadence.set(self._pm_power.cadence(msg.cadence_rpm))
 
     def _on_hrm(self, data) -> None:
         self._log_raw("hrm", data)

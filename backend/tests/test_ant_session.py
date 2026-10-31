@@ -317,3 +317,47 @@ def test_ant_start_releases_stick_and_retries_on_timeout(monkeypatch):
     assert len(created) == AntHub.START_ATTEMPTS
     assert stopped == created  # every node released, none leaked
     assert h._node is None
+
+
+def test_cadence_comes_from_power_meter_even_at_zero():
+    """Regression: `pm_cadence or trainer_cadence` switched to the trainer whenever PM said 0."""
+    h = FakeHub()
+    with h._lock:
+        h._seen("trainer")
+        h._s.trainer_power.set(150)
+        h._s.trainer_cadence.set(64)
+        h._seen("power_meter")
+        h._s.pm_power.set(0)
+        h._s.pm_cadence.set(0)
+    pc = choose_power(h.readings(), "auto")
+    assert (pc.source, pc.cadence_rpm, pc.cadence_source) == ("power_meter", 0, "power_meter")
+    # PM without cadence field -> fall back to trainer cadence, and say so
+    with h._lock:
+        h._s.pm_cadence.set(None)
+    pc = choose_power(h.readings(), "auto")
+    assert (pc.cadence_rpm, pc.cadence_source) == (64, "trainer")
+
+
+def test_stalled_power_meter_reports_zero_cadence():
+    """Real log (PM 63426): stopped rider, PM repeats cadence 61 / event 62 / 99 W for 90 s."""
+    from hometrainer.ant.ant_hub import AntHub
+
+    h = AntHub(power_meter_id=63426)
+    ext = [0x80, 63426 & 0xFF, 63426 >> 8, 11, 5]
+    page = lambda ev, acc, cad, w: [0x10, ev, 0xFF, cad, acc & 0xFF, acc >> 8, w, 0] + ext  # noqa: E731
+    t = [100.0]
+    import hometrainer.ant.profiles as prof
+
+    monkey_time = prof.time.monotonic
+    prof.time.monotonic = lambda: t[0]
+    try:
+        h._on_power(page(61, 6000, 61, 99))
+        t[0] += 0.25
+        h._on_power(page(62, 6099, 61, 99))
+        assert h._s.pm_cadence.value == 61
+        for _ in range(20):  # 5 s of identical repeats
+            t[0] += 0.25
+            h._on_power(page(62, 6099, 61, 99))
+        assert h._s.pm_cadence.value == 0 and h._s.pm_power.value == 0
+    finally:
+        prof.time.monotonic = monkey_time
