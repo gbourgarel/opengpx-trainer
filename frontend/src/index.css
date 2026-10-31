@@ -653,7 +653,10 @@ input.small {
 .scan-table tr.dim td {
   opacity: 0.5;
 }
-.scan-table td.row-end-cell {
+.scan-table td {
+  vertical-align: middle;
+}
+.scan-actions {
   display: flex;
   gap: 6px;
   justify-content: flex-end;

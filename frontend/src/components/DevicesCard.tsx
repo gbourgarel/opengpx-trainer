@@ -169,18 +169,21 @@ export function DevicesCard({ p, set, devices }: { p: Profile; set: Setter; devi
                       {d.note && <small className="muted"> — {d.note}</small>}
                     </td>
                     <td className="muted">{d.transport === 'ble' ? `${d.rssi} dBm` : `${d.messages} msg`}</td>
-                    <td className="row-end-cell">
-                      {(d.roles as DeviceRole[]).map((role) =>
-                        chosen(d, role) ? (
-                          <span key={role} className="badge">
-                            {ROLE_LABEL[role]} ✓
-                          </span>
-                        ) : (
-                          <button key={role} type="button" onClick={() => use(d, role)}>
-                            Use as {ROLE_LABEL[role].toLowerCase()}
-                          </button>
-                        ),
-                      )}
+                    <td>
+                      {/* flex on an inner div: a flex <td> leaves the table layout (misaligned row borders) */}
+                      <div className="scan-actions">
+                        {(d.roles as DeviceRole[]).map((role) =>
+                          chosen(d, role) ? (
+                            <span key={role} className="badge">
+                              {ROLE_LABEL[role]} ✓
+                            </span>
+                          ) : (
+                            <button key={role} type="button" onClick={() => use(d, role)}>
+                              Use as {ROLE_LABEL[role].toLowerCase()}
+                            </button>
+                          ),
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
