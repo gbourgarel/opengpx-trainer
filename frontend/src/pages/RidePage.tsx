@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { api, fmtTime, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
-import { ElevationProfile, LiveChart, WorkoutProfile } from '../components/charts'
+import { ElevationProfile, LiveChart, LocalProfile, WorkoutProfile } from '../components/charts'
 import { ManualTarget } from '../components/ManualTarget'
 import { RouteMap } from '../components/RouteMap'
 import { TargetGauge } from '../components/TargetGauge'
@@ -248,10 +248,22 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           )}
           {route && (
             <div className="card side-card">
-              <ElevationProfile distance={route.profile_distance_m} altitude={route.altitude_m} grade={route.grade} position={routePos} height={80} />
+              <ElevationProfile distance={route.profile_distance_m} altitude={route.altitude_m} grade={route.grade} position={routePos} height={56} />
               <small className="muted">
                 {(route.distance_m / 1000).toFixed(1)} km · +{route.ascent_m.toFixed(0)} m
               </small>
+            </div>
+          )}
+          {route && routePos != null && (
+            <div className="card side-card" title="Zoom on what is coming: about 5 minutes ahead at your average speed">
+              <LocalProfile
+                distance={route.profile_distance_m}
+                altitude={route.altitude_m}
+                grade={route.grade}
+                position={routePos}
+                speedKmh={tel.avg_speed_kmh}
+                loop={!!workout}
+              />
             </div>
           )}
           <div className="card chart-card">

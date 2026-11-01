@@ -132,6 +132,110 @@ export function ElevationProfile({
 }
 
 // ---------------------------------------------------------------------------------------
+// Zoomed elevation profile: what is coming in the next few minutes.
+
+/** Linear interpolation in sorted xs (binary search). */
+function interp(xs: number[], ys: number[], x: number) {
+  if (x <= xs[0]) return ys[0]
+  const n = xs.length
+  if (x >= xs[n - 1]) return ys[n - 1]
+  let lo = 0
+  let hi = n - 1
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1
+    if (xs[mid] <= x) lo = mid
+    else hi = mid
+  }
+  const f = (x - xs[lo]) / (xs[hi] - xs[lo] || 1)
+  return ys[lo] + (ys[hi] - ys[lo]) * f
+}
+
+export function LocalProfile({
+  distance,
+  altitude,
+  grade,
+  position,
+  speedKmh,
+  loop,
+  height = 96,
+}: {
+  distance: number[]
+  altitude: number[]
+  grade: number[]
+  position: number
+  speedKmh: number | null | undefined
+  loop: boolean // the route repeats (GPX + workout): continue past the end with the start
+  height?: number
+}) {
+  const total = distance[distance.length - 1] || 1
+  // ~5 minutes ahead at the average speed, between 1.5 and 5 km; a little behind for context
+  const v = speedKmh && speedKmh > 5 ? speedKmh / 3.6 : 25 / 3.6
+  const ahead = Math.min(5000, Math.max(1500, v * 300))
+  const behind = Math.max(150, ahead * 0.12)
+  const start = position - behind
+  const end = position + ahead
+  const N = 240
+  const pts: { rel: number; alt: number; g: number }[] = []
+  for (let i = 0; i <= N; i++) {
+    const rel = start + ((end - start) * i) / N // distance relative to the route start
+    let d = rel
+    if (loop) d = ((rel % total) + total) % total
+    else if (rel < 0 || rel > total) continue // nothing before the start / after the end
+    pts.push({ rel, alt: interp(distance, altitude, d), g: interp(distance, grade, d) })
+  }
+  if (pts.length < 2) return null
+  let lo = Math.min(...pts.map((p) => p.alt))
+  let hi = Math.max(...pts.map((p) => p.alt))
+  if (hi - lo < 20) {
+    const mid = (hi + lo) / 2 // keep a 20 m minimum span: false flats stay flat
+    lo = mid - 10
+    hi = mid + 10
+  }
+  const W = 1000
+  const top = 14
+  const x = (rel: number) => ((rel - start) / (end - start)) * W
+  const y = (a: number) => height - 2 - ((a - lo) / (hi - lo)) * (height - top - 4)
+  const polys = pts.slice(0, -1).map((p, i) => {
+    const q = pts[i + 1]
+    return <polygon key={i} points={`${x(p.rel)},${height} ${x(p.rel)},${y(p.alt)} ${x(q.rel)},${y(q.alt)} ${x(q.rel)},${height}`} fill={gradeColor(p.g)} />
+  })
+  const ticks = []
+  for (let k = 1; k * 1000 <= ahead; k++) ticks.push(k)
+  // next kilometre: elevation change and mean grade
+  const at = (rel: number) => interp(distance, altitude, loop ? ((rel % total) + total) % total : Math.min(rel, total))
+  const nextLen = loop ? 1000 : Math.min(1000, total - position)
+  const rise = nextLen > 50 ? at(position + nextLen) - at(position) : 0
+  return (
+    <div className="local-profile">
+      <div className="km-labels">
+        {ticks.map((k) => (
+          <i key={k} style={{ left: `${(x(position + k * 1000) / W) * 100}%` }}>
+            +{k} km
+          </i>
+        ))}
+      </div>
+      <svg viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none" className="profile-svg" style={{ height }}>
+        {polys}
+        {ticks.map((k) => (
+          <line key={k} x1={x(position + k * 1000)} x2={x(position + k * 1000)} y1={top - 4} y2={height} className="km-tick" />
+        ))}
+        <line x1={x(position)} x2={x(position)} y1={0} y2={height} className="cursor" />
+        <circle cx={x(position)} cy={y(at(position))} r={5} className="rider-dot" />
+      </svg>
+      <div className="local-profile-labels">
+        <span>
+          {Math.round(lo)}–{Math.round(hi)} m
+        </span>
+        <span className="next-km">
+          next {nextLen >= 999 ? '1 km' : `${Math.round(nextLen)} m`}: {rise >= 0 ? '+' : ''}
+          {Math.round(rise)} m · {nextLen > 50 ? ((rise / nextLen) * 100).toFixed(1) : '0.0'} %
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------------------
 // Live power / target / HR chart (uPlot), last `windowS` seconds.
 export function LiveChart({ history, tick, windowS = 600 }: { history: { current: HistoryPoint[] }; tick: unknown; windowS?: number }) {
   const el = useRef<HTMLDivElement>(null)
