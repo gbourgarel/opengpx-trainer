@@ -7,7 +7,11 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-STALE_AFTER_S = 3.0
+# A reading (and a device's "connected" flag) is dropped after this long without any message.
+# 5 s rides through short reception gaps (a real ride had all ANT+ devices silent for 4.2 s at
+# the stick level), while a real disconnection is still noticed quickly. Stopping pedalling is
+# handled separately (power/cadence drop to 0 from the sensor's own event counter, ~3 s).
+STALE_AFTER_S = 5.0
 
 
 @dataclass
