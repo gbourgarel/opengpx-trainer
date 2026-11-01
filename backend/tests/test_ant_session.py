@@ -148,6 +148,28 @@ def test_fit_export_roundtrip(tmp_path):
     assert rec.summary()["normalized_power_w"] > 200
 
 
+def test_fit_records_target_power_as_developer_field(tmp_path):
+    from fit_tool.fit_file import FitFile
+    from fit_tool.profile.messages.record_message import RecordMessage
+
+    rec = Recorder()
+    t = time.time()
+    for i in range(60):
+        target = None if 20 <= i < 30 else 180.0 + i  # 10 s of free ride: no target
+        rec.add(Sample(t + i, i, 200, 90, 140, 9.0, 9.0 * i, target_w=target))
+    ff = FitFile.from_file(str(rec.write_fit(tmp_path / "t.fit")))
+    recs = [r.message for r in ff.records if isinstance(r.message, RecordMessage)]
+
+    def target_of(m):
+        f = next((f for f in m.developer_fields if f.name == "target_power"), None)
+        return None if f is None else (f.get_value(0), f.units)
+
+    assert target_of(recs[5]) == (185, "watts")
+    assert target_of(recs[25]) is None  # free ride
+    assert target_of(recs[40]) == (220, "watts")
+    assert recs[40].power == 200  # standard fields untouched
+
+
 def test_simulator_manual_power_and_pm_dropout():
     from hometrainer.ant.simulator import SimulatedHub
 

@@ -6,9 +6,13 @@ from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
+from fit_tool.base_type import BaseType
+from fit_tool.developer_field import DeveloperField
 from fit_tool.fit_file_builder import FitFileBuilder
 from fit_tool.profile.messages.activity_message import ActivityMessage
+from fit_tool.profile.messages.developer_data_id_message import DeveloperDataIdMessage
 from fit_tool.profile.messages.event_message import EventMessage
+from fit_tool.profile.messages.field_description_message import FieldDescriptionMessage
 from fit_tool.profile.messages.file_id_message import FileIdMessage
 from fit_tool.profile.messages.lap_message import LapMessage
 from fit_tool.profile.messages.record_message import RecordMessage
@@ -21,6 +25,10 @@ from fit_tool.profile.profile_type import (
     Sport,
     SubSport,
 )
+
+# developer data: identifies this app's fields in the FIT file (16-byte application id)
+TARGET_POWER_APP_ID = b"hometrainer\x00\x00\x00\x00\x01"
+TARGET_POWER_FIELD = 0
 
 
 @dataclass
@@ -91,6 +99,20 @@ class Recorder:
         fid.time_created = ms(first.timestamp_s)
         b.add(fid)
 
+        # Developer field "target_power" (W) on each record: FIT has no standard per-second
+        # target, so it is declared as developer data (readable by FIT analysis tools).
+        dev = DeveloperDataIdMessage()
+        dev.application_id = TARGET_POWER_APP_ID
+        dev.developer_data_index = 0
+        b.add(dev)
+        desc = FieldDescriptionMessage()
+        desc.developer_data_index = 0
+        desc.field_definition_number = TARGET_POWER_FIELD
+        desc.fit_base_type_id = BaseType.UINT16
+        desc.field_name = "target_power"
+        desc.units = "watts"
+        b.add(desc)
+
         ev = EventMessage()
         ev.event = Event.TIMER
         ev.event_type = EventType.START
@@ -98,7 +120,17 @@ class Recorder:
         b.add(ev)
 
         for s in self.samples:
-            r = RecordMessage()
+            fields = []
+            if s.target_w is not None:  # none during free-ride steps
+                f = DeveloperField(
+                    developer_data_index=0,
+                    field_id=TARGET_POWER_FIELD,
+                    base_type=BaseType.UINT16,  # must match the field description
+                    size=2,
+                )
+                f.set_value(0, int(round(max(0.0, min(s.target_w, 65534.0)))))
+                fields.append(f)
+            r = RecordMessage(developer_fields=fields)
             r.timestamp = ms(s.timestamp_s)
             r.distance = s.distance_m
             r.speed = s.speed_ms
