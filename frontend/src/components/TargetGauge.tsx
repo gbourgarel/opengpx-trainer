@@ -58,12 +58,13 @@ export function TargetGauge({ power, target }: { power: number | null | undefine
       </div>
       <div className="gauge-marker" style={{ left: `calc(9px + (100% - 18px) * ${pos / 100})` }} />
     </div>
+      {/* scale in watts at −20 / −10 / 0 / +10 / +20 % of the current target */}
       <div className="gauge-scale">
-        <span>−20 %</span>
-        <span>−10 %</span>
-        <span>target</span>
-        <span>+10 %</span>
-        <span>+20 %</span>
+        {[-2, -1, 0, 1, 2].map((k) => (
+          <span key={k} className={k === 0 ? 'gauge-scale-target' : ''} style={{ left: `${50 + k * 25}%` }}>
+            {Math.round(target * (1 + (k * RANGE) / 2))} W
+          </span>
+        ))}
       </div>
     </div>
   )
