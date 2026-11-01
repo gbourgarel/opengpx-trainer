@@ -101,8 +101,10 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
   const lap = tel.lap ?? 1
   const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : 'GPX · pseudo-ERG'
 
+  // Layout (desktop): the whole ride view fits the window — head, one row of metrics,
+  // gauge + controls side by side, then the remaining height for map | profiles + chart.
   return (
-    <div className="ride">
+    <div className="ride ride-fit">
       <div className="ride-head">
         <div>
           <h2>{tel.name}</h2>
@@ -138,7 +140,18 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           sub={tel.avg_power_w != null ? `avg ${tel.avg_power_w} · NP ${tel.np_w ?? '—'} W` : undefined}
           title={tel.pm_power_w != null && tel.trainer_power_w != null ? `power meter ${tel.pm_power_w} W · trainer ${tel.trainer_power_w} W` : undefined}
         />
-        <Metric big label="Target" value={tel.target_w} unit="W" sub={tel.sent_target_w != null && tel.sent_target_w !== tel.target_w ? `sent ${tel.sent_target_w} W (match ${tel.power_match_offset_w! > 0 ? '+' : ''}${tel.power_match_offset_w} W)` : undefined} />
+        <Metric
+          big
+          label="Target"
+          value={tel.target_w}
+          unit="W"
+          sub={tel.sent_target_w != null && tel.sent_target_w !== tel.target_w ? `sent ${tel.sent_target_w} W` : undefined}
+          title={
+            tel.sent_target_w != null && tel.sent_target_w !== tel.target_w
+              ? `power match: ${tel.power_match_offset_w! > 0 ? '+' : ''}${tel.power_match_offset_w} W sent to the trainer so the power meter reads the target`
+              : undefined
+          }
+        />
         <Metric big label="W/kg" value={tel.power_wkg?.toFixed(2)} unit="W/kg" sub={tel.target_wkg != null ? `target ${tel.target_wkg.toFixed(2)} W/kg` : undefined} />
         <Metric big label="Speed" value={tel.speed_kmh?.toFixed(1)} unit="km/h" sub={tel.avg_speed_kmh != null ? `avg ${tel.avg_speed_kmh.toFixed(1)} km/h` : undefined} />
         <Metric label="Time" value={fmtTime(tel.elapsed_s)} />
@@ -146,7 +159,8 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           label="Distance"
           value={((tel.distance_m ?? 0) / 1000).toFixed(2)}
           unit="km"
-          sub={remainingDist != null ? `${(remainingDist / 1000).toFixed(2)} km to ${workout && lap > 1 ? 'end of lap' : workout ? 'end of route' : 'go'}` : undefined}
+          sub={remainingDist != null ? `${(remainingDist / 1000).toFixed(2)} km left` : undefined}
+          title={remainingDist != null ? `to the end of the ${workout ? 'current lap' : 'route'}` : undefined}
         />
         <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" sub={tel.cadence_source && tel.cadence_source !== 'none' ? tel.cadence_source.replace('_', ' ') : undefined} />
         <Metric label="Heart rate" value={tel.heart_rate_bpm} unit="bpm" />
@@ -167,6 +181,7 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           ))}
       </div>
 
+      <div className="ride-mid">
       {showGauge && <TargetGauge power={tel.power_avg3_w} target={tel.target_w} />}
 
       <div className="card adjust">
@@ -207,35 +222,38 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           </div>
         )}
       </div>
+      </div>
 
-      {workout && (
-        <div className="card">
-          <WorkoutProfile steps={workout.steps} ftp={ftp} scale={(tel.intensity_pct ?? 100) / 100} elapsed={tel.elapsed_s} />
-          <small className="muted">
-            {fmtTime(tel.elapsed_s)} / {fmtTime(workout.duration_s)}
-          </small>
-        </div>
-      )}
-
-      {route && (
-        <div className="grid2">
-          <div className="card">
-            <label className="inline">
+      <div className={`ride-bottom ${route ? 'with-map' : ''}`}>
+        {route && (
+          <div className="card map-card">
+            <label className="inline map-follow">
               <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> follow rider
             </label>
-            <RouteMap latlon={route.latlon} position={tel.lat != null ? [tel.lat, tel.lon!] : undefined} follow={follow} done={doneIdx} height={340} />
+            <RouteMap latlon={route.latlon} position={tel.lat != null ? [tel.lat, tel.lon!] : undefined} follow={follow} done={doneIdx} height="100%" />
           </div>
-          <div className="card">
-            <ElevationProfile distance={route.profile_distance_m} altitude={route.altitude_m} grade={route.grade} position={routePos} height={160} />
-            <small className="muted">
-              {(route.distance_m / 1000).toFixed(1)} km · +{route.ascent_m.toFixed(0)} m
-            </small>
+        )}
+        <div className="ride-side">
+          {workout && (
+            <div className="card side-card">
+              <WorkoutProfile steps={workout.steps} ftp={ftp} scale={(tel.intensity_pct ?? 100) / 100} elapsed={tel.elapsed_s} height={route ? 56 : 90} />
+              <small className="muted">
+                {fmtTime(tel.elapsed_s)} / {fmtTime(workout.duration_s)}
+              </small>
+            </div>
+          )}
+          {route && (
+            <div className="card side-card">
+              <ElevationProfile distance={route.profile_distance_m} altitude={route.altitude_m} grade={route.grade} position={routePos} height={80} />
+              <small className="muted">
+                {(route.distance_m / 1000).toFixed(1)} km · +{route.ascent_m.toFixed(0)} m
+              </small>
+            </div>
+          )}
+          <div className="card chart-card">
+            <LiveChart history={history} tick={tel.elapsed_s} />
           </div>
         </div>
-      )}
-
-      <div className="card">
-        <LiveChart history={history} tick={tel.elapsed_s} />
       </div>
     </div>
   )

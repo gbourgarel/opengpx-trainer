@@ -150,7 +150,7 @@ export default function App() {
           {error}
         </div>
       )}
-      <main>
+      <main className={tab === 'ride' ? 'ride-main' : ''}>
         {tab === 'ride' && tel.sim && <SimulatorPanel key={tel.hub ?? ''} initial={tel.sim} />}
         {tab === 'ride' && <RidePage tel={tel} history={history} active={active} profile={profile} onEnd={() => setActive(null)} />}
         {tab === 'workouts' && <WorkoutsPage profile={profile} canStart={!!hub} onStart={startWorkout} />}

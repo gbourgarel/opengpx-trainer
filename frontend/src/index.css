@@ -726,3 +726,190 @@ b.warn {
 .manual-target .unit {
   color: var(--muted);
 }
+
+/* ---------------------------------------------------------------------------------------
+   Ride screen layout. Default (small screens): normal flow with fixed panel heights.
+   Large enough screens: the whole ride view fits the window, no scrolling. */
+.ride-mid > .card {
+  margin-bottom: 14px;
+}
+.ride-bottom {
+  display: grid;
+  gap: 14px;
+}
+.map-card {
+  position: relative;
+  height: 340px;
+  padding: 8px;
+  margin: 0;
+}
+.map-card .map {
+  margin: 0;
+}
+.map-follow {
+  position: absolute;
+  z-index: 1000;
+  top: 16px;
+  right: 16px;
+  margin: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--panel);
+  opacity: 0.9;
+}
+.ride-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.side-card,
+.chart-card {
+  margin: 0;
+}
+.chart-card .live-chart {
+  height: 240px;
+}
+
+@media (min-width: 1000px) and (min-height: 680px) {
+  .app {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .app > header {
+    flex: none;
+  }
+  .app > main {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: auto;
+    padding: 12px 20px;
+  }
+  .app > main.ride-main {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+  }
+  .ride-main > .card {
+    margin: 0;
+  }
+  .ride-main > .sim {
+    flex: none;
+    padding: 6px 12px;
+    gap: 6px;
+  }
+  .ride-fit {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ride-fit > * {
+    margin-bottom: 0;
+  }
+  .ride-fit .ride-head {
+    margin: 0;
+  }
+  .ride-fit .ride-head h2 {
+    font-size: 20px;
+  }
+  .ride-fit .hint,
+  .ride-fit .error {
+    margin: 0;
+  }
+  /* metrics: one compact row */
+  .ride-fit .metrics {
+    grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+    gap: 8px;
+    margin: 0;
+  }
+  .ride-fit .metric {
+    padding: 6px 10px;
+    border-radius: 10px;
+    min-width: 0;
+  }
+  .ride-fit .metric .label {
+    font-size: 11px;
+  }
+  .ride-fit .metric .value {
+    font-size: 24px;
+    line-height: 1.15;
+  }
+  .ride-fit .metric.big .value {
+    font-size: clamp(26px, 2.3vw, 34px); /* value + unit must fit the card on 1366 px screens */
+  }
+  .ride-fit .metric .sub {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* gauge and controls side by side */
+  .ride-fit .ride-mid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 8px;
+  }
+  .ride-fit .ride-mid > .card {
+    margin: 0;
+    padding: 8px 12px;
+  }
+  .ride-fit .ride-mid > .card:only-child {
+    grid-column: 1 / -1;
+  }
+  .ride-fit .gauge-label,
+  .ride-fit .gauge-delta {
+    font-size: 16px;
+  }
+  .ride-fit .gauge-head {
+    margin-bottom: 4px;
+  }
+  .ride-fit .adjust {
+    gap: 8px 16px;
+  }
+  .ride-fit .stepper .val {
+    font-size: 18px;
+  }
+  .ride-fit .split {
+    min-width: 200px;
+    font-size: 12px;
+  }
+  /* bottom: fills the remaining height */
+  .ride-fit .ride-bottom {
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ride-fit .ride-bottom.with-map {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+  .ride-fit .map-card {
+    height: auto;
+    min-height: 0;
+  }
+  .ride-fit .ride-side {
+    min-height: 0;
+    gap: 8px;
+  }
+  .ride-fit .side-card {
+    flex: none;
+    padding: 6px 10px;
+  }
+  .ride-fit .chart-card {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 10px;
+  }
+  .ride-fit .chart-card .live-chart {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
+    overflow: hidden;
+  }
+}

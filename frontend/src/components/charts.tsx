@@ -139,11 +139,16 @@ export function LiveChart({ history, tick, windowS = 600 }: { history: { current
 
   useEffect(() => {
     if (!el.current) return
+    const box = el.current
+    // fill the container (sized by the layout), minus the legend under the plot
+    const size = () => {
+      const legend = box.querySelector<HTMLElement>('.u-legend')?.offsetHeight ?? 26
+      return { width: box.clientWidth, height: Math.max(100, box.clientHeight - legend - 4) }
+    }
     const css = getComputedStyle(document.documentElement)
     const c = (v: string) => css.getPropertyValue(v).trim()
     const opts: uPlot.Options = {
-      width: el.current.clientWidth,
-      height: 200,
+      ...size(),
       legend: { show: true },
       cursor: { drag: { x: false, y: false } },
       scales: { x: { time: false }, hr: { range: [60, 200] } },
@@ -159,9 +164,10 @@ export function LiveChart({ history, tick, windowS = 600 }: { history: { current
         { label: 'HR', scale: 'hr', stroke: c('--hr'), width: 1.5, points: { show: false } },
       ],
     }
-    plot.current = new uPlot(opts, [[], [], [], []], el.current)
-    const ro = new ResizeObserver(() => plot.current?.setSize({ width: el.current!.clientWidth, height: 200 }))
-    ro.observe(el.current)
+    plot.current = new uPlot(opts, [[], [], [], []], box)
+    plot.current.setSize(size()) // the legend exists now: account for its real height
+    const ro = new ResizeObserver(() => plot.current?.setSize(size()))
+    ro.observe(box)
     return () => {
       ro.disconnect()
       plot.current?.destroy()

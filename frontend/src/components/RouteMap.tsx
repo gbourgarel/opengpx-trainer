@@ -30,7 +30,7 @@ export function RouteMap({
   position?: [number, number]
   follow?: boolean
   done?: number // index into latlon reached so far
-  height?: number
+  height?: number | string // px, or e.g. "100%" to fill a sized parent
 }) {
   if (!latlon.length) return null
   return (
