@@ -32,7 +32,7 @@ from .gpx.route import Route
 from .physics.grade_power import RateLimiter
 from .physics.model import VirtualBike, flat_road
 from .profile import Profile
-from .recording import Recorder, Sample
+from .recording import Recorder, RideAverages, Sample
 from .workouts.model import Workout
 
 Mode = Literal["erg", "gpx"]
@@ -205,6 +205,7 @@ class RideSession:
         self._idle_s = 0.0
         self._last_tick: float | None = None
         self.climb = ClimbTracker()
+        self.averages = RideAverages()
         self.requested_target_w: float | None = None
         self.sent_target_w: float | None = None
         self.last: dict = {}
@@ -346,6 +347,7 @@ class RideSession:
         mult = 1.0 + (self.difficulty_pct / 100.0 if self.mode == "gpx" else 0.0)
         if running:
             self.bike.step((pc.power_w or 0.0) * mult, dt)
+            self.averages.add(pc.power_w or 0.0, dt)  # measured power (no difficulty factor)
         st = self.bike.state
         if self.route is not None:
             lap = int(st.distance_m // self.route.total_distance_m)
@@ -428,6 +430,12 @@ class RideSession:
             "sent_target_w": None if self.sent_target_w is None else round(self.sent_target_w),
             "power_match_offset_w": round(self.power_match.offset_w, 1),
             "speed_kmh": round(v * 3.6, 2),
+            # averages since the start (riding time only)
+            "avg_speed_kmh": round(st.distance_m / self.elapsed_s * 3.6, 2)
+            if self.elapsed_s > 0
+            else None,
+            "avg_power_w": None if (a := self.averages.avg_power_w) is None else round(a),
+            "np_w": None if (n := self.averages.np_w) is None else round(n),
             "distance_m": round(st.distance_m, 1),
             "grade": round(st.grade, 4),
             "altitude_m": round(st.altitude_m, 1),

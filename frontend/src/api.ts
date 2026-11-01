@@ -156,6 +156,9 @@ export interface Telemetry {
   power_w?: number | null
   power_source?: string
   power_wkg?: number | null
+  avg_speed_kmh?: number | null
+  avg_power_w?: number | null
+  np_w?: number | null
   target_wkg?: number | null
   route_position_m?: number
   lap?: number

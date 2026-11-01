@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -162,6 +163,59 @@ class Recorder:
         path.parent.mkdir(parents=True, exist_ok=True)
         b.build().to_file(str(path))
         return path
+
+
+class RideAverages:
+    """Live averages since the start of the ride, updated incrementally at each tick.
+
+    * average power: time-weighted over the riding time (pauses excluded);
+    * normalized power: same definition as ``normalized_power`` (30 s rolling mean of 1 s
+      power, 4th-power mean, 4th root), fed with 1 s buckets built from the ticks.
+    """
+
+    WINDOW = 30
+
+    def __init__(self) -> None:
+        self.time_s = 0.0
+        self.energy_j = 0.0
+        self._bucket_t = 0.0
+        self._bucket_e = 0.0
+        self._window: deque[float] = deque()
+        self._window_sum = 0.0
+        self._sum4 = 0.0
+        self._n4 = 0
+
+    def add(self, power_w: float, dt: float) -> None:
+        if dt <= 0:
+            return
+        self.time_s += dt
+        self.energy_j += power_w * dt
+        self._bucket_t += dt
+        self._bucket_e += power_w * dt
+        while self._bucket_t >= 1.0:
+            # close a 1 s bucket (a tick spanning a boundary is split proportionally)
+            over = self._bucket_t - 1.0
+            p1 = (self._bucket_e - power_w * over) / 1.0
+            self._push_second(p1)
+            self._bucket_t = over
+            self._bucket_e = power_w * over
+
+    def _push_second(self, p: float) -> None:
+        self._window.append(p)
+        self._window_sum += p
+        if len(self._window) > self.WINDOW:
+            self._window_sum -= self._window.popleft()
+        if len(self._window) == self.WINDOW:
+            self._sum4 += (self._window_sum / self.WINDOW) ** 4
+            self._n4 += 1
+
+    @property
+    def avg_power_w(self) -> float | None:
+        return self.energy_j / self.time_s if self.time_s > 0 else None
+
+    @property
+    def np_w(self) -> float | None:
+        return (self._sum4 / self._n4) ** 0.25 if self._n4 else None
 
 
 def normalized_power(powers_1hz: list[float]) -> float | None:

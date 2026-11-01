@@ -14,9 +14,25 @@ export interface ActiveRide {
   route?: RouteDetail
 }
 
-function Metric({ label, value, unit, big, sub, className = '' }: { label: string; value: string | number | null | undefined; unit?: string; big?: boolean; sub?: string; className?: string }) {
+function Metric({
+  label,
+  value,
+  unit,
+  big,
+  sub,
+  className = '',
+  title,
+}: {
+  label: string
+  value: string | number | null | undefined
+  unit?: string
+  big?: boolean
+  sub?: string
+  className?: string
+  title?: string
+}) {
   return (
-    <div className={`metric ${big ? 'big' : ''} ${className}`}>
+    <div className={`metric ${big ? 'big' : ''} ${className}`} title={title}>
       <div className="label">{label}</div>
       <div className="value">
         {value ?? '—'}
@@ -113,10 +129,18 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
       {tel.state === 'finished' && <div className="hint ok">Finished! Ride saved{tel.saved ? ` (#${tel.saved.ride_id})` : ''}.</div>}
 
       <div className="metrics">
-        <Metric big label="Power" className={zone ? `zone-${zone}` : ''} value={tel.power_w} unit="W" sub={tel.pm_power_w != null && tel.trainer_power_w != null ? `PM ${tel.pm_power_w} · trainer ${tel.trainer_power_w}` : undefined} />
+        <Metric
+          big
+          label="Power"
+          className={zone ? `zone-${zone}` : ''}
+          value={tel.power_w}
+          unit="W"
+          sub={tel.avg_power_w != null ? `avg ${tel.avg_power_w} · NP ${tel.np_w ?? '—'} W` : undefined}
+          title={tel.pm_power_w != null && tel.trainer_power_w != null ? `power meter ${tel.pm_power_w} W · trainer ${tel.trainer_power_w} W` : undefined}
+        />
         <Metric big label="Target" value={tel.target_w} unit="W" sub={tel.sent_target_w != null && tel.sent_target_w !== tel.target_w ? `sent ${tel.sent_target_w} W (match ${tel.power_match_offset_w! > 0 ? '+' : ''}${tel.power_match_offset_w} W)` : undefined} />
         <Metric big label="W/kg" value={tel.power_wkg?.toFixed(2)} unit="W/kg" sub={tel.target_wkg != null ? `target ${tel.target_wkg.toFixed(2)} W/kg` : undefined} />
-        <Metric big label="Speed" value={tel.speed_kmh?.toFixed(1)} unit="km/h" />
+        <Metric big label="Speed" value={tel.speed_kmh?.toFixed(1)} unit="km/h" sub={tel.avg_speed_kmh != null ? `avg ${tel.avg_speed_kmh.toFixed(1)} km/h` : undefined} />
         <Metric label="Time" value={fmtTime(tel.elapsed_s)} />
         <Metric
           label="Distance"
