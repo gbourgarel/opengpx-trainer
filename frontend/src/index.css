@@ -820,19 +820,29 @@ b.warn {
   .ride-fit .error {
     margin: 0;
   }
-  /* metrics: one compact row */
+  /* metrics: always one compact row; every card shares the width, big ones get more */
   .ride-fit .metrics {
-    grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+    display: flex;
     gap: 8px;
     margin: 0;
   }
   .ride-fit .metric {
+    flex: 1 1 0;
     padding: 6px 10px;
     border-radius: 10px;
     min-width: 0;
   }
+  .ride-fit .metric.big {
+    flex-grow: 1.35;
+  }
+  .ride-fit .metric .value {
+    white-space: nowrap;
+  }
   .ride-fit .metric .label {
     font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .ride-fit .metric .value {
     font-size: 24px;

@@ -76,6 +76,9 @@ class Route:
         self.raw_ele = np.interp(self.d, cum, ele)
         self.ele = gaussian_smooth(self.raw_ele, step_m, smoothing_sigma_m)
         self.grade = np.clip(np.gradient(self.ele, self.d), -max_abs_grade, max_abs_grade)
+        # cumulative positive elevation gain along the route (same smoothed profile as ascent_m)
+        rises = np.clip(np.diff(self.ele), 0.0, None)
+        self.cum_gain = np.concatenate([[0.0], np.cumsum(rises)])
 
         dlon = np.radians(np.diff(self.lon))
         la1, la2 = np.radians(self.lat[:-1]), np.radians(self.lat[1:])
@@ -118,6 +121,13 @@ class Route:
     def grade_and_altitude(self, distance_m: float) -> tuple[float, float]:
         d = self.clamp(distance_m)
         return float(np.interp(d, self.d, self.grade)), float(np.interp(d, self.d, self.ele))
+
+    def gain_between(self, start_m: float, end_m: float) -> float:
+        """Positive elevation gain (m) between two positions on the route."""
+        a, b = self.clamp(start_m), self.clamp(end_m)
+        if b <= a:
+            return 0.0
+        return float(np.interp(b, self.d, self.cum_gain) - np.interp(a, self.d, self.cum_gain))
 
     def mean_grade(self, start_m: float, length_m: float) -> float:
         """Average grade over [start, start + length] (elevation difference / distance)."""

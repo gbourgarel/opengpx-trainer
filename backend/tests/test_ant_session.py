@@ -450,6 +450,20 @@ def test_gpx_session_reports_vam_consistent_with_model():
     assert "vam_mh" not in s2.tick(1.0)
 
 
+def test_gpx_elevation_done_plus_left_equals_route_ascent():
+    h, s = _gpx_session(grade=0.06)
+    total = s.route.ascent_m
+    tel = s.tick(1000.0)
+    assert tel["elevation_left_m"] == pytest.approx(total, abs=0.5)
+    t = 1000.0
+    for _ in range(4 * 120):
+        h.feed(trainer=250, pm=250)
+        tel = s.tick(t := t + 0.25)
+    # constant climb: what is done plus what is left is the whole ascent
+    assert tel["elevation_gain_m"] + tel["elevation_left_m"] == pytest.approx(total, abs=1.5)
+    assert 0 < tel["elevation_left_m"] < total
+
+
 # --- GPX + workout (mixed mode) ----------------------------------------------------------
 def _mixed_session(steps, n_points=40, grade=0.0):
     """Short route (~430 m for 40 points) so laps happen quickly."""

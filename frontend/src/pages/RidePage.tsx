@@ -163,14 +163,18 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           title={remainingDist != null ? `to the end of the ${workout ? 'current lap' : 'route'}` : undefined}
         />
         <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" sub={tel.cadence_source && tel.cadence_source !== 'none' ? tel.cadence_source.replace('_', ' ') : undefined} />
-        <Metric label="Heart rate" value={tel.heart_rate_bpm} unit="bpm" />
+        <Metric label="HR" value={tel.heart_rate_bpm} unit="bpm" title="heart rate" />
         {tel.mode === 'gpx' && <Metric label="Grade" value={((tel.grade ?? 0) * 100).toFixed(1)} unit="%" sub={`${tel.altitude_m?.toFixed(0)} m`} />}
         {tel.mode === 'gpx' && (
+          <Metric label="VAM (30 s)" value={tel.vam_mh} unit="m/h" sub={`now ${tel.vam_instant_mh ?? '—'} m/h`} />
+        )}
+        {tel.mode === 'gpx' && (
           <Metric
-            label="VAM (30 s)"
-            value={tel.vam_mh}
-            unit="m/h"
-            sub={`now ${tel.vam_instant_mh ?? '—'} m/h · +${(tel.elevation_gain_m ?? 0).toFixed(0)} m`}
+            label="Climbed"
+            value={`+${(tel.elevation_gain_m ?? 0).toFixed(0)}`}
+            unit="m"
+            sub={tel.elevation_left_m != null ? `${tel.elevation_left_m.toFixed(0)} m left` : undefined}
+            title={`positive elevation climbed so far / still to climb to the end of the ${workout ? 'current lap' : 'route'}`}
           />
         )}
         {workout &&

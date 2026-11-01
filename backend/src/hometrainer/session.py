@@ -466,7 +466,11 @@ class RideSession:
             out.update(
                 vam_mh=None if vam is None else round(vam),
                 vam_instant_mh=round(vam_instant),
-                elevation_gain_m=round(self.climb.elevation_gain_m, 1),
+                elevation_gain_m=round(self.climb.elevation_gain_m, 1),  # actually climbed
+                # still to climb until the end of the route (of the current lap if it loops)
+                elevation_left_m=round(
+                    self.route.gain_between(self.route_position_m, self.route.total_distance_m), 1
+                ),
             )
         if self.workout is not None:
             pos = self.workout.position(self.elapsed_s)

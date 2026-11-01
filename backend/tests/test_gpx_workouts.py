@@ -33,6 +33,21 @@ def test_route_constant_grade():
     assert p.heading_deg == pytest.approx(0, abs=0.5)
 
 
+def test_gain_between_counts_only_climbing():
+    import numpy as np
+
+    # up 100 m over 5 km, down 50 m, up 30 m: gain 130 m in total
+    lat = 45.0 + np.arange(0, 1500) * 0.0001
+    d = np.arange(0, 1500) * 11.119
+    ele = np.interp(d, [0, 5000, 10000, 16660], [100, 200, 150, 180])
+    r = Route("synthetic", lat, np.full_like(lat, 6.0), ele, smoothing_sigma_m=0)
+    assert r.gain_between(0, r.total_distance_m) == pytest.approx(r.ascent_m)
+    assert r.ascent_m == pytest.approx(130, abs=1)
+    assert r.gain_between(5000, 10000) == pytest.approx(0, abs=0.5)  # descent only
+    assert r.gain_between(2500, r.total_distance_m) == pytest.approx(80, abs=1)
+    assert r.gain_between(9000, 8000) == 0.0
+
+
 def test_route_smoothing_kills_elevation_noise():
     noisy = Route.from_gpx(make_gpx(noise=1.5))
     mid = noisy.total_distance_m / 2

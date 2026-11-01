@@ -165,6 +165,7 @@ export interface Telemetry {
   vam_mh?: number | null
   vam_instant_mh?: number
   elevation_gain_m?: number
+  elevation_left_m?: number
   cadence_source?: string
   trainer_power_w?: number | null
   pm_power_w?: number | null
