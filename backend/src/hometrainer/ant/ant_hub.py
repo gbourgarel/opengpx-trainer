@@ -29,6 +29,9 @@ from .hub import SensorHub
 
 log = logging.getLogger(__name__)
 
+# a power meter counts as "sending crank-torque pages" if one arrived within this window
+PM_TORQUE_FRESH_S = 5.0
+
 
 class AntUnavailable(RuntimeError):
     pass
@@ -85,6 +88,8 @@ class AntHub(SensorHub):
         self._t0 = time.monotonic()
         self._fec_power = pf.EventAveragedPower(65536)
         self._pm_power = pf.EventAveragedPower(65536)
+        self._pm_torque = pf.CrankTorquePower()
+        self._pm_torque_seen_at = float("-inf")
         self.last_command_status: pf.FecCommandStatus | None = None
 
     # -- lifecycle ----------------------------------------------------------------------
@@ -324,14 +329,26 @@ class AntHub(SensorHub):
         if not self._accept("power_meter", num):
             return
         msg = pf.decode_power(data)
+        now = time.monotonic()
         with self._lock:
             self._seen("power_meter", num, transport="ant")
-            if msg is not None:
+            if isinstance(msg, pf.CrankTorque):
+                # crank-torque pages: a fresh value at every crank revolution
+                self._pm_torque_seen_at = now
+                power, cadence = self._pm_torque.update(msg, now)
+                if power is not None:
+                    self._s.pm_power.set(power)
+                if cadence is not None:
+                    self._s.pm_cadence.set(round(cadence))
+            elif isinstance(msg, pf.PowerOnly):
                 avg = self._pm_power.update(
-                    msg.event_count, msg.accumulated_power_w, msg.instantaneous_power_w
+                    msg.event_count, msg.accumulated_power_w, msg.instantaneous_power_w, now
                 )
-                self._s.pm_power.set(avg)
-                self._s.pm_cadence.set(self._pm_power.cadence(msg.cadence_rpm))
+                # meters sending crank-torque pages use those only: no flip-flopping between
+                # two estimators; power-only meters use page 16 as before
+                if now - self._pm_torque_seen_at > PM_TORQUE_FRESH_S:
+                    self._s.pm_power.set(avg)
+                    self._s.pm_cadence.set(self._pm_power.cadence(msg.cadence_rpm))
 
     def _on_hrm(self, data) -> None:
         self._log_raw("hrm", data)

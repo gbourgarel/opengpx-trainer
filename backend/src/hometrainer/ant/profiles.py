@@ -6,6 +6,7 @@ References: ANT+ Device Profiles "Fitness Equipment" (FE-C, device type 17),
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 
@@ -142,10 +143,27 @@ class PowerOnly:  # page 16 (0x10)
     instantaneous_power_w: int
 
 
-def decode_power(data: bytes | list[int]) -> PowerOnly | None:
+@dataclass
+class CrankTorque:  # page 18 (0x12), standard crank torque
+    event_count: int  # one event per crank revolution
+    crank_ticks: int
+    cadence_rpm: int | None  # instantaneous, from the sensor
+    accumulated_period: int  # 1/2048 s, rolls over at 65536
+    accumulated_torque: int  # 1/32 N·m, rolls over at 65536
+
+
+def decode_power(data: bytes | list[int]) -> PowerOnly | CrankTorque | None:
     d = list(data[:8])
+    if d[0] == 0x12:
+        return CrankTorque(
+            event_count=d[1],
+            crank_ticks=d[2],
+            cadence_rpm=None if d[3] == 0xFF else d[3],
+            accumulated_period=d[4] | (d[5] << 8),
+            accumulated_torque=d[6] | (d[7] << 8),
+        )
     if d[0] != 0x10:
-        return None  # TODO: crank-torque (0x12) only meters
+        return None
     return PowerOnly(
         event_count=d[1],
         pedal_balance=None if d[2] == 0xFF else d[2] & 0x7F,
@@ -153,6 +171,44 @@ def decode_power(data: bytes | list[int]) -> PowerOnly | None:
         accumulated_power_w=d[4] | (d[5] << 8),
         instantaneous_power_w=d[6] | (d[7] << 8),
     )
+
+
+class CrankTorquePower:
+    """Power and cadence from crank-torque pages (ANT+ Bicycle Power, page 0x12).
+
+    Between two events (one per crank revolution):
+        angular velocity  w = 2*pi * d_events / (d_period / 2048)      [rad/s]
+        mean torque       T = d_torque / (32 * d_events)               [N*m]
+        power             P = T * w = 128 * pi * d_torque / d_period   [W]
+        cadence             = 60 * 2048 * d_events / d_period          [rpm]
+    The sensor repeats its last page while the crank is not turning: after ``stall_s``
+    without a new event, power and cadence are 0.
+    """
+
+    def __init__(self, stall_s: float = 3.0):
+        self.stall_s = stall_s
+        self.last: CrankTorque | None = None
+        self.last_event_at = 0.0
+        self.power_w: float | None = None
+        self.cadence_rpm: float | None = None
+
+    def update(self, m: CrankTorque, now: float | None = None) -> tuple[float | None, float | None]:
+        now = time.monotonic() if now is None else now
+        prev = self.last
+        if prev is None:
+            self.last, self.last_event_at = m, now
+            return self.power_w, self.cadence_rpm
+        d_ev = (m.event_count - prev.event_count) % 256
+        if d_ev:
+            d_period = (m.accumulated_period - prev.accumulated_period) % 65536
+            d_torque = (m.accumulated_torque - prev.accumulated_torque) % 65536
+            if d_period:
+                self.power_w = 128 * math.pi * d_torque / d_period
+                self.cadence_rpm = 60 * 2048 * d_ev / d_period
+            self.last, self.last_event_at = m, now
+        elif now - self.last_event_at > self.stall_s:
+            self.power_w, self.cadence_rpm = 0.0, 0.0
+        return self.power_w, self.cadence_rpm
 
 
 class EventAveragedPower:

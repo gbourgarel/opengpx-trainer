@@ -104,7 +104,7 @@ One ANT node, three slave channels with wildcard pairing (the first device found
 | Device        | Type | Period | Pages used                                                  |
 |---------------|------|--------|-------------------------------------------------------------|
 | FE-C trainer  | 17   | 8192   | rx 16, 25, 71 · tx 49 (target power), 48 (free ride), 55 (user config) |
-| Power meter   | 11   | 8182   | rx 16 (power-only; event-averaged power)                    |
+| Power meter   | 11   | 8182   | rx 18 (crank torque: power and cadence per crank revolution), else rx 16 (power-only; event-averaged power) |
 | Heart rate    | 120  | 8070   | rx byte 7                                                   |
 
 Commands go out as acknowledged messages from a single sender thread, which coalesces requests
