@@ -1,11 +1,8 @@
 import { useMemo, useState } from 'react'
-import { api, fmtTime, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
-import { ElevationProfile, LiveChart, LocalProfile, WorkoutProfile } from '../components/charts'
+import { api, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ManualTarget } from '../components/ManualTarget'
-import { RouteMap } from '../components/RouteMap'
-import { TargetGauge } from '../components/TargetGauge'
-import { targetZone } from '../targetZone'
 import type { HistoryPoint } from '../useLive'
+import { RideCockpit } from './RideCockpit'
 
 export interface ActiveRide {
   sessionId: string
@@ -14,7 +11,7 @@ export interface ActiveRide {
   route?: RouteDetail
 }
 
-function Metric({
+export function Metric({
   label,
   value,
   unit,
@@ -95,16 +92,14 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
 
   const split = tel.power_split_w
   const showGauge = tel.target_w != null && (tel.state === 'running' || tel.state === 'paused')
-  const zone = showGauge ? targetZone(tel.power_avg3_w ?? 0, tel.target_w!) : null
   const totalSplit = split ? Math.max(1, split.gravity + split.rolling + split.aero) : 1
   const remainingDist = route && routePos != null ? route.distance_m - routePos : null
   const lap = tel.lap ?? 1
   const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : 'GPX · pseudo-ERG'
 
-  // Layout (desktop): the whole ride view fits the window — head, one row of metrics,
-  // gauge + controls side by side, then the remaining height for map | profiles + chart.
-  return (
-    <div className="ride ride-fit">
+  // head (title, badges, pause/stop) and controls, laid out by RideCockpit
+  const head = (
+    <>
       <div className="ride-head">
         <div>
           <h2>{tel.name}</h2>
@@ -129,65 +124,10 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
       {error && <div className="error">{error}</div>}
       {tel.state === 'ready' && <div className="hint">Start pedalling to begin — the clock starts automatically.</div>}
       {tel.state === 'finished' && <div className="hint ok">Finished! Ride saved{tel.saved ? ` (#${tel.saved.ride_id})` : ''}.</div>}
+    </>
+  )
 
-      <div className="metrics">
-        <Metric
-          big
-          label="Power"
-          className={zone ? `zone-${zone}` : ''}
-          value={tel.power_w}
-          unit="W"
-          sub={tel.avg_power_w != null ? `avg ${tel.avg_power_w} · NP ${tel.np_w ?? '—'} W` : undefined}
-          title={tel.pm_power_w != null && tel.trainer_power_w != null ? `power meter ${tel.pm_power_w} W · trainer ${tel.trainer_power_w} W` : undefined}
-        />
-        <Metric
-          big
-          label="Target"
-          value={tel.target_w}
-          unit="W"
-          sub={tel.sent_target_w != null && tel.sent_target_w !== tel.target_w ? `sent ${tel.sent_target_w} W` : undefined}
-          title={
-            tel.sent_target_w != null && tel.sent_target_w !== tel.target_w
-              ? `power match: ${tel.power_match_offset_w! > 0 ? '+' : ''}${tel.power_match_offset_w} W sent to the trainer so the power meter reads the target`
-              : undefined
-          }
-        />
-        <Metric big label="W/kg" value={tel.power_wkg?.toFixed(2)} unit="W/kg" sub={tel.target_wkg != null ? `target ${tel.target_wkg.toFixed(2)} W/kg` : undefined} />
-        <Metric big label="Speed" value={tel.speed_kmh?.toFixed(1)} unit="km/h" sub={tel.avg_speed_kmh != null ? `avg ${tel.avg_speed_kmh.toFixed(1)} km/h` : undefined} />
-        <Metric label="Time" value={fmtTime(tel.elapsed_s)} />
-        <Metric
-          label="Distance"
-          value={((tel.distance_m ?? 0) / 1000).toFixed(2)}
-          unit="km"
-          sub={remainingDist != null ? `${(remainingDist / 1000).toFixed(2)} km left` : undefined}
-          title={remainingDist != null ? `to the end of the ${workout ? 'current lap' : 'route'}` : undefined}
-        />
-        <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" sub={tel.cadence_source && tel.cadence_source !== 'none' ? tel.cadence_source.replace('_', ' ') : undefined} />
-        <Metric label="HR" value={tel.heart_rate_bpm} unit="bpm" title="heart rate" />
-        {tel.mode === 'gpx' && <Metric label="Grade" value={((tel.grade ?? 0) * 100).toFixed(1)} unit="%" sub={`${tel.altitude_m?.toFixed(0)} m`} />}
-        {tel.mode === 'gpx' && (
-          <Metric label="VAM (30 s)" value={tel.vam_mh} unit="m/h" sub={`now ${tel.vam_instant_mh ?? '—'} m/h`} />
-        )}
-        {tel.mode === 'gpx' && (
-          <Metric
-            label="Climbed"
-            value={`+${(tel.elevation_gain_m ?? 0).toFixed(0)}`}
-            unit="m"
-            sub={tel.elevation_left_m != null ? `${tel.elevation_left_m.toFixed(0)} m left` : undefined}
-            title={`positive elevation climbed so far / still to climb to the end of the ${workout ? 'current lap' : 'route'}`}
-          />
-        )}
-        {workout &&
-          (tel.workout_duration_s != null && (tel.elapsed_s ?? 0) >= tel.workout_duration_s ? (
-            <Metric label="Workout" value="done" sub="slope target until end of lap" />
-          ) : (
-            <Metric label="Step left" value={fmtTime(tel.step_remaining_s)} sub={tel.next_target_w != null ? `next ${tel.next_target_w} W` : undefined} />
-          ))}
-      </div>
-
-      <div className="ride-mid">
-      {showGauge && <TargetGauge power={tel.power_avg3_w} target={tel.target_w} />}
-
+  const controls = (
       <div className="card adjust">
         {tel.mode === 'erg' ? (
           <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
@@ -226,51 +166,8 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           </div>
         )}
       </div>
-      </div>
-
-      <div className={`ride-bottom ${route ? 'with-map' : ''}`}>
-        {route && (
-          <div className="card map-card">
-            <label className="inline map-follow">
-              <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> follow rider
-            </label>
-            <RouteMap latlon={route.latlon} position={tel.lat != null ? [tel.lat, tel.lon!] : undefined} follow={follow} done={doneIdx} height="100%" />
-          </div>
-        )}
-        <div className="ride-side">
-          {workout && (
-            <div className="card side-card">
-              <WorkoutProfile steps={workout.steps} ftp={ftp} scale={(tel.intensity_pct ?? 100) / 100} elapsed={tel.elapsed_s} height={route ? 56 : 90} />
-              <small className="muted">
-                {fmtTime(tel.elapsed_s)} / {fmtTime(workout.duration_s)}
-              </small>
-            </div>
-          )}
-          {route && (
-            <div className="card side-card">
-              <ElevationProfile distance={route.profile_distance_m} altitude={route.altitude_m} grade={route.grade} position={routePos} height={56} />
-              <small className="muted">
-                {(route.distance_m / 1000).toFixed(1)} km · +{route.ascent_m.toFixed(0)} m
-              </small>
-            </div>
-          )}
-          {route && routePos != null && (
-            <div className="card side-card" title="Zoom on what is coming: about 5 minutes ahead at your average speed">
-              <LocalProfile
-                distance={route.profile_distance_m}
-                altitude={route.altitude_m}
-                grade={route.grade}
-                position={routePos}
-                speedKmh={tel.avg_speed_kmh}
-                loop={!!workout}
-              />
-            </div>
-          )}
-          <div className="card chart-card">
-            <LiveChart history={history} tick={tel.elapsed_s} />
-          </div>
-        </div>
-      </div>
-    </div>
   )
+
+  // Cockpit layout (RideCockpit): fits the window on desktop screens
+  return <RideCockpit c={{ tel, history, route, workout, ftp, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls }} />
 }

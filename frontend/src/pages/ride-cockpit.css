@@ -1,0 +1,246 @@
+/* Ride screen, "cockpit" layout (see RideCockpit.tsx) */
+
+.cockpit .card {
+  margin: 0;
+}
+.cockpit .map-card {
+  height: auto;
+  min-height: 0;
+}
+.ck-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.ck-left,
+.ck-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+.ck-fill {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* session (workout) card */
+.ck-session {
+  flex: none;
+  padding: 8px 12px;
+}
+.ck-session-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ck-session-head > b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.ck-step {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* dial card: stat column | dial | stat column; the dial shrinks to the card's height */
+.ck-dial-card {
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, 0.6fr) minmax(0, 2fr) minmax(120px, 0.6fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  overflow: hidden;
+}
+.ck-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-self: center;
+}
+.ck-tile {
+  padding: 4px 10px;
+}
+.ck-tile .value {
+  font-size: 22px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+}
+.ck-big {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px 8px;
+  border-radius: 10px;
+  background: var(--panel2);
+  border: 1px solid var(--grid);
+}
+.ck-big .label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.ck-big b {
+  font-size: clamp(30px, 2.8vw, 42px);
+  line-height: 1.05;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ck-big b .unit {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 3px;
+}
+.ck-big small {
+  font-size: 14px;
+  color: var(--muted);
+}
+.ck-big small b {
+  font-size: 16px;
+  color: var(--text);
+}
+
+/* the dial itself */
+.ck-dial {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+}
+.ck-track {
+  fill: none;
+  stroke: var(--panel2);
+  stroke-width: 26;
+}
+.ck-band {
+  fill: none;
+  stroke-width: 22;
+  opacity: 0.55;
+}
+.ck-target-tick {
+  stroke: var(--text);
+  stroke-width: 3;
+}
+.ck-marker {
+  fill: white;
+  stroke: var(--bg);
+  stroke-width: 4;
+  transition:
+    cx 0.25s linear,
+    cy 0.25s linear;
+}
+.ck-power {
+  text-anchor: middle;
+  font-size: 66px;
+  font-weight: 700;
+  fill: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.zone-text-on {
+  fill: var(--zone-on);
+}
+.zone-text-high {
+  fill: var(--zone-high);
+}
+.zone-text-too-high {
+  fill: var(--zone-too-high);
+}
+.zone-text-low,
+.zone-text-too-low {
+  fill: var(--zone-low);
+}
+.ck-unit,
+.ck-scale {
+  text-anchor: middle;
+  fill: var(--muted);
+  font-size: 14px;
+}
+.ck-scale {
+  font-size: 11px;
+}
+.ck-target {
+  text-anchor: middle;
+  font-size: 24px;
+  font-weight: 700;
+  fill: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.ck-zone {
+  text-anchor: middle;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* route progress: done / left on the full-route profile */
+.ck-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+.ck-progress-head i {
+  font-style: normal;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ck-progress-head b {
+  color: var(--text);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+.ck-profile-wrap {
+  position: relative;
+}
+.ck-done-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(15, 18, 24, 0.55);
+  border-right: 2px solid white;
+  pointer-events: none;
+  transition: width 0.25s linear;
+}
+
+/* bottom row: controls | live chart */
+.ck-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 8px;
+  height: 150px;
+}
+.ck-bottom > .card {
+  padding: 8px 12px;
+}
+.ck-chart {
+  display: flex;
+  flex-direction: column;
+}
+.ck-chart .live-chart {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto !important;
+}

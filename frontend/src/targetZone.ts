@@ -1,4 +1,5 @@
-/** Power vs target zone; see TargetGauge for the thresholds. */
+/** Power vs target zone: on target within ±max(5 %, 5 W), slightly high/low within
+ *  ±max(10 %, 10 W), beyond that too high/low. Used by the ride screen's power dial. */
 export type TargetZone = 'on' | 'high' | 'too-high' | 'low' | 'too-low'
 
 export function targetZone(power: number, target: number): TargetZone {

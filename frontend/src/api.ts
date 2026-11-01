@@ -193,6 +193,7 @@ export interface Telemetry {
   step_remaining_s?: number
   workout_duration_s?: number
   next_target_w?: number | null
+  step_avg_power_w?: number | null
   saved?: { ride_id: number } | null
   sim?: SimSettings
   /** client-side: 3 s moving average of power_w */

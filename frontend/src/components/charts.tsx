@@ -158,6 +158,7 @@ export function LocalProfile({
   speedKmh,
   loop,
   height = 96,
+  current,
 }: {
   distance: number[]
   altitude: number[]
@@ -166,6 +167,8 @@ export function LocalProfile({
   speedKmh: number | null | undefined
   loop: boolean // the route repeats (GPX + workout): continue past the end with the start
   height?: number
+  // optional: show the current grade (rise/run), altitude and climb rate under the profile
+  current?: { grade: number; altitude: number; vamMh?: number | null }
 }) {
   const total = distance[distance.length - 1] || 1
   // ~5 minutes ahead at the average speed, between 1.5 and 5 km; a little behind for context
@@ -179,8 +182,9 @@ export function LocalProfile({
   for (let i = 0; i <= N; i++) {
     const rel = start + ((end - start) * i) / N // distance relative to the route start
     let d = rel
-    if (loop) d = ((rel % total) + total) % total
-    else if (rel < 0 || rel > total) continue // nothing before the start / after the end
+    if (rel < 0) continue // nothing before the start (looping: not the previous lap's end either)
+    if (loop) d = rel % total // ahead, the route continues with its start
+    else if (rel > total) continue // nothing after the end
     pts.push({ rel, alt: interp(distance, altitude, d), g: interp(distance, grade, d) })
   }
   if (pts.length < 2) return null
@@ -223,13 +227,31 @@ export function LocalProfile({
         <circle cx={x(position)} cy={y(at(position))} r={5} className="rider-dot" />
       </svg>
       <div className="local-profile-labels">
-        <span>
-          {Math.round(lo)}–{Math.round(hi)} m
-        </span>
-        <span className="next-km">
-          next {nextLen >= 999 ? '1 km' : `${Math.round(nextLen)} m`}: {rise >= 0 ? '+' : ''}
-          {Math.round(rise)} m · {nextLen > 50 ? ((rise / nextLen) * 100).toFixed(1) : '0.0'} %
-        </span>
+        {current ? (
+          <span className="now-grade">
+            now{' '}
+            <b style={{ color: gradeColor(current.grade) }}>
+              {(current.grade * 100).toFixed(1)} %
+            </b>{' '}
+            · {Math.round(current.altitude)} m
+          </span>
+        ) : (
+          <span>
+            {Math.round(lo)}–{Math.round(hi)} m
+          </span>
+        )}
+        {current && current.vamMh !== undefined && (
+          <span className="now-vam" title="climb rate over the last 30 s">
+            VAM <b>{current.vamMh ?? '—'}</b> m/h
+          </span>
+        )}
+        {!current && (
+          // with the "current" line (grade, VAM) the next-km summary is left out
+          <span className="next-km">
+            next {nextLen >= 999 ? '1 km' : `${Math.round(nextLen)} m`}: {rise >= 0 ? '+' : ''}
+            {Math.round(rise)} m · {nextLen > 50 ? ((rise / nextLen) * 100).toFixed(1) : '0.0'} %
+          </span>
+        )}
       </div>
     </div>
   )
