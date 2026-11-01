@@ -6,7 +6,8 @@ import 'leaflet/dist/leaflet.css'
 function FitBounds({ bounds }: { bounds: LatLngBoundsExpression }) {
   const map = useMap()
   useEffect(() => {
-    map.fitBounds(bounds, { padding: [20, 20] })
+    // no animation: leaving the page mid-zoom made Leaflet throw "_leaflet_pos" of undefined
+    map.fitBounds(bounds, { padding: [20, 20], animate: false })
   }, [map, bounds])
   return null
 }
