@@ -206,6 +206,10 @@ class RideSession:
         self._last_tick: float | None = None
         self.climb = ClimbTracker()
         self.averages = RideAverages()
+        # average power of the current workout step (interval), reset at each new step
+        self._step_index: int | None = None
+        self._step_energy_j = 0.0
+        self._step_time_s = 0.0
         self.requested_target_w: float | None = None
         self.sent_target_w: float | None = None
         self.last: dict = {}
@@ -348,6 +352,13 @@ class RideSession:
         if running:
             self.bike.step((pc.power_w or 0.0) * mult, dt)
             self.averages.add(pc.power_w or 0.0, dt)  # measured power (no difficulty factor)
+            if self.workout is not None and not self.workout_done:
+                # the tick's power belongs to the step being ridden at the end of the tick
+                idx = self.workout.position(self.elapsed_s).step_index
+                if idx != self._step_index:
+                    self._step_index, self._step_energy_j, self._step_time_s = idx, 0.0, 0.0
+                self._step_energy_j += (pc.power_w or 0.0) * dt
+                self._step_time_s += dt
         st = self.bike.state
         if self.route is not None:
             lap = int(st.distance_m // self.route.total_distance_m)
@@ -484,5 +495,9 @@ class RideSession:
                 step_remaining_s=round(pos.step_remaining_s, 1),
                 workout_duration_s=self.workout.duration_s,
                 next_target_w=nxt,
+                # average power since the start of the current step (riding time only)
+                step_avg_power_w=round(self._step_energy_j / self._step_time_s)
+                if self._step_index == pos.step_index and self._step_time_s > 0
+                else None,
             )
         return out

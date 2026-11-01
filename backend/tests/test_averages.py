@@ -52,3 +52,26 @@ def test_session_reports_averages_excluding_pauses():
         tel = s.tick(t := t + 0.25)
     assert tel["avg_power_w"] == 200 and tel["np_w"] == 200
     assert tel["avg_speed_kmh"] == pytest.approx(tel["distance_m"] / s.elapsed_s * 3.6, abs=0.01)
+
+
+def test_interval_average_resets_at_each_step():
+    h = FakeHub()
+    w = Workout("w", [Step(20, 0.5, 0.5), Step(20, 1.0, 1.0)])
+    s = RideSession(h, Profile(power_match=False), "erg", workout=w)
+    t = 1000.0
+
+    def ride(seconds, watts):
+        nonlocal t
+        tel = None
+        for _ in range(int(seconds * 4)):
+            h.feed(trainer=watts, pm=watts)
+            tel = s.tick(t := t + 0.25)
+        return tel
+
+    ride(10, 150)
+    tel = ride(8, 170)  # first step: 10 s at 150 W then 8 s at 170 W
+    assert tel["step_index"] == 0
+    assert tel["step_avg_power_w"] == pytest.approx((10 * 150 + 8 * 170) / 18, abs=1.5)
+    tel = ride(6, 300)  # crosses into the second step: its average starts from scratch
+    assert tel["step_index"] == 1
+    assert tel["step_avg_power_w"] == 300
