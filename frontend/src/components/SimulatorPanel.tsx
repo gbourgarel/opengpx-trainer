@@ -3,7 +3,8 @@ import { api, type SimSettings } from '../api'
 
 /**
  * Fake power input for testing without hardware.
- * Keyboard (when no input is focused): ↑/↓ ±10 W, Shift+↑/↓ ±50 W (manual mode), Space = pedal on/off.
+ * Keyboard (when no input is focused): ←/→ ±10 W, Shift+←/→ ±50 W (manual mode), P = pedal
+ * on/off. (Space and ↑/↓ belong to the ride shortcuts: pause, intensity.)
  *
  * The panel owns the settings (seeded from telemetry when the simulator connects) and pushes
  * every change to the backend. Edits apply instantly and rapid key presses accumulate, instead
@@ -33,12 +34,12 @@ export function SimulatorPanel({ initial }: { initial: SimSettings }) {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
-      if (e.key === ' ') {
-        e.preventDefault()
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key === 'p' || e.key === 'P') {
         handlers.current.set({ pedaling: !cur.current.pedaling })
-      } else if (cur.current.mode === 'manual' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      } else if (cur.current.mode === 'manual' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
         e.preventDefault()
-        handlers.current.bump((e.shiftKey ? 50 : 10) * (e.key === 'ArrowUp' ? 1 : -1))
+        handlers.current.bump((e.shiftKey ? 50 : 10) * (e.key === 'ArrowRight' ? 1 : -1))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -58,7 +59,7 @@ export function SimulatorPanel({ initial }: { initial: SimSettings }) {
           </button>
         </div>
         <label className="chk">
-          <input type="checkbox" checked={sim.pedaling} onChange={(e) => set({ pedaling: e.target.checked })} /> pedaling
+          <input type="checkbox" checked={sim.pedaling} onChange={(e) => set({ pedaling: e.target.checked })} /> pedaling (P)
         </label>
         <label className="chk">
           <input type="checkbox" checked={sim.power_meter} onChange={(e) => set({ power_meter: e.target.checked })} /> power meter
@@ -104,7 +105,7 @@ export function SimulatorPanel({ initial }: { initial: SimSettings }) {
             </button>
           ))}
           <b className="sim-power">{Math.round(sim.manual_power_w)} W</b>
-          <small className="muted">↑/↓ ±10 W · Shift ±50 · Space pedal on/off</small>
+          <small className="muted">←/→ ±10 W · Shift ±50 · P pedal on/off</small>
         </div>
       )}
       {error && <div className="error">{error}</div>}
