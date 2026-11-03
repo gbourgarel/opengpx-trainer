@@ -4,17 +4,24 @@ Personal indoor-cycling app that drives a smart trainer over ANT+ (FE-C, USB sti
 Bluetooth LE (FTMS), with power meter and heart-rate sensors on either protocol.
 
 * **ERG workouts**: planned workouts fetched from intervals.icu (or imported `.zwo` / `.erg` / `.mrc`),
-  with a live intensity % adjustment.
+  with a live intensity % adjustment. The current step can be skipped or extended by 1 min, and
+  3-2-1 beeps announce each step change (a rising tone when the target goes up).
 * **GPX routes** (pseudo-ERG): the trainer target power follows a configurable *grade → %FTP* curve
   on the look-ahead grade, or a target set by hand. Virtual speed and position on the trace come
-  from a dynamic physics model fed with the measured power × (1 + difficulty %). Climb rate (VAM)
-  and elevation gain are shown.
+  from a dynamic physics model fed with the measured power × (1 + difficulty %), with an optional
+  **wind** (speed and direction, set when starting the route). Climb rate (VAM) and elevation
+  gain are shown.
 * **Workout on a route**: a GPX ride can follow a workout. The workout sets the target, the route
   gives speed and position, and the route loops while the workout lasts.
 * Power is also shown in **W/kg** (rider mass).
 * **Power source**: the power meter if one is detected (or forced), else the trainer. With a
   power meter, *power match* corrects the ERG target so the meter reads the requested power.
-* Rides are recorded to `.fit` (cycling / virtual activity) and can be uploaded to intervals.icu.
+* Rides are recorded to `.fit` (cycling / virtual activity, one lap per workout step). Once a
+  ride is saved, the app **asks** whether to upload it to intervals.icu (never automatic).
+* A ride in progress is checkpointed every 30 s: after a crash it is recovered into the history
+  at the next start.
+* During a ride the screen is kept on, and the keyboard drives the main controls (see
+  [Ride screen](#ride-screen)).
 
 ```
 backend/   Python 3.12 · FastAPI · openant · bleak · numpy · SQLite   (uv)
@@ -56,8 +63,9 @@ Click **Simulator** instead of **Connect sensors**. A simulator panel appears on
 
 * **Follow target**: behaves like an ERG trainer, so power tracks the target with a 1.5 s lag.
 * **Manual power**: you set the rider's power with the slider or ±10/±50 buttons, or from the
-  keyboard (↑/↓ ±10 W, Shift ±50 W). Use it to probe the speed model on a GPX route.
-* **Space** toggles pedaling, so you can watch the virtual bike coast and auto-pause.
+  keyboard (←/→ ±10 W, Shift ±50 W). Use it to probe the speed model on a GPX route.
+* **P** toggles pedaling, so you can watch the virtual bike coast and auto-pause. (Space and
+  ↑/↓ are the ride shortcuts.)
 * Switches for power meter / HR strap presence (turn the power meter off to see the *auto*
   source fall back to the trainer), sensor noise, and power-meter bias (default −3 %, which
   exercises power match).
@@ -65,9 +73,49 @@ Click **Simulator** instead of **Connect sensors**. A simulator panel appears on
 The same controls are available over the API: `PUT /api/simulator` with e.g.
 `{"mode": "manual", "manual_power_w": 300}`.
 
-Tests: `cd backend && uv run pytest`, lint: `uv run ruff check src tests`.
+Tests: `cd backend && uv run pytest`, lint: `uv run ruff check src tests`. Frontend:
+`cd frontend && npm run build` (type-check + bundle) and `npm run lint` (oxlint).
 
-Data (SQLite DB and `.fit` files) lives in `~/.hometrainer` (override with `HOMETRAINER_DATA`).
+Data lives in `~/.hometrainer`: the SQLite DB, `rides/*.fit`, and `checkpoints/` (rides in
+progress). Environment variables:
+
+| Variable               | Effect                                                        |
+|------------------------|---------------------------------------------------------------|
+| `HOMETRAINER_DATA`     | data directory instead of `~/.hometrainer`                    |
+| `HOMETRAINER_ANT_LOG`  | CSV file where every raw ANT+ page is logged (debugging)      |
+| `HOMETRAINER_FRONTEND` | built UI to serve instead of `frontend/dist`                  |
+
+## Ride screen
+
+* Auto start when you pedal, auto pause after 3 s without power or cadence (on a GPX route,
+  once the virtual bike has also stopped), auto resume.
+* Workout: **+1 min** and **Skip step** for the current step; *Sound on/off* for the 3-2-1
+  beeps (Web Audio, enabled by the first click or key press, remembered in the browser).
+* GPX: the wind badge in the map corner shows where the wind blows; hover it for the head /
+  tail / cross components on the current heading.
+* The screen is kept on with the Screen Wake Lock API, which needs `localhost` or HTTPS: a
+  tablet opening the app over plain `http://` on the LAN shows "screen may sleep".
+* Keyboard (ignored while typing in a field):
+
+  | Key            | Action                                                              |
+  |----------------|---------------------------------------------------------------------|
+  | Space          | pause / resume                                                      |
+  | ↑ / ↓ (+ / −)  | workout intensity ±1 % (ERG, GPX + workout); effort ±2 % on a GPX ride following the slope |
+  | M              | sound on / off                                                      |
+
+* When a ride ends (end of the workout or route, or *Stop & save*) the trainer goes back to
+  free ride, the FIT file is written in the background, and the upload to intervals.icu is
+  offered if an API key is set.
+
+## Recording
+
+* 1 Hz samples (power, cadence, HR, speed, distance, position, altitude, grade, target).
+* FIT activity: one lap per workout step (avg / max power, NP, HR, cadence,
+  `workout_step_index`), the target power as a `target_power` developer field on records and
+  laps.
+* Checkpoint: every 30 s the new samples are appended (and fsync'd) to
+  `checkpoints/<session>.jsonl`; the file is deleted once the ride is saved or discarded. At
+  startup, a leftover file becomes a ride named "… (recovered)".
 
 ## Speed model
 
@@ -137,4 +185,5 @@ Settings → Developer settings). The app uses:
 
 * `GET /api/v1/athlete/{id}/events?category=WORKOUT` to list planned workouts,
 * `GET /api/v1/athlete/{id}/events/{eventId}/download.zwo` to import one,
-* `POST /api/v1/athlete/{id}/activities` (multipart `file`) to upload a ride.
+* `POST /api/v1/athlete/{id}/activities` (multipart `file`) to upload a ride: from the prompt
+  shown when a ride is saved, or from History. A ride already uploaded is never sent twice.
