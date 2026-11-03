@@ -170,6 +170,62 @@ def test_fit_records_target_power_as_developer_field(tmp_path):
     assert recs[40].power == 200  # standard fields untouched
 
 
+def test_fit_has_one_lap_per_workout_step(tmp_path):
+    """Roadmap: intervals.icu / Garmin show the interval analysis from the FIT laps."""
+    from fit_tool.fit_file import FitFile
+    from fit_tool.profile.messages.lap_message import LapMessage
+    from fit_tool.profile.messages.session_message import SessionMessage
+
+    rec = Recorder()
+    t = time.time()
+    plan = [(0, 150.0, 150.0)] * 60 + [(1, 300.0, 290.0)] * 60 + [(None, 200.0, None)] * 20
+    for i, (step, watts, target) in enumerate(plan):
+        hr = 120 if step == 0 else 160
+        rec.add(
+            Sample(
+                t + i, i + 1, watts, 90, hr, 9.0, 9.0 * (i + 1), target_w=target, step_index=step
+            )
+        )
+    ff = FitFile.from_file(str(rec.write_fit(tmp_path / "laps.fit")))
+    msgs = [r.message for r in ff.records]
+    laps = [m for m in msgs if isinstance(m, LapMessage)]
+    ses = next(m for m in msgs if isinstance(m, SessionMessage))
+    assert ses.num_laps == len(laps) == 3
+    assert [lap.workout_step_index for lap in laps[:2]] == [0, 1]
+    assert [lap.avg_power for lap in laps] == [150, 300, 200]
+    assert laps[1].normalized_power == 300 and laps[2].normalized_power is None  # < 30 s
+    assert (laps[0].avg_heart_rate, laps[1].max_heart_rate) == (120, 160)
+    # laps tile the ride: their timer times and distances add up to the session's
+    assert sum(lap.total_timer_time for lap in laps) == pytest.approx(ses.total_timer_time)
+    assert sum(lap.total_distance for lap in laps) == pytest.approx(ses.total_distance)
+    assert laps[1].total_timer_time == pytest.approx(60)
+
+    def target_of(m):
+        f = next((f for f in m.developer_fields if f.name == "target_power"), None)
+        return None if f is None else f.get_value(0)
+
+    assert [target_of(lap) for lap in laps] == [150, 290, None]
+
+
+def test_session_records_the_workout_step_of_each_sample(monkeypatch):
+    from hometrainer import session as session_mod
+    from hometrainer.recording import split_laps
+
+    h = FakeHub()
+    w = Workout("t", [Step(10, 0.5, 0.5), Step(10, 1.0, 1.0)])
+    s = RideSession(h, Profile(ftp_w=200, power_match=False), "erg", workout=w)
+    t = 1000.0
+    monkeypatch.setattr(session_mod.time, "time", lambda: t)  # samples are 1 Hz wall clock
+    while s.state != "finished" and t < 1100:
+        h.feed(trainer=150, pm=150)
+        t += 0.25
+        s.tick(t)
+    laps = split_laps(s.recorder.samples)
+    # two laps, the finishing tick included in the last step (no 1 s lap at the end)
+    assert [lap[0].step_index for lap in laps] == [0, 1]
+    assert len(laps[1]) >= 9
+
+
 def test_simulator_manual_power_and_pm_dropout():
     from hometrainer.ant.simulator import SimulatedHub
 

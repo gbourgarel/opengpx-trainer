@@ -427,6 +427,11 @@ class RideSession:
                     lon=point.lon if point else None,
                     grade=point.grade if point else None,
                     target_w=self.requested_target_w,
+                    # one FIT lap per workout step; in ERG the finishing tick belongs to the
+                    # last step, in a mixed ride the rest of the route is a lap of its own
+                    step_index=self.workout.position(self.elapsed_s).step_index
+                    if self.workout is not None and (self.mode == "erg" or not self.workout_done)
+                    else None,
                 )
             )
 

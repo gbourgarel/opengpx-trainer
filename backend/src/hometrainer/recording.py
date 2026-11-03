@@ -21,6 +21,7 @@ from fit_tool.profile.profile_type import (
     Event,
     EventType,
     FileType,
+    LapTrigger,
     Manufacturer,
     Sport,
     SubSport,
@@ -45,10 +46,42 @@ class Sample:
     lon: float | None = None
     grade: float | None = None
     target_w: float | None = None
+    step_index: int | None = None  # workout step being ridden (None: no workout / over)
 
 
 def ms(t: float) -> int:
     return int(round(t * 1000))
+
+
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _target_field(watts: float) -> DeveloperField:
+    """The ``target_power`` developer field (W), on records and on laps."""
+    f = DeveloperField(
+        developer_data_index=0,
+        field_id=TARGET_POWER_FIELD,
+        base_type=BaseType.UINT16,  # must match the field description
+        size=2,
+    )
+    f.set_value(0, int(round(max(0.0, min(watts, 65534.0)))))
+    return f
+
+
+def split_laps(samples: list[Sample]) -> list[list[Sample]]:
+    """One lap per workout step: consecutive samples sharing a step index.
+
+    A ride without a workout is a single lap; after the end of a workout (mixed GPX ride),
+    the rest of the route is one more lap.
+    """
+    laps: list[list[Sample]] = []
+    for s in samples:
+        if laps and laps[-1][-1].step_index == s.step_index:
+            laps[-1].append(s)
+        else:
+            laps.append([s])
+    return laps
 
 
 class Recorder:
@@ -131,16 +164,8 @@ class Recorder:
         b.add(ev)
 
         for s in self.samples:
-            fields = []
-            if s.target_w is not None:  # none during free-ride steps
-                f = DeveloperField(
-                    developer_data_index=0,
-                    field_id=TARGET_POWER_FIELD,
-                    base_type=BaseType.UINT16,  # must match the field description
-                    size=2,
-                )
-                f.set_value(0, int(round(max(0.0, min(s.target_w, 65534.0)))))
-                fields.append(f)
+            # no target during free-ride steps
+            fields = [] if s.target_w is None else [_target_field(s.target_w)]
             r = RecordMessage(developer_fields=fields)
             r.timestamp = ms(s.timestamp_s)
             r.distance = s.distance_m
@@ -166,17 +191,14 @@ class Recorder:
         ev.timestamp = ms(last.timestamp_s)
         b.add(ev)
 
+        laps = split_laps(self.samples)
+        prev: Sample | None = None  # last sample of the previous lap: where this one starts
+        for i, group in enumerate(laps):
+            b.add(self._lap_message(i, group, prev, is_last=i == len(laps) - 1))
+            prev = group[-1]
+
         summ = self.summary()
         elapsed = last.timestamp_s - first.timestamp_s
-        lap = LapMessage()
-        lap.timestamp = ms(last.timestamp_s)
-        lap.start_time = ms(first.timestamp_s)
-        lap.total_elapsed_time = elapsed
-        lap.total_timer_time = last.elapsed_s
-        lap.total_distance = last.distance_m
-        if summ["avg_power_w"] is not None:
-            lap.avg_power = int(summ["avg_power_w"])
-        b.add(lap)
 
         ses = SessionMessage()
         ses.timestamp = ms(last.timestamp_s)
@@ -187,7 +209,7 @@ class Recorder:
         ses.sport = Sport.CYCLING
         ses.sub_sport = SubSport.VIRTUAL_ACTIVITY
         ses.first_lap_index = 0
-        ses.num_laps = 1
+        ses.num_laps = len(laps)
         if summ["avg_power_w"] is not None:
             ses.avg_power = int(summ["avg_power_w"])
             ses.max_power = int(summ["max_power_w"])
@@ -206,6 +228,41 @@ class Recorder:
         path.parent.mkdir(parents=True, exist_ok=True)
         b.build().to_file(str(path))
         return path
+
+    @staticmethod
+    def _lap_message(index: int, group: list[Sample], prev: Sample | None, is_last: bool):
+        """Lap for one workout step: averages over its 1 Hz samples (riding time only, like
+        the session), the average target as the ``target_power`` developer field."""
+        first, last = group[0], group[-1]
+        start_ts = first.timestamp_s if prev is None else prev.timestamp_s
+        powers = [s.power_w or 0.0 for s in group]
+        hrs = [s.heart_rate_bpm for s in group if s.heart_rate_bpm]
+        cads = [s.cadence_rpm for s in group if s.cadence_rpm]  # zeros excluded (coasting)
+        targets = [s.target_w for s in group if s.target_w is not None]
+        avg_target = _mean(targets)
+        lap = LapMessage(developer_fields=[] if avg_target is None else [_target_field(avg_target)])
+        lap.message_index = index
+        lap.event = Event.LAP
+        lap.event_type = EventType.STOP
+        lap.timestamp = ms(last.timestamp_s)
+        lap.start_time = ms(start_ts)
+        lap.total_elapsed_time = last.timestamp_s - start_ts
+        lap.total_timer_time = last.elapsed_s - (0.0 if prev is None else prev.elapsed_s)
+        lap.total_distance = last.distance_m - (0.0 if prev is None else prev.distance_m)
+        lap.avg_power = int(round(_mean(powers)))
+        lap.max_power = int(round(max(powers)))
+        np_w = normalized_power(powers)  # None under 30 s
+        if np_w:
+            lap.normalized_power = int(round(np_w))
+        if hrs:
+            lap.avg_heart_rate = int(round(_mean(hrs)))
+            lap.max_heart_rate = int(round(max(hrs)))
+        if cads:
+            lap.avg_cadence = int(round(_mean(cads)))
+        if first.step_index is not None:
+            lap.workout_step_index = first.step_index
+        lap.lap_trigger = LapTrigger.SESSION_END if is_last else LapTrigger.TIME
+        return lap
 
 
 class RideAverages:
