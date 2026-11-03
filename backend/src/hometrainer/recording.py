@@ -66,12 +66,16 @@ class Recorder:
             self.samples.append(s)
             self._last_second = sec
 
+    @classmethod
+    def from_samples(cls, samples: list[Sample]) -> Recorder:
+        r = cls()
+        r.samples = list(samples)
+        r._last_second = int(samples[-1].timestamp_s) if samples else None
+        return r
+
     def snapshot(self) -> Recorder:
         """Copy of the samples recorded so far, to export without holding the session."""
-        r = Recorder()
-        r.samples = list(self.samples)
-        r._last_second = self._last_second
-        return r
+        return Recorder.from_samples(self.samples)
 
     def summary(self) -> dict:
         if not self.samples:

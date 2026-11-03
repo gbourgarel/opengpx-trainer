@@ -8,6 +8,7 @@ import datetime as dt
 import logging
 import os
 import threading
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -21,8 +22,10 @@ from .ant.hub import SensorHub
 from .ant.scan import scan_ant
 from .ant.simulator import SimulatedHub
 from .ble.scan import scan_ble
+from .checkpoint import RideCheckpoint, load_checkpoint
 from .gpx.route import Route
 from .profile import Profile, ProfileError
+from .recording import Recorder
 from .sensors import MultiHub
 from .session import RideSession, choose_power, w_per_kg
 from .storage import Storage
@@ -117,18 +120,54 @@ class AppState:
             with self.session_lock:
                 s.finish()  # no-op when already finished; guarantees the samples are final
                 rec = s.recorder.snapshot()
+                # the last seconds too, in case we die during the (long) FIT write
+                s.checkpoint_now(time.monotonic(), final=True)
             if not rec.samples:
                 return None
             started = s.started_at or dt.datetime.now(dt.UTC)
-            fname = f"{started:%Y%m%d-%H%M%S}-{s.mode}-{s.id[:6]}.fit"
-            path = rec.write_fit(self.storage.rides_dir / fname)
-            summary = rec.summary()
-            rid = self.storage.add_ride(
-                started.isoformat(timespec="seconds"), s.mode, s.name, summary, str(path)
-            )
-            self.last_ride_id = rid
-            s.saved = {"ride_id": rid, **summary}
+            s.saved = self._store_ride(rec, started, s.mode, s.name, s.id)
+            if s.checkpoint is not None:
+                s.checkpoint.discard()
             return s.saved
+
+    def _store_ride(
+        self, rec: Recorder, started: dt.datetime, mode: str, name: str, ride_key: str
+    ) -> dict:
+        fname = f"{started:%Y%m%d-%H%M%S}-{mode}-{ride_key[:6]}.fit"
+        path = rec.write_fit(self.storage.rides_dir / fname)
+        summary = rec.summary()
+        rid = self.storage.add_ride(
+            started.isoformat(timespec="seconds"), mode, name, summary, str(path)
+        )
+        self.last_ride_id = rid
+        return {"ride_id": rid, **summary}
+
+    def recover_rides(self) -> list[dict]:
+        """Save the rides left unfinished by a crash (checkpoint files) into the history."""
+        out = []
+        for path in sorted(self.storage.checkpoints_dir.glob("*.jsonl")):
+            try:
+                header, samples = load_checkpoint(path)
+                if samples:
+                    started = (
+                        dt.datetime.fromisoformat(header["started_at"])
+                        if header.get("started_at")
+                        else dt.datetime.fromtimestamp(samples[0].timestamp_s, dt.UTC)
+                    )
+                    saved = self._store_ride(
+                        Recorder.from_samples(samples),
+                        started,
+                        header.get("mode", "ride"),
+                        f"{header.get('name', 'Ride')} (recovered)",
+                        header.get("session_id") or path.stem,
+                    )
+                    log.info("Recovered unfinished ride %s as #%s", path.name, saved["ride_id"])
+                    out.append(saved)
+                path.unlink()
+            except Exception:
+                log.exception("Cannot recover %s, renamed to .bad", path.name)
+                path.rename(path.with_suffix(".bad"))
+        return out
 
     def idle_telemetry(self) -> dict:
         if self.hub is None:
@@ -196,6 +235,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                     s = st.session  # read once: stop() may clear it from another thread
                     if s is not None and st.hub is not None:
                         tel = s.tick()
+                        s.checkpoint_now(time.monotonic())
                         if tel["state"] == "finished":
                             tel["saved"] = s.saved  # None while the FIT is being written
                             save_in_background(s)
@@ -219,6 +259,10 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
+        try:
+            await asyncio.to_thread(st.recover_rides)  # rides left by a crash -> history
+        except Exception:
+            log.exception("recovering unfinished rides failed")
         task = asyncio.create_task(engine_loop())
         try:
             yield
@@ -448,6 +492,9 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 workout_id=body.workout_id if workout else None,
                 route_id=body.route_id if route else None,
             )
+            st.session.checkpoint = RideCheckpoint(
+                st.storage.checkpoints_dir / f"{st.session.id}.jsonl"
+            )
             return {"ok": True, "name": st.session.name, "session_id": st.session.id}
 
     def require_session() -> RideSession:
@@ -500,7 +547,12 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         # Written outside the session lock (this sync endpoint runs in the threadpool, not on
         # the event loop). save_session is idempotent: a ride that finished on its own and is
         # being / was saved by the engine waits for that save and is not written twice.
-        saved = st.save_session(s) if save else s.saved
+        if save:
+            saved = st.save_session(s)
+        else:
+            saved = s.saved
+            if s.checkpoint is not None and saved is None:
+                s.checkpoint.discard()  # discarded on purpose: nothing to recover
         return {"saved": saved}
 
     # -- rides --------------------------------------------------------------------------

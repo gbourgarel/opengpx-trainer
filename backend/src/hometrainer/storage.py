@@ -58,6 +58,8 @@ class Storage:
         self.data_dir = Path(data_dir or default_data_dir())
         self.rides_dir = self.data_dir / "rides"
         self.rides_dir.mkdir(parents=True, exist_ok=True)
+        self.checkpoints_dir = self.data_dir / "checkpoints"  # rides in progress (crash-safe)
+        self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._db = sqlite3.connect(self.data_dir / "hometrainer.db", check_same_thread=False)
         self._db.row_factory = sqlite3.Row

@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from .ant.hub import Readings, SensorHub
+from .checkpoint import RideCheckpoint
 from .gpx.route import Route
 from .physics.grade_power import RateLimiter
 from .physics.model import VirtualBike, flat_road
@@ -180,6 +181,7 @@ class RideSession:
         self.route_id = route_id
         self.saved: dict | None = None  # set once the ride is written to history (save once)
         self.save_started = False  # the engine launched its background save
+        self.checkpoint: RideCheckpoint | None = None  # crash-safe copy, set by the app
         self.state: State = "ready"
         self.started_at: datetime | None = None
         self.elapsed_s = 0.0
@@ -271,6 +273,18 @@ class RideSession:
             self.effort_pct = max(10.0, min(float(effort_pct), 200.0))
         if difficulty_pct is not None:
             self.difficulty_pct = max(-90.0, min(float(difficulty_pct), 200.0))
+
+    def checkpoint_now(self, now: float, final: bool = False) -> None:
+        """Append the new samples to the checkpoint file (at most every 30 s unless final)."""
+        if self.checkpoint is None or self.started_at is None:
+            return
+        header = {
+            "session_id": self.id,
+            "mode": self.mode,
+            "name": self.name,
+            "started_at": self.started_at.isoformat(),
+        }
+        self.checkpoint.update(header, self.recorder.samples, now, final)
 
     def _start_if_needed(self) -> None:
         if self.started_at is None:
