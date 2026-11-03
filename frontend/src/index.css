@@ -385,6 +385,25 @@ th {
   color: var(--power);
   border-style: dashed;
 }
+.upload-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  background: var(--panel2);
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+.upload-prompt .actions {
+  display: flex;
+  gap: 8px;
+}
+.upload-prompt a {
+  color: var(--ok);
+}
 .shortcuts-help {
   display: block;
   margin-top: 6px;

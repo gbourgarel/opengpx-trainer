@@ -217,6 +217,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     st = AppState(storage or Storage())
 
     saving: set[asyncio.Task] = set()  # strong refs to the background FIT writes
+    upload_lock = asyncio.Lock()  # one intervals.icu upload at a time: never the same ride twice
 
     def save_in_background(s: RideSession) -> None:
         # once per session; the write runs in a worker thread so ticks keep coming
@@ -601,21 +602,26 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
     @app.post("/api/rides/{ride_id}/upload")
     async def ride_upload(ride_id: int):
-        r = st.storage.get_ride(ride_id)
-        if not r or not r["fit_path"]:
-            raise HTTPException(404, "Ride not found")
-        c = intervals_client()
-        try:
-            res = await c.upload_activity(
-                Path(r["fit_path"]).read_bytes(), Path(r["fit_path"]).name, r["name"]
-            )
-        except Exception as e:
-            raise HTTPException(502, f"intervals.icu error: {e}") from e
-        finally:
-            await c.aclose()
-        aid = str(res.get("id", ""))
-        st.storage.set_ride_intervals_id(ride_id, aid)
-        return {"intervals_activity_id": aid}
+        """Send the ride's FIT file to intervals.icu, once: a ride already uploaded (another
+        click, another device) returns its activity id without sending it again."""
+        async with upload_lock:
+            r = st.storage.get_ride(ride_id)
+            if not r or not r["fit_path"] or not Path(r["fit_path"]).exists():
+                raise HTTPException(404, "Ride not found")
+            if r["intervals_activity_id"]:
+                return {"intervals_activity_id": r["intervals_activity_id"], "already": True}
+            c = intervals_client()
+            try:
+                res = await c.upload_activity(
+                    Path(r["fit_path"]).read_bytes(), Path(r["fit_path"]).name, r["name"]
+                )
+            except Exception as e:
+                raise HTTPException(502, f"intervals.icu error: {e}") from e
+            finally:
+                await c.aclose()
+            aid = str(res.get("id", ""))
+            st.storage.set_ride_intervals_id(ride_id, aid)
+            return {"intervals_activity_id": aid, "already": False}
 
     # -- live telemetry -----------------------------------------------------------------
     @app.websocket("/ws/live")

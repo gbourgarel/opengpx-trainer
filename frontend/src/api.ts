@@ -253,7 +253,7 @@ export const api = {
   workout: (id: number) => req<Workout>('GET', `/api/workouts/${id}`),
   pause: () => req('POST', '/api/session/pause'),
   resume: () => req('POST', '/api/session/resume'),
-  stop: (save = true) => req<{ saved: unknown }>('POST', `/api/session/stop?save=${save}`),
+  stop: (save = true) => req<{ saved: { ride_id: number } | null }>('POST', `/api/session/stop?save=${save}`),
   adjust: (a: {
     intensity_pct?: number
     effort_pct?: number
@@ -270,7 +270,8 @@ export const api = {
   setSim: (s: Partial<SimSettings>) => req<SimSettings>('PUT', '/api/simulator', s),
 
   rides: () => req<Ride[]>('GET', '/api/rides'),
-  uploadRide: (id: number) => req<{ intervals_activity_id: string }>('POST', `/api/rides/${id}/upload`),
+  /** idempotent: a ride already on intervals.icu is not sent again (already = true) */
+  uploadRide: (id: number) => req<{ intervals_activity_id: string; already?: boolean }>('POST', `/api/rides/${id}/upload`),
 }
 
 export const fmtTime = (s: number | undefined | null) => {

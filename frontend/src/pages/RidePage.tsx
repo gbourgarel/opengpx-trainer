@@ -73,7 +73,8 @@ export function RidePage({
   active: ActiveRide | null
   profile: Profile | null
   wake: WakeLockStatus
-  onEnd: () => void
+  /** the ride view is closed; ``rideId`` of the ride saved, if any */
+  onEnd: (rideId?: number) => void
 }) {
   const [error, setError] = useState<string | null>(null)
   const [follow, setFollow] = useState(true)
@@ -150,7 +151,7 @@ export function RidePage({
           <button
             className="danger"
             onClick={() => {
-              if (tel.state === 'finished' || confirm('Stop and save this ride?')) act(() => api.stop(true).then(onEnd))
+              if (tel.state === 'finished' || confirm('Stop and save this ride?')) act(() => api.stop(true).then((r) => onEnd(r.saved?.ride_id)))
             }}
           >
             {tel.state === 'finished' ? 'Close' : 'Stop & save'}

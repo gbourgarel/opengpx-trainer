@@ -149,6 +149,34 @@ def test_concurrent_saves_write_a_single_ride(client):
     assert len({r["ride_id"] for r in results}) == 1
 
 
+def test_ride_is_uploaded_to_intervals_only_once(client, monkeypatch):
+    from hometrainer.recording import Sample
+    from hometrainer.workouts.intervals_icu import IntervalsIcuClient
+
+    calls = []
+
+    async def fake_upload(self, fit_bytes, filename, name=None):
+        calls.append((filename, name, len(fit_bytes)))
+        return {"id": "i4242"}
+
+    monkeypatch.setattr(IntervalsIcuClient, "upload_activity", fake_upload)
+    client.put("/api/profile", json={"intervals_api_key": "k", "intervals_athlete_id": "i1"})
+    start_erg(client)
+    s = client.st.session
+    with client.st.session_lock:
+        for i in range(30):
+            s.recorder.add(Sample(1.8e9 + i, i + 1.0, 200, 90, 140, 9.0, 9.0 * i))
+    rid = client.post("/api/session/stop").json()["saved"]["ride_id"]
+
+    first = client.post(f"/api/rides/{rid}/upload").json()
+    again = client.post(f"/api/rides/{rid}/upload").json()
+    assert first == {"intervals_activity_id": "i4242", "already": False}
+    assert again == {"intervals_activity_id": "i4242", "already": True}
+    assert len(calls) == 1 and calls[0][1] == s.name and calls[0][2] > 0
+    assert client.get("/api/rides").json()[0]["intervals_activity_id"] == "i4242"
+    assert client.post("/api/rides/999/upload").status_code == 404
+
+
 def test_skip_and_extend_step_api(client):
     start_erg(client)
     w0 = client.get("/api/session/workout").json()

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type DeviceStatus, type Profile, type RouteDetail, type Workout } from './api'
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
 import { SimulatorPanel } from './components/SimulatorPanel'
+import { UploadPrompt } from './components/UploadPrompt'
 import { RidePage, type ActiveRide } from './pages/RidePage'
 import { useLive } from './useLive'
 import { useWakeLock } from './wakeLock'
@@ -57,6 +58,25 @@ export default function App() {
   const dev = tel.devices
   // keep the screen on during a ride, whatever the tab shown
   const wake = useWakeLock(['ready', 'running', 'paused'].includes(tel.state))
+
+  // Once a ride is saved, offer (never force) the upload to intervals.icu: when it finishes on
+  // its own (telemetry) or is stopped with "Stop & save". Asked once per ride in this window.
+  const [uploadAsk, setUploadAsk] = useState<{ rideId: number; name?: string } | null>(null)
+  const asked = useRef(new Set<number>())
+  const canUpload = !!profile?.intervals_api_key_set
+  const offerUpload = useCallback(
+    (rideId: number, name?: string) => {
+      if (!canUpload || asked.current.has(rideId)) return
+      asked.current.add(rideId)
+      setUploadAsk({ rideId, name })
+    },
+    [canUpload],
+  )
+  const savedRideId = tel.saved?.ride_id
+  const rideName = tel.name
+  useEffect(() => {
+    if (savedRideId != null) offerUpload(savedRideId, rideName)
+  }, [savedRideId, rideName, offerUpload])
 
   const connect = (kind: 'devices' | 'simulator') => {
     if (connecting) return
@@ -175,7 +195,20 @@ export default function App() {
       )}
       <main className={tab === 'ride' ? 'ride-main' : ''}>
         {tab === 'ride' && tel.sim && <SimulatorPanel key={tel.hub ?? ''} initial={tel.sim} />}
-        {tab === 'ride' && <RidePage tel={tel} history={history} active={active} profile={profile} wake={wake} onEnd={() => setActive(null)} />}
+        {uploadAsk && <UploadPrompt key={uploadAsk.rideId} rideId={uploadAsk.rideId} name={uploadAsk.name} onClose={() => setUploadAsk(null)} />}
+        {tab === 'ride' && (
+          <RidePage
+            tel={tel}
+            history={history}
+            active={active}
+            profile={profile}
+            wake={wake}
+            onEnd={(rideId) => {
+              setActive(null)
+              if (rideId != null) offerUpload(rideId, tel.name)
+            }}
+          />
+        )}
         {tab === 'workouts' && <WorkoutsPage profile={profile} canStart={!!hub} onStart={startWorkout} />}
         {tab === 'routes' && <RoutesPage canStart={!!hub} onStart={startRoute} />}
         {tab === 'history' && <HistoryPage />}
