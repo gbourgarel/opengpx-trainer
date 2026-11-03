@@ -381,6 +381,16 @@ th {
   color: var(--power);
   border-color: var(--power);
 }
+.badge.warn {
+  color: var(--power);
+  border-style: dashed;
+}
+.shortcuts-help {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
 .metrics {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

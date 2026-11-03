@@ -5,6 +5,7 @@ import { ProfilePage } from './pages/ProfilePage'
 import { SimulatorPanel } from './components/SimulatorPanel'
 import { RidePage, type ActiveRide } from './pages/RidePage'
 import { useLive } from './useLive'
+import { useWakeLock } from './wakeLock'
 
 type Tab = 'ride' | 'workouts' | 'routes' | 'history' | 'profile'
 const TABS: [Tab, string][] = [
@@ -54,6 +55,8 @@ export default function App() {
 
   const hub = tel.hub
   const dev = tel.devices
+  // keep the screen on during a ride, whatever the tab shown
+  const wake = useWakeLock(['ready', 'running', 'paused'].includes(tel.state))
 
   const connect = (kind: 'devices' | 'simulator') => {
     if (connecting) return
@@ -172,7 +175,7 @@ export default function App() {
       )}
       <main className={tab === 'ride' ? 'ride-main' : ''}>
         {tab === 'ride' && tel.sim && <SimulatorPanel key={tel.hub ?? ''} initial={tel.sim} />}
-        {tab === 'ride' && <RidePage tel={tel} history={history} active={active} profile={profile} onEnd={() => setActive(null)} />}
+        {tab === 'ride' && <RidePage tel={tel} history={history} active={active} profile={profile} wake={wake} onEnd={() => setActive(null)} />}
         {tab === 'workouts' && <WorkoutsPage profile={profile} canStart={!!hub} onStart={startWorkout} />}
         {tab === 'routes' && <RoutesPage canStart={!!hub} onStart={startRoute} />}
         {tab === 'history' && <HistoryPage />}

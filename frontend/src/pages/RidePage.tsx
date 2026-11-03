@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { api, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ManualTarget } from '../components/ManualTarget'
+import { SHORTCUTS_HELP, useRideShortcuts } from '../rideKeys'
 import { useStepCues } from '../stepCues'
+import type { WakeLockStatus } from '../wakeLock'
 import type { HistoryPoint } from '../useLive'
 import { RideCockpit } from './RideCockpit'
 
@@ -58,13 +60,28 @@ function Stepper({ label, value, step, onChange, unit = '%', signed }: { label: 
   )
 }
 
-export function RidePage({ tel, history, active, profile, onEnd }: { tel: Telemetry; history: { current: HistoryPoint[] }; active: ActiveRide | null; profile: Profile | null; onEnd: () => void }) {
+export function RidePage({
+  tel,
+  history,
+  active,
+  profile,
+  wake,
+  onEnd,
+}: {
+  tel: Telemetry
+  history: { current: HistoryPoint[] }
+  active: ActiveRide | null
+  profile: Profile | null
+  wake: WakeLockStatus
+  onEnd: () => void
+}) {
   const [error, setError] = useState<string | null>(null)
   const [follow, setFollow] = useState(true)
   const [sound, setSound] = useStepCues(tel) // 3-2-1 beeps before each workout step change
   const inSession = ['ready', 'running', 'paused', 'finished'].includes(tel.state)
   const route = active?.route
   const workout = active?.workout
+  useRideShortcuts({ tel, enabled: inSession && !!active, hasWorkout: !!workout, sound, setSound, onError: setError })
   const ftp = profile?.ftp_w ?? 250
 
   // position within the current lap (the route loops in GPX + workout rides)
@@ -111,6 +128,16 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           <span className="badge">{modeLabel}</span>
           {lap > 1 && <span className="badge">lap {lap}</span>}
           <span className="badge">power: {tel.power_source}</span>
+          {wake === 'on' && (
+            <span className="badge" title="The screen will not go to sleep during the ride">
+              screen on
+            </span>
+          )}
+          {wake === 'unsupported' && tel.state !== 'finished' && (
+            <span className="badge warn" title="This browser cannot keep the screen on here (needs localhost or HTTPS): turn off screen sleep in the system settings">
+              screen may sleep
+            </span>
+          )}
         </div>
         <div className="controls">
           {workout && (
@@ -189,6 +216,9 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
             </small>
           </div>
         )}
+        <small className="shortcuts-help" title="Keyboard shortcuts">
+          ⌨ {SHORTCUTS_HELP}
+        </small>
       </div>
   )
 
