@@ -89,6 +89,10 @@ button.ghost,
 .button.ghost {
   background: transparent;
 }
+button.muted {
+  background: transparent;
+  opacity: 0.6;
+}
 input,
 select {
   background: var(--panel2);

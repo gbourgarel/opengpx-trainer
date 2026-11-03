@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ManualTarget } from '../components/ManualTarget'
+import { useStepCues } from '../stepCues'
 import type { HistoryPoint } from '../useLive'
 import { RideCockpit } from './RideCockpit'
 
@@ -58,6 +59,7 @@ function Stepper({ label, value, step, onChange, unit = '%', signed }: { label: 
 export function RidePage({ tel, history, active, profile, onEnd }: { tel: Telemetry; history: { current: HistoryPoint[] }; active: ActiveRide | null; profile: Profile | null; onEnd: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [follow, setFollow] = useState(true)
+  const [sound, setSound] = useStepCues(tel) // 3-2-1 beeps before each workout step change
   const inSession = ['ready', 'running', 'paused', 'finished'].includes(tel.state)
   const route = active?.route
   const workout = active?.workout
@@ -109,6 +111,11 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
           <span className="badge">power: {tel.power_source}</span>
         </div>
         <div className="controls">
+          {workout && (
+            <button className={sound ? '' : 'muted'} onClick={() => setSound(!sound)} title="Beeps 3-2-1 before each step change, a rising tone when the target goes up">
+              {sound ? 'Sound on' : 'Sound off'}
+            </button>
+          )}
           {tel.state === 'running' && <button onClick={() => act(api.pause)}>Pause</button>}
           {(tel.state === 'paused' || tel.state === 'ready') && <button onClick={() => act(api.resume)}>Resume</button>}
           <button
