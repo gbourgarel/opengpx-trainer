@@ -413,6 +413,13 @@ class RideSession:
                 )
             )
 
+        if running and self.state == "finished":
+            # finished on its own: no more trainer commands are sent after this tick, and the
+            # ANT sender would keep re-sending the last target (e.g. the summit's climbing
+            # power) until the ride is closed. Hand the trainer back to free ride.
+            self.requested_target_w = self.sent_target_w = None
+            self.hub.set_basic_resistance(FREE_RIDE_RESISTANCE_PCT)
+
         self.last = self._telemetry(r, pc, point)
         return self.last
 

@@ -555,3 +555,20 @@ def test_plain_gpx_ride_still_ends_at_route_end():
         tel = s.tick(t := t + 0.25)
     assert s.state == "finished"  # no workout: one pass, no loop
     assert tel["distance_m"] == pytest.approx(s.route.total_distance_m, abs=5)
+
+
+def test_finished_ride_hands_the_trainer_back_to_free_ride():
+    """Roadmap: after an automatic finish the ANT sender kept re-sending the last target."""
+    from hometrainer.session import FREE_RIDE_RESISTANCE_PCT
+
+    h, s = _gpx_session(grade=0.0)
+    t, tel = 1000.0, None
+    while s.state != "finished" and t < 1000 + 600:
+        h.feed(trainer=300, pm=300)
+        tel = s.tick(t := t + 0.25)
+    assert s.state == "finished"
+    assert h.targets[-1] == ("res", FREE_RIDE_RESISTANCE_PCT)
+    assert tel["target_w"] is None
+    n = len(h.targets)
+    s.tick(t + 0.25)
+    assert len(h.targets) == n  # nothing more is commanded once finished
