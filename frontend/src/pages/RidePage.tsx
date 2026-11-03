@@ -123,7 +123,7 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
       </div>
       {error && <div className="error">{error}</div>}
       {tel.state === 'ready' && <div className="hint">Start pedalling to begin — the clock starts automatically.</div>}
-      {tel.state === 'finished' && <div className="hint ok">Finished! Ride saved{tel.saved ? ` (#${tel.saved.ride_id})` : ''}.</div>}
+      {tel.state === 'finished' && <div className="hint ok">Finished! {tel.saved ? `Ride saved (#${tel.saved.ride_id}).` : 'Saving the ride…'}</div>}
     </>
   )
 

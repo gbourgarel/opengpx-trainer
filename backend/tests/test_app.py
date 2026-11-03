@@ -147,3 +147,38 @@ def test_concurrent_saves_write_a_single_ride(client):
         t.join()
     assert len(client.get("/api/rides").json()) == 1
     assert len({r["ride_id"] for r in results}) == 1
+
+
+def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):
+    """Review #9: the FIT write ran on the event loop and under the session lock."""
+    import threading
+    import time
+
+    from hometrainer.recording import Recorder
+
+    real_write = Recorder.write_fit
+    lock_free = []
+
+    def slow_write(self, path):
+        def probe():
+            got = client.st.session_lock.acquire(timeout=1)
+            lock_free.append(got)
+            if got:
+                client.st.session_lock.release()
+
+        th = threading.Thread(target=probe)
+        th.start()
+        th.join()
+        time.sleep(0.5)  # meanwhile the engine must keep ticking
+        return real_write(self, path)
+
+    monkeypatch.setattr(Recorder, "write_fit", slow_write)
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    wid = client.post("/api/workouts/import", files={"file": ("s.zwo", SHORT_ZWO)}).json()["id"]
+    client.post("/api/session/start", json={"mode": "erg", "workout_id": wid})
+    s = client.st.session
+    deadline = time.monotonic() + 10
+    while s.saved is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert s.saved is not None and lock_free == [True]
+    assert len(client.get("/api/rides").json()) == 1

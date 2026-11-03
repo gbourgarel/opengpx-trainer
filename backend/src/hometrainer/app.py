@@ -52,6 +52,7 @@ class AppState:
         # loop thread) and the sync endpoints (threadpool) used to race, e.g. a ride finishing
         # on its own while "Stop & save" was clicked got saved twice.
         self.session_lock = threading.RLock()
+        self._save_lock = threading.Lock()  # one FIT write at a time (see save_session)
 
     def connect(self, kind: str) -> None:
         # One connection attempt at a time: two concurrent requests (double click) used to
@@ -103,16 +104,25 @@ class AppState:
         self.hub, self.hub_kind = None, None
 
     def save_session(self, s: RideSession) -> dict | None:
-        """Write the ride's FIT file and history row, at most once per session."""
-        with self.session_lock:
+        """Write a finished ride's FIT file and history row, at most once per session.
+
+        Blocking (~5 s for a 2 h ride): call it from a worker thread, never the event loop.
+        It holds its own save lock, not ``session_lock``, so engine ticks and the other
+        endpoints keep running while the file is written. A finished ride records no more
+        samples, so it is safe to read them outside the session lock.
+        """
+        with self._save_lock:
             if s.saved is not None:
                 return s.saved
-            if not s.recorder.samples:
+            with self.session_lock:
+                s.finish()  # no-op when already finished; guarantees the samples are final
+                rec = s.recorder.snapshot()
+            if not rec.samples:
                 return None
             started = s.started_at or dt.datetime.now(dt.UTC)
             fname = f"{started:%Y%m%d-%H%M%S}-{s.mode}-{s.id[:6]}.fit"
-            path = s.recorder.write_fit(self.storage.rides_dir / fname)
-            summary = s.recorder.summary()
+            path = rec.write_fit(self.storage.rides_dir / fname)
+            summary = rec.summary()
             rid = self.storage.add_ride(
                 started.isoformat(timespec="seconds"), s.mode, s.name, summary, str(path)
             )
@@ -162,6 +172,23 @@ class AdjustBody(BaseModel):
 def create_app(storage: Storage | None = None) -> FastAPI:
     st = AppState(storage or Storage())
 
+    saving: set[asyncio.Task] = set()  # strong refs to the background FIT writes
+
+    def save_in_background(s: RideSession) -> None:
+        # once per session; the write runs in a worker thread so ticks keep coming
+        if s.save_started:
+            return
+        s.save_started = True
+        task = asyncio.create_task(asyncio.to_thread(st.save_session, s))
+        saving.add(task)
+
+        def done(t: asyncio.Task) -> None:
+            saving.discard(t)
+            if not t.cancelled() and t.exception() is not None:
+                log.error("saving the ride failed", exc_info=t.exception())
+
+        task.add_done_callback(done)
+
     async def engine_loop():
         while True:
             try:
@@ -170,7 +197,8 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                     if s is not None and st.hub is not None:
                         tel = s.tick()
                         if tel["state"] == "finished":
-                            tel["saved"] = st.save_session(s)  # idempotent
+                            tel["saved"] = s.saved  # None while the FIT is being written
+                            save_in_background(s)
                     else:
                         tel = st.idle_telemetry()
                 tel["devices"] = st.hub.status() if st.hub else {}
@@ -466,12 +494,13 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         with st.session_lock:
             s = require_session()
             s.finish()
-            # save_session is idempotent: a ride that already finished on its own (and was
-            # saved by the engine) is not saved a second time
-            saved = st.save_session(s) if save else s.saved
             st.session = None
             if st.hub:
                 st.hub.set_basic_resistance(0)
+        # Written outside the session lock (this sync endpoint runs in the threadpool, not on
+        # the event loop). save_session is idempotent: a ride that finished on its own and is
+        # being / was saved by the engine waits for that save and is not written twice.
+        saved = st.save_session(s) if save else s.saved
         return {"saved": saved}
 
     # -- rides --------------------------------------------------------------------------

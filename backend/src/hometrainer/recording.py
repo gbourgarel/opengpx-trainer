@@ -66,6 +66,13 @@ class Recorder:
             self.samples.append(s)
             self._last_second = sec
 
+    def snapshot(self) -> Recorder:
+        """Copy of the samples recorded so far, to export without holding the session."""
+        r = Recorder()
+        r.samples = list(self.samples)
+        r._last_second = self._last_second
+        return r
+
     def summary(self) -> dict:
         if not self.samples:
             return {"duration_s": 0, "distance_m": 0, "avg_power_w": None}
