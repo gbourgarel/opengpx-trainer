@@ -92,7 +92,27 @@ export default function App() {
     }
   }, [sessionId, mode, workoutId, routeId, active?.sessionId])
 
-  const startWorkout = (w: Workout) =>
+  // The rider skipped / extended a step (here or on another device): reload the session's
+  // copy of the workout so the profile, the total time and the step list follow.
+  const workoutRev = tel.workout_rev ?? 0
+  const activeId = active?.sessionId
+  const activeRev = active?.workoutRev ?? 0
+  useEffect(() => {
+    if (!activeId || activeId !== sessionId || workoutRev === activeRev) return
+    let cancelled = false
+    api
+      .sessionWorkout()
+      .then(({ workout_rev, ...workout }) => {
+        if (cancelled) return
+        setActive((a) => (a && a.sessionId === activeId ? { ...a, workout, workoutRev: workout_rev } : a))
+      })
+      .catch((e: Error) => !cancelled && setError(`Cannot reload the edited workout: ${e.message}`))
+    return () => {
+      cancelled = true
+    }
+  }, [activeId, sessionId, workoutRev, activeRev])
+
+  const startWorkout =(w: Workout) =>
     api
       .start({ mode: 'erg', workout_id: w.id })
       .then((res) => {

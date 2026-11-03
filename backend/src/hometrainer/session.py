@@ -34,11 +34,12 @@ from .physics.grade_power import RateLimiter
 from .physics.model import VirtualBike, flat_road
 from .profile import Profile
 from .recording import Recorder, RideAverages, Sample
-from .workouts.model import Workout
+from .workouts.model import Step, Workout, WorkoutPosition
 
 Mode = Literal["erg", "gpx"]
 TargetMode = Literal["slope", "manual"]
 MAX_MANUAL_TARGET_W = 2000.0
+MAX_STEP_EXTENSION_S = 600.0
 State = Literal["ready", "running", "paused", "finished"]
 
 FREE_RIDE_RESISTANCE_PCT = 20.0
@@ -213,6 +214,10 @@ class RideSession:
         self._step_index: int | None = None
         self._step_energy_j = 0.0
         self._step_time_s = 0.0
+        # rider changes to the workout: steps skipped / extended (this session's copy of the
+        # workout is edited; the revision tells clients to reload it) and ERG off for a sprint
+        self.workout_rev = 0
+        self.erg_off = False
         self.requested_target_w: float | None = None
         self.sent_target_w: float | None = None
         self.last: dict = {}
@@ -249,6 +254,7 @@ class RideSession:
         difficulty_pct=None,
         target_mode=None,
         manual_target_w=None,
+        erg_off=None,
     ) -> None:
         if target_mode is not None:
             if target_mode not in ("slope", "manual"):
@@ -273,6 +279,33 @@ class RideSession:
             self.effort_pct = max(10.0, min(float(effort_pct), 200.0))
         if difficulty_pct is not None:
             self.difficulty_pct = max(-90.0, min(float(difficulty_pct), 200.0))
+        if erg_off is not None:
+            if erg_off:
+                self._current_step()  # only while a workout step is being ridden
+            self.erg_off = bool(erg_off)
+
+    # -- workout edits (rider) ------------------------------------------------------------
+    def _current_step(self) -> tuple[Step, WorkoutPosition]:
+        if self.workout is None:
+            raise ValueError("No workout in this ride")
+        if self.workout_done or self.state == "finished":
+            raise ValueError("The workout is over")
+        pos = self.workout.position(self.elapsed_s)
+        return self.workout.steps[pos.step_index], pos
+
+    def skip_step(self) -> None:
+        """End the current step now: the next one starts at the next tick."""
+        step, pos = self._current_step()
+        step.duration_s = pos.time_in_step_s  # time already ridden in it (may be 0)
+        self.workout_rev += 1
+
+    def extend_step(self, seconds: float) -> None:
+        """Make the current step longer (a ramp is stretched: same start and end power)."""
+        if not 0 < seconds <= MAX_STEP_EXTENSION_S:
+            raise ValueError(f"seconds must be in (0, {MAX_STEP_EXTENSION_S:.0f}]")
+        step, _ = self._current_step()
+        step.duration_s += float(seconds)
+        self.workout_rev += 1
 
     def checkpoint_now(self, now: float, final: bool = False) -> None:
         """Append the new samples to the checkpoint file (at most every 30 s unless final)."""
@@ -304,6 +337,9 @@ class RideSession:
 
     # -- target computation -------------------------------------------------------------
     def _workout_target(self) -> float | None:
+        if self.erg_off:
+            # sprint: no ERG target (free ride in ERG mode, the slope curve in a mixed ride)
+            return None
         t = self.workout.target_watts(self.elapsed_s, self.profile.ftp_w)
         return None if t is None else t * self.intensity_pct / 100.0
 
@@ -371,6 +407,8 @@ class RideSession:
                 # the tick's power belongs to the step being ridden at the end of the tick
                 idx = self.workout.position(self.elapsed_s).step_index
                 if idx != self._step_index:
+                    if self._step_index is not None:
+                        self.erg_off = False  # a sprint ends with its step: ERG is back
                     self._step_index, self._step_energy_j, self._step_time_s = idx, 0.0, 0.0
                 self._step_energy_j += (pc.power_w or 0.0) * dt
                 self._step_time_s += dt
@@ -521,6 +559,8 @@ class RideSession:
                 t = ns.target_at(0, self.profile.ftp_w)
                 nxt = None if t is None else round(t * self.intensity_pct / 100)
             out.update(
+                workout_rev=self.workout_rev,
+                erg_off=self.erg_off,
                 step_index=pos.step_index,
                 step_remaining_s=round(pos.step_remaining_s, 1),
                 workout_duration_s=self.workout.duration_s,

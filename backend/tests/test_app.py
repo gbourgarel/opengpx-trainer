@@ -149,6 +149,22 @@ def test_concurrent_saves_write_a_single_ride(client):
     assert len({r["ride_id"] for r in results}) == 1
 
 
+def test_skip_and_extend_step_api(client):
+    start_erg(client)
+    w0 = client.get("/api/session/workout").json()
+    assert w0["workout_rev"] == 0
+    r = client.post("/api/session/step", json={"action": "extend", "seconds": 60})
+    assert r.status_code == 200
+    w1 = r.json()
+    assert w1["workout_rev"] == 1 and w1["duration_s"] == w0["duration_s"] + 60
+    assert w1["steps"][0]["duration_s"] == w0["steps"][0]["duration_s"] + 60
+    assert client.get("/api/session/workout").json() == w1
+    assert client.post("/api/session/step", json={"action": "skip"}).json()["workout_rev"] == 2
+    bad = client.post("/api/session/step", json={"action": "extend", "seconds": -5})
+    assert bad.status_code == 422
+    assert client.post("/api/session/adjust", json={"erg_off": True}).json()["erg_off"] is True
+
+
 def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):
     """Review #9: the FIT write ran on the event loop and under the session lock."""
     import threading

@@ -206,6 +206,12 @@ class AdjustBody(BaseModel):
     difficulty_pct: float | None = None
     target_mode: Literal["slope", "manual"] | None = None
     manual_target_w: float | None = None
+    erg_off: bool | None = None  # workout: no ERG target until the next step (sprint)
+
+
+class StepBody(BaseModel):
+    action: Literal["skip", "extend"]
+    seconds: float = 30.0  # extend only
 
 
 def create_app(storage: Storage | None = None) -> FastAPI:
@@ -525,6 +531,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                     body.difficulty_pct,
                     body.target_mode,
                     body.manual_target_w,
+                    body.erg_off,
                 )
             except ValueError as e:
                 raise HTTPException(422, str(e)) from e
@@ -534,7 +541,33 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 "difficulty_pct": s.difficulty_pct,
                 "target_mode": s.target_mode,
                 "manual_target_w": s.manual_target_w,
+                "erg_off": s.erg_off,
             }
+
+    @app.post("/api/session/step")
+    def workout_step(body: StepBody):
+        """Skip the current workout step, or extend it by ``seconds``."""
+        with st.session_lock:
+            s = require_session()
+            try:
+                if body.action == "skip":
+                    s.skip_step()
+                else:
+                    s.extend_step(body.seconds)
+            except ValueError as e:
+                raise HTTPException(422, str(e)) from e
+            return session_workout_locked(s)
+
+    def session_workout_locked(s: RideSession) -> dict:
+        if s.workout is None:
+            raise HTTPException(404, "No workout in this ride")
+        return {"id": s.workout_id, "workout_rev": s.workout_rev, **s.workout.to_dict()}
+
+    @app.get("/api/session/workout")
+    def session_workout():
+        """The ride's workout as edited by the rider (skipped / extended steps)."""
+        with st.session_lock:
+            return session_workout_locked(require_session())
 
     @app.post("/api/session/stop")
     def stop(save: bool = True):

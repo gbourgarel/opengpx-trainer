@@ -663,3 +663,75 @@ def test_gpx_auto_pause_still_waits_for_the_virtual_stop():
     for _ in range(16):
         s.tick(t := t + 0.25)
     assert s.state == "running"  # still coasting on the route
+
+
+def _erg_session(steps):
+    h = FakeHub()
+    s = RideSession(h, Profile(ftp_w=200, power_match=False), "erg", workout=Workout("W", steps))
+    return h, s
+
+
+def test_skip_step_starts_the_next_one_now():
+    h, s = _erg_session([Step(60, 0.5, 0.5), Step(60, 1.0, 1.0), Step(60, 0.6, 0.6)])
+    t, _ = _ride(h, s, 20)
+    s.skip_step()
+    assert s.workout_rev == 1
+    assert s.workout.steps[0].duration_s == pytest.approx(s.elapsed_s)
+    t, tel = _ride(h, s, 1, t0=t)
+    assert (tel["step_index"], tel["target_w"], tel["workout_rev"]) == (1, 200, 1)
+    assert tel["step_remaining_s"] == pytest.approx(59, abs=0.5)
+    assert tel["workout_duration_s"] == pytest.approx(140, abs=0.5)  # 40 s skipped
+
+
+def test_skipping_the_last_erg_step_finishes_the_ride():
+    h, s = _erg_session([Step(60, 0.5, 0.5)])
+    t, _ = _ride(h, s, 10)
+    s.skip_step()
+    _ride(h, s, 1, t0=t)
+    assert s.state == "finished"
+    with pytest.raises(ValueError):
+        s.skip_step()  # nothing left to skip
+
+
+def test_extend_step_keeps_its_target_longer():
+    h, s = _erg_session([Step(60, 0.5, 0.5), Step(60, 1.0, 1.0)])
+    t, _ = _ride(h, s, 50)
+    s.extend_step(30)
+    t, tel = _ride(h, s, 30, t0=t)  # 80 s: still in the first step
+    assert (tel["step_index"], tel["target_w"]) == (0, 100)
+    assert tel["step_remaining_s"] == pytest.approx(10, abs=0.5)
+    with pytest.raises(ValueError):
+        s.extend_step(0)
+
+
+def test_erg_off_for_a_sprint_until_the_next_step():
+    from hometrainer.session import FREE_RIDE_RESISTANCE_PCT
+
+    h, s = _erg_session([Step(20, 0.5, 0.5), Step(60, 1.0, 1.0)])
+    t, _ = _ride(h, s, 5)
+    s.adjust(erg_off=True)
+    t, tel = _ride(h, s, 5, t0=t, watts=900)
+    assert tel["erg_off"] and tel["target_w"] is None
+    assert h.targets[-1] == ("res", FREE_RIDE_RESISTANCE_PCT)
+    assert s.elapsed_s == pytest.approx(10, abs=0.3)  # the workout clock runs on
+    t, tel = _ride(h, s, 11, t0=t)  # into step 2: ERG is back
+    assert not tel["erg_off"] and tel["target_w"] == 200
+
+
+def test_erg_off_in_a_mixed_ride_follows_the_slope():
+    h, s, _ = _mixed_session([Step(600, 0.5, 0.5)], grade=0.06)
+    t, tel = _ride(h, s, 10)
+    assert tel["target_w"] == 125
+    s.adjust(erg_off=True)
+    _, tel = _ride(h, s, 5, t0=t)
+    assert tel["target_w"] > 125  # grade -> power curve at 6 %
+
+
+def test_step_edits_need_a_workout():
+    from hometrainer.gpx.route import Route
+    from tests.test_gpx_workouts import make_gpx
+
+    s = RideSession(FakeHub(), Profile(), "gpx", route=Route.from_gpx(make_gpx()))
+    for edit in (s.skip_step, lambda: s.extend_step(30), lambda: s.adjust(erg_off=True)):
+        with pytest.raises(ValueError):
+            edit()
