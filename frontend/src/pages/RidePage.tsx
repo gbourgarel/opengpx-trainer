@@ -136,23 +136,13 @@ export function RidePage({ tel, history, active, profile, onEnd }: { tel: Teleme
     </>
   )
 
-  // the current workout step can be skipped / extended, or ridden without ERG (sprint)
+  // the current workout step can be skipped or extended
   const stepEditable =
     !!workout && (tel.state === 'running' || tel.state === 'paused' || tel.state === 'ready') && (tel.elapsed_s ?? 0) < (tel.workout_duration_s ?? 0)
   const stepControls = stepEditable && (
     <div className="seg step-edit" title="Current workout step">
-      <button onClick={() => act(() => api.extendStep(30))} title="Make the current step 30 s longer">
-        +30 s
-      </button>
       <button onClick={() => act(() => api.extendStep(60))} title="Make the current step 1 min longer">
         +1 min
-      </button>
-      <button
-        className={tel.erg_off ? 'on' : ''}
-        onClick={() => act(() => api.adjust({ erg_off: !tel.erg_off }))}
-        title={tel.mode === 'erg' ? 'No ERG target until the next step (sprint): free ride, use your gears' : 'Follow the slope instead of the workout until the next step'}
-      >
-        {tel.erg_off ? 'ERG off' : 'Sprint'}
       </button>
       <button onClick={() => act(api.skipStep)} title="End the current step now and start the next one">
         Skip step ⏭

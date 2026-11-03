@@ -196,8 +196,6 @@ export interface Telemetry {
   step_avg_power_w?: number | null
   /** bumped when the rider skips / extends a step: reload /api/session/workout */
   workout_rev?: number
-  /** workout: no ERG target until the next step (sprint) */
-  erg_off?: boolean
   saved?: { ride_id: number } | null
   sim?: SimSettings
   /** client-side: 3 s moving average of power_w */
@@ -262,7 +260,6 @@ export const api = {
     difficulty_pct?: number
     target_mode?: 'slope' | 'manual'
     manual_target_w?: number
-    erg_off?: boolean
   }) =>
     req('POST', '/api/session/adjust', a),
   /** the ride's workout as edited by the rider (skipped / extended steps) */

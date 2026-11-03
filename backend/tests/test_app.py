@@ -162,7 +162,6 @@ def test_skip_and_extend_step_api(client):
     assert client.post("/api/session/step", json={"action": "skip"}).json()["workout_rev"] == 2
     bad = client.post("/api/session/step", json={"action": "extend", "seconds": -5})
     assert bad.status_code == 422
-    assert client.post("/api/session/adjust", json={"erg_off": True}).json()["erg_off"] is True
 
 
 def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):

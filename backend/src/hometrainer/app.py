@@ -206,12 +206,11 @@ class AdjustBody(BaseModel):
     difficulty_pct: float | None = None
     target_mode: Literal["slope", "manual"] | None = None
     manual_target_w: float | None = None
-    erg_off: bool | None = None  # workout: no ERG target until the next step (sprint)
 
 
 class StepBody(BaseModel):
     action: Literal["skip", "extend"]
-    seconds: float = 30.0  # extend only
+    seconds: float = 60.0  # extend only
 
 
 def create_app(storage: Storage | None = None) -> FastAPI:
@@ -531,7 +530,6 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                     body.difficulty_pct,
                     body.target_mode,
                     body.manual_target_w,
-                    body.erg_off,
                 )
             except ValueError as e:
                 raise HTTPException(422, str(e)) from e
@@ -541,7 +539,6 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 "difficulty_pct": s.difficulty_pct,
                 "target_mode": s.target_mode,
                 "manual_target_w": s.manual_target_w,
-                "erg_off": s.erg_off,
             }
 
     @app.post("/api/session/step")
