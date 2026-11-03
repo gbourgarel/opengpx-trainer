@@ -218,7 +218,7 @@ export function RidePage({
           </div>
         )}
         <small className="shortcuts-help" title="Keyboard shortcuts">
-          ⌨ {SHORTCUTS_HELP}
+          Keys: {SHORTCUTS_HELP}
         </small>
       </div>
   )
