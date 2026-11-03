@@ -704,6 +704,37 @@ def test_extend_step_keeps_its_target_longer():
         s.extend_step(0)
 
 
+def test_gpx_wind_slows_or_pushes_the_rider_and_is_reported():
+    from hometrainer.gpx.route import Route
+    from tests.test_gpx_workouts import make_gpx
+
+    route = Route.from_gpx(make_gpx(grade=0.0))  # heading north
+    tel = {}
+    for name, wind_from in (("calm", None), ("head", 0), ("tail", 180), ("cross", 90)):
+        h = FakeHub()
+        kw = {} if wind_from is None else {"wind_kmh": 20, "wind_from_deg": wind_from}
+        s = RideSession(h, Profile(), "gpx", route=route, **kw)
+        _, tel[name] = _ride(h, s, 60, watts=250)
+    assert tel["tail"]["speed_kmh"] > tel["calm"]["speed_kmh"] > tel["cross"]["speed_kmh"]
+    assert tel["cross"]["speed_kmh"] > tel["head"]["speed_kmh"]
+    assert (tel["head"]["wind_kmh"], tel["head"]["wind_from_deg"]) == (20, 0)
+    assert tel["head"]["headwind_kmh"] == pytest.approx(20, abs=0.2)
+    assert tel["tail"]["headwind_kmh"] == pytest.approx(-20, abs=0.2)
+    assert tel["cross"]["crosswind_kmh"] == pytest.approx(20, abs=0.2)
+    assert tel["calm"]["wind_kmh"] == 0 and tel["calm"]["headwind_kmh"] == 0
+
+
+def test_erg_ride_ignores_the_wind():
+    w = Workout("W", [Step(600, 0.8, 0.8)])
+    res = {}
+    for kmh in (0, 30):
+        h = FakeHub()
+        s = RideSession(h, Profile(), "erg", workout=w, wind_kmh=kmh, wind_from_deg=0)
+        _, res[kmh] = _ride(h, s, 60, watts=200)
+    assert res[30]["speed_kmh"] == res[0]["speed_kmh"]
+    assert s.wind_kmh == 0
+
+
 def test_step_edits_need_a_workout():
     from hometrainer.gpx.route import Route
     from tests.test_gpx_workouts import make_gpx

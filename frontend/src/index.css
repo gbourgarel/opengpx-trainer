@@ -793,6 +793,33 @@ b.warn {
 .map-card .map {
   margin: 0;
 }
+.wind-badge {
+  position: absolute;
+  z-index: 1000;
+  left: 14px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px 1px 4px;
+  border-radius: 4px;
+  background: rgba(23, 27, 35, 0.6); /* --panel, translucent: the map shows through */
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.wind-pick .wind-compass {
+  min-width: 3.5em;
+}
+.wind-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.wind-pick input {
+  width: 4.5em;
+}
 .map-follow {
   position: absolute;
   z-index: 1000;

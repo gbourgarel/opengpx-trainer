@@ -1,11 +1,16 @@
 """Cycling speed model.
 
-Longitudinal power balance at the wheel (ground speed ``v``, air speed ``v + v_w`` where
-``v_w`` is the headwind component):
+Longitudinal power balance at the wheel (ground speed ``v``; wind components relative to the
+direction of travel: ``v_w`` headwind, positive from ahead, and ``v_c`` crosswind):
 
     eta * P_rider = [ m g (Crr cos(theta) + sin(theta))
-                      + 1/2 rho CdA (v + v_w) |v + v_w|
-                      + m_eff dv/dt ] * v
+                      + 1/2 rho CdA |V_a| (v + v_w)
+                      + m_eff dv/dt ] * v,        |V_a| = sqrt((v + v_w)^2 + v_c^2)
+
+The drag acts along the apparent wind ``V_a`` (magnitude ``|V_a|``); only its component along
+the direction of travel, ``|V_a| (v + v_w)``, resists the motion. A crosswind therefore adds
+drag; CdA is taken independent of the yaw angle. Without crosswind this is the usual
+``(v + v_w) |v + v_w|``.
 
 with
     * ``m``      total mass (rider + bike) acting on gravity and rolling resistance,
@@ -73,7 +78,6 @@ class ModelParams:
     max_speed_ms: float = 70 / 3.6  # virtual braking cap on descents
     temperature_c: float = 20.0
     relative_humidity: float = 0.5
-    headwind_ms: float = 0.0
 
     @property
     def mass_kg(self) -> float:
@@ -104,33 +108,43 @@ class SpeedModel:
     def rho(self, altitude_m: float) -> float:
         return air_density(altitude_m, self.p.temperature_c, self.p.relative_humidity)
 
-    def forces(self, v: float, grade: float, rho: float) -> ForceBreakdown:
-        """Resistive forces (N) at ground speed ``v``. Positive = opposing motion."""
+    def forces(
+        self, v: float, grade: float, rho: float, wind: tuple[float, float] = (0.0, 0.0)
+    ) -> ForceBreakdown:
+        """Resistive forces (N) at ground speed ``v``. Positive = opposing motion.
+
+        ``wind`` = (headwind, crosswind) components in m/s relative to the direction of travel.
+        """
         sin_t, cos_t = grade_to_angle(grade)
         m = self.p.mass_kg
-        va = v + self.p.headwind_ms
+        head, cross = wind
+        va = v + head  # apparent wind along the direction of travel
         return ForceBreakdown(
             gravity_n=m * G * sin_t,
             rolling_n=m * G * self.p.crr * cos_t,
-            aero_n=0.5 * rho * self.p.cda_m2 * va * abs(va),
+            aero_n=0.5 * rho * self.p.cda_m2 * math.hypot(va, cross) * va,
         )
 
-    def power_required(self, v: float, grade: float, rho: float) -> float:
+    def power_required(
+        self, v: float, grade: float, rho: float, wind: tuple[float, float] = (0.0, 0.0)
+    ) -> float:
         """Steady-state rider power (W) needed to hold speed ``v`` (may be negative)."""
-        return self.forces(v, grade, rho).total_n * v / self.p.drivetrain_efficiency
+        return self.forces(v, grade, rho, wind).total_n * v / self.p.drivetrain_efficiency
 
-    def steady_speed(self, power_w: float, grade: float, rho: float) -> float:
+    def steady_speed(
+        self, power_w: float, grade: float, rho: float, wind: tuple[float, float] = (0.0, 0.0)
+    ) -> float:
         """Equilibrium ground speed (m/s) for a constant rider power.
 
         ``power_required`` is monotonic increasing in ``v`` for ``v >= 0`` wherever it is
         positive, so bisection is robust (also handles coasting terminal speed on descents).
         """
         power_w = max(0.0, power_w)
-        if self.forces(0.0, grade, rho).total_n > 0 and power_w == 0:
+        if self.forces(0.0, grade, rho, wind).total_n > 0 and power_w == 0:
             return 0.0  # rolling resistance + gravity cannot be overcome with zero power
 
         def f(v: float) -> float:
-            return self.power_required(v, grade, rho) - power_w
+            return self.power_required(v, grade, rho, wind) - power_w
 
         lo, hi = 0.0, 1.0
         while f(hi) < 0 and hi < 200:
@@ -148,9 +162,16 @@ class SpeedModel:
 
 # grade_fn(horizontal_distance_m) -> (grade, altitude_m)
 GradeFn = Callable[[float], tuple[float, float]]
+# wind_fn(horizontal_distance_m) -> (headwind, crosswind) in m/s, relative to the direction of
+# travel at that point of the route
+WindFn = Callable[[float], tuple[float, float]]
 
 
 def flat_road(_d: float) -> tuple[float, float]:
+    return 0.0, 0.0
+
+
+def no_wind(_d: float) -> tuple[float, float]:
     return 0.0, 0.0
 
 
@@ -161,6 +182,7 @@ class BikeState:
     distance_3d_m: float = 0.0  # distance travelled along the road surface
     grade: float = 0.0
     altitude_m: float = 0.0
+    wind: tuple[float, float] = (0.0, 0.0)  # (headwind, crosswind) m/s at the current position
     forces: ForceBreakdown | None = field(default=None)
 
 
@@ -177,12 +199,16 @@ class VirtualBike:
     V_MIN = 1.0  # m/s, drive-force regularisation at very low speed
     SUBSTEP_S = 0.05
 
-    def __init__(self, params: ModelParams, grade_fn: GradeFn = flat_road):
+    def __init__(
+        self, params: ModelParams, grade_fn: GradeFn = flat_road, wind_fn: WindFn = no_wind
+    ):
         self.model = SpeedModel(params)
         self.grade_fn = grade_fn
+        self.wind_fn = wind_fn
         self.state = BikeState()
         g, alt = grade_fn(0.0)
         self.state.grade, self.state.altitude_m = g, alt
+        self.state.wind = wind_fn(0.0)
 
     @property
     def params(self) -> ModelParams:
@@ -191,10 +217,12 @@ class VirtualBike:
     def set_params(self, params: ModelParams) -> None:
         self.model = SpeedModel(params)
 
-    def _accel(self, v: float, power_w: float, grade: float, rho: float) -> float:
+    def _accel(
+        self, v: float, power_w: float, grade: float, rho: float, wind: tuple[float, float]
+    ) -> float:
         p = self.model.p
         drive = p.drivetrain_efficiency * max(power_w, 0.0) / max(v, self.V_MIN)
-        resist = self.model.forces(v, grade, rho).total_n
+        resist = self.model.forces(v, grade, rho, wind).total_n
         return (drive - resist) / p.inertial_mass_kg
 
     def step(self, power_w: float, dt: float) -> BikeState:
@@ -206,13 +234,14 @@ class VirtualBike:
         v = s.speed_ms
         for _ in range(n):
             grade, alt = self.grade_fn(s.distance_m)
+            wind = self.wind_fn(s.distance_m)  # follows the route heading, like the grade
             rho = self.model.rho(alt)
-            a1 = self._accel(v, power_w, grade, rho)
+            a1 = self._accel(v, power_w, grade, rho, wind)
             if v <= 0.0 and a1 <= 0.0:
                 v = 0.0
                 continue
             v_mid = max(0.0, v + 0.5 * h * a1)
-            a2 = self._accel(v_mid, power_w, grade, rho)
+            a2 = self._accel(v_mid, power_w, grade, rho, wind)
             v_new = max(0.0, v + h * a2)
             v_new = min(v_new, p.max_speed_ms)  # virtual braking
             v_avg = 0.5 * (v + v_new)
@@ -222,5 +251,6 @@ class VirtualBike:
             v = v_new
         s.speed_ms = v
         s.grade, s.altitude_m = self.grade_fn(s.distance_m)
-        s.forces = self.model.forces(v, s.grade, self.model.rho(s.altitude_m))
+        s.wind = self.wind_fn(s.distance_m)
+        s.forces = self.model.forces(v, s.grade, self.model.rho(s.altitude_m), s.wind)
         return s

@@ -117,3 +117,45 @@ def test_rate_limiter():
     assert rl(100, 1) == 100
     assert rl(200, 1) == 110
     assert rl(50, 2) == 90
+
+
+def test_aero_drag_with_apparent_wind():
+    v, rho, k = 30 / 3.6, 1.2, 0.5 * 1.2 * P.cda_m2
+    still = M.forces(v, 0.0, rho).aero_n
+    assert still == pytest.approx(k * v * v)
+    # head / tail wind only: the usual (v + w)|v + w|
+    w = 5.0
+    assert M.forces(v, 0.0, rho, (w, 0.0)).aero_n == pytest.approx(k * (v + w) ** 2)
+    assert M.forces(v, 0.0, rho, (-w, 0.0)).aero_n == pytest.approx(k * (v - w) ** 2)
+    # tailwind faster than the rider pushes him
+    assert M.forces(3.0, 0.0, rho, (-w, 0.0)).aero_n < 0
+    # pure crosswind of 20 km/h at 30 km/h: drag x |Va|/v = hypot(30, 20)/30 = 1.20
+    cross = M.forces(v, 0.0, rho, (0.0, 20 / 3.6)).aero_n
+    assert cross / still == pytest.approx(math.hypot(30, 20) / 30)
+    # the side it comes from does not matter
+    assert M.forces(v, 0.0, rho, (0.0, -20 / 3.6)).aero_n == pytest.approx(cross)
+
+
+def test_steady_speed_with_wind():
+    rho = 1.2
+    calm = M.steady_speed(250, 0.0, rho)
+    head = M.steady_speed(250, 0.0, rho, (15 / 3.6, 0.0))
+    tail = M.steady_speed(250, 0.0, rho, (-15 / 3.6, 0.0))
+    cross = M.steady_speed(250, 0.0, rho, (0.0, 15 / 3.6))
+    assert tail > calm > cross > head
+    v = M.steady_speed(250, 0.02, rho, (3.0, 4.0))
+    assert M.power_required(v, 0.02, rho, (3.0, 4.0)) == pytest.approx(250, abs=0.1)
+
+
+def test_virtual_bike_follows_the_wind_along_the_route():
+    # first 1 km headwind, then tailwind (e.g. an out-and-back)
+    bike = VirtualBike(P, wind_fn=lambda d: (5.0, 0.0) if d < 1000 else (-5.0, 0.0))
+    speeds = []
+    for _ in range(4 * 600):
+        bike.step(250, 0.25)
+        speeds.append((bike.state.distance_m, bike.state.speed_ms))
+    v_head = max(v for d, v in speeds if 500 < d < 1000)
+    v_tail = speeds[-1][1]
+    assert v_head == pytest.approx(M.steady_speed(250, 0.0, M.rho(0), (5.0, 0.0)), rel=0.01)
+    assert v_tail == pytest.approx(M.steady_speed(250, 0.0, M.rho(0), (-5.0, 0.0)), rel=0.01)
+    assert bike.state.wind == (-5.0, 0.0)

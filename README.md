@@ -71,10 +71,12 @@ Data (SQLite DB and `.fit` files) lives in `~/.hometrainer` (override with `HOME
 
 ## Speed model
 
-Power balance at the wheel, ground speed `v`, headwind `v_w`, road angle `θ` (`tanθ` = grade):
+Power balance at the wheel, ground speed `v`, road angle `θ` (`tanθ` = grade), wind components
+relative to the direction of travel `v_w` (headwind, negative = tailwind) and `v_c` (crosswind):
 
 ```
-η·P = m·g·v·(Crr·cosθ + sinθ) + ½·ρ·CdA·(v+v_w)·|v+v_w|·v + m_eff·(dv/dt)·v
+η·P = m·g·v·(Crr·cosθ + sinθ) + ½·ρ·CdA·|V_a|·(v+v_w)·v + m_eff·(dv/dt)·v
+|V_a| = √((v+v_w)² + v_c²)
 ```
 
 * `m` = rider + bike, `m_eff = m + I_wheels / r²` (rotational inertia of the wheels).
@@ -92,8 +94,13 @@ Power balance at the wheel, ground speed `v`, headwind `v_w`, road angle `θ` (`
   then `grade = d(ele)/d(dist)` clipped to ±30 %.
 * Difficulty `x %` scales only the power fed to the speed model: `P_model = P_measured·(1+x)`.
   The trainer target is unchanged.
+* Wind (GPX rides, chosen when starting the route: speed `W` and the direction `φ` it blows
+  from) is projected on the route heading `ψ` at each sub-step: `v_w = W·cos(φ−ψ)`,
+  `v_c = W·sin(φ−ψ)`. The drag acts along the apparent wind, so a crosswind adds drag (CdA is
+  taken independent of yaw). The heading is smoothed (unit vectors, σ = 25 m) so GPS zig-zags
+  do not make the wind flicker. ERG rides (flat virtual road, no heading) have no wind.
 
-All parameters (CdA, Crr, η, wheel inertia, temperature, humidity, wind, braking cap, curve
+All parameters (CdA, Crr, η, wheel inertia, temperature, humidity, braking cap, curve
 points, look-ahead, target ramp rate) can be edited on the Profile page, which also previews
 steady-state speeds.
 

@@ -31,7 +31,7 @@ from .ant.hub import Readings, SensorHub
 from .checkpoint import RideCheckpoint
 from .gpx.route import Route
 from .physics.grade_power import RateLimiter
-from .physics.model import VirtualBike, flat_road
+from .physics.model import VirtualBike, flat_road, no_wind
 from .profile import Profile
 from .recording import Recorder, RideAverages, Sample
 from .workouts.model import Step, Workout, WorkoutPosition
@@ -162,6 +162,8 @@ class RideSession:
         name: str | None = None,
         workout_id: int | None = None,
         route_id: int | None = None,
+        wind_kmh: float = 0.0,
+        wind_from_deg: float = 0.0,
     ):
         if mode == "erg" and workout is None:
             raise ValueError("ERG mode needs a workout")
@@ -194,15 +196,26 @@ class RideSession:
         self.curve = profile.grade_power_curve()
         self.limiter = RateLimiter(self.curve.max_ramp_w_per_s)
         self.power_match = PowerMatch()
+        # Wind (GPX rides only: the flat ERG road has no direction): speed and the direction it
+        # blows from, projected on the route heading at each point
+        self.wind_kmh = max(0.0, float(wind_kmh)) if route is not None else 0.0
+        self.wind_from_deg = float(wind_from_deg) % 360.0
+        wind_fn = no_wind
         if route is not None:
             lap_m = route.total_distance_m
 
             def grade_fn(d: float) -> tuple[float, float]:
                 # the route repeats (laps) when a workout outlasts it
                 return route.grade_and_altitude(d % lap_m)
+
+            if self.wind_kmh > 0:
+                wind_ms, wind_from = self.wind_kmh / 3.6, self.wind_from_deg
+
+                def wind_fn(d: float) -> tuple[float, float]:
+                    return route.wind_components(d % lap_m, wind_ms, wind_from)
         else:
             grade_fn = flat_road
-        self.bike = VirtualBike(profile.model_params(), grade_fn)
+        self.bike = VirtualBike(profile.model_params(), grade_fn, wind_fn)
         self._lap = 0  # completed laps of the route
         self._workout_end_lap: int | None = None  # lap index when the workout ended
         self.recorder = Recorder()
@@ -527,6 +540,11 @@ class RideSession:
                 route_distance_m=round(self.route.total_distance_m, 1),
                 route_position_m=round(self.route_position_m, 1),
                 lap=self._lap + 1,
+                # wind as set for the ride, and its components on the current heading
+                wind_kmh=round(self.wind_kmh, 1),
+                wind_from_deg=round(self.wind_from_deg),
+                headwind_kmh=round(st.wind[0] * 3.6, 1),  # negative = tailwind
+                crosswind_kmh=round(st.wind[1] * 3.6, 1),  # positive = from the right
             )
             vam = self.climb.vam_mh
             # instantaneous vertical speed from the model: v·sin(θ), tan(θ) = grade

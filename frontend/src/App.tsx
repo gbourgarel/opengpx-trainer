@@ -4,6 +4,7 @@ import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
 import { SimulatorPanel } from './components/SimulatorPanel'
 import { UploadPrompt } from './components/UploadPrompt'
+import type { WindSetting } from './wind'
 import { RidePage, type ActiveRide } from './pages/RidePage'
 import { useLive } from './useLive'
 import { useWakeLock } from './wakeLock'
@@ -144,9 +145,9 @@ export default function App() {
       })
       .catch((e) => setError(e.message))
 
-  const startRoute = (r: RouteDetail, w?: Workout) =>
+  const startRoute = (r: RouteDetail, w: Workout | undefined, wind: WindSetting) =>
     api
-      .start({ mode: 'gpx', route_id: r.id, workout_id: w?.id })
+      .start({ mode: 'gpx', route_id: r.id, workout_id: w?.id, wind_kmh: wind.kmh, wind_from_deg: wind.fromDeg })
       .then((res) => {
         setActive({ sessionId: res.session_id, mode: 'gpx', route: r, workout: w })
         setTab('ride')

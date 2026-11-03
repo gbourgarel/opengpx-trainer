@@ -88,9 +88,7 @@ export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => voi
           <Num set={set} p={p} k="wheel_diameter_m" label="Wheel diameter (m)" step={0.001} />
           <Num set={set} p={p} k="max_speed_kmh" label="Descent braking cap (km/h)" />
           <Num set={set} p={p} k="temperature_c" label="Air temperature (°C)" step={0.5} />
-          <Num set={set} p={p} k="relative_humidity" label="Relative humidity (%)" scale={100} />
-          <Num set={set} p={p} k="headwind_ms" label="Headwind (m/s, − = tail)" step={0.5} />
-        </div>
+          <Num set={set} p={p} k="relative_humidity" label="Relative humidity (%)" scale={100} />        </div>
         <div className="preview">
           {[
             [200, 0],

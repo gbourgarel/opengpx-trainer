@@ -15,7 +15,6 @@ export interface Profile {
   max_speed_kmh: number
   temperature_c: number
   relative_humidity: number
-  headwind_ms: number
   power_source: PowerSource
   power_match: boolean
   trainer_device_number: number | null
@@ -188,6 +187,11 @@ export interface Telemetry {
   lat?: number
   lon?: number
   heading_deg?: number
+  /** GPX: wind set for the ride (blowing FROM wind_from_deg) and its components on the heading */
+  wind_kmh?: number
+  wind_from_deg?: number
+  headwind_kmh?: number // negative = tailwind
+  crosswind_kmh?: number // positive = from the right
   route_distance_m?: number
   step_index?: number
   step_remaining_s?: number
@@ -248,7 +252,7 @@ export const api = {
   importRoute: (f: File) => upload<RouteSummary>('/api/routes/import', f),
   deleteRoute: (id: number) => req('DELETE', `/api/routes/${id}`),
 
-  start: (body: { mode: 'erg' | 'gpx'; workout_id?: number; route_id?: number }) =>
+  start: (body: { mode: 'erg' | 'gpx'; workout_id?: number; route_id?: number; wind_kmh?: number; wind_from_deg?: number }) =>
     req<{ ok: boolean; name: string; session_id: string }>('POST', '/api/session/start', body),
   workout: (id: number) => req<Workout>('GET', `/api/workouts/${id}`),
   pause: () => req('POST', '/api/session/pause'),

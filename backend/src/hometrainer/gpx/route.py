@@ -86,6 +86,12 @@ class Route:
         x = np.cos(la1) * np.sin(la2) - np.sin(la1) * np.cos(la2) * np.cos(dlon)
         hdg = (np.degrees(np.arctan2(y, x)) + 360) % 360
         self.heading = np.concatenate([hdg, hdg[-1:]])
+        # Direction of travel for the wind: unit vectors smoothed like the elevation, so GPS
+        # zig-zags (a few metres) do not make the wind components flicker. Smoothing vectors,
+        # not angles, avoids the 359°/0° wrap.
+        rad = np.radians(self.heading)
+        self._dir_e = gaussian_smooth(np.sin(rad), step_m, smoothing_sigma_m)  # east
+        self._dir_n = gaussian_smooth(np.cos(rad), step_m, smoothing_sigma_m)  # north
 
     # --- construction ----------------------------------------------------------------------
     @classmethod
@@ -136,6 +142,27 @@ class Route:
         if b - a < 1.0:
             return self.grade_at(a)
         return (self.altitude_at(b) - self.altitude_at(a)) / (b - a)
+
+    def travel_heading_deg(self, distance_m: float) -> float:
+        """Smoothed direction of travel (degrees from north, clockwise)."""
+        d = self.clamp(distance_m)
+        e = float(np.interp(d, self.d, self._dir_e))
+        n = float(np.interp(d, self.d, self._dir_n))
+        return math.degrees(math.atan2(e, n)) % 360.0
+
+    def wind_components(
+        self, distance_m: float, wind_ms: float, wind_from_deg: float
+    ) -> tuple[float, float]:
+        """(headwind, crosswind) in m/s for a wind of ``wind_ms`` blowing *from*
+        ``wind_from_deg`` (meteorological convention), relative to the direction of travel.
+
+        With ``delta = wind_from - heading``: headwind = W cos(delta) (negative = tailwind),
+        crosswind = W sin(delta) (positive = from the right).
+        """
+        if wind_ms == 0:
+            return 0.0, 0.0
+        delta = math.radians(wind_from_deg - self.travel_heading_deg(distance_m))
+        return wind_ms * math.cos(delta), wind_ms * math.sin(delta)
 
     def point_at(self, distance_m: float) -> RoutePoint:
         d = self.clamp(distance_m)

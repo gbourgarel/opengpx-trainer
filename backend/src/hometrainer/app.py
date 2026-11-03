@@ -16,7 +16,7 @@ from typing import Literal
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .ant.hub import SensorHub
 from .ant.scan import scan_ant
@@ -198,6 +198,9 @@ class StartBody(BaseModel):
     mode: Literal["erg", "gpx"]
     workout_id: int | None = None
     route_id: int | None = None
+    # GPX rides: wind speed and the direction it blows from (deg, 0 = north); ignored in ERG
+    wind_kmh: float = Field(0.0, ge=0.0, le=150.0)
+    wind_from_deg: float = Field(0.0, ge=0.0, le=360.0)
 
 
 class AdjustBody(BaseModel):
@@ -497,6 +500,8 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 route=route,
                 workout_id=body.workout_id if workout else None,
                 route_id=body.route_id if route else None,
+                wind_kmh=body.wind_kmh,
+                wind_from_deg=body.wind_from_deg,
             )
             st.session.checkpoint = RideCheckpoint(
                 st.storage.checkpoints_dir / f"{st.session.id}.jsonl"

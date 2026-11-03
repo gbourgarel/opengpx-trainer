@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { fmtTime, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ElevationProfile, LiveChart, LocalProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
+import { WindBadge } from '../components/Wind'
 import { targetZone, type TargetZone } from '../targetZone'
 import type { HistoryPoint } from '../useLive'
 import { Metric } from './RidePage'
@@ -222,6 +223,7 @@ function MapCard({ c }: { c: RideCtx }) {
         <input type="checkbox" checked={c.follow} onChange={(e) => c.setFollow(e.target.checked)} /> follow rider
       </label>
       <RouteMap latlon={c.route.latlon} position={c.tel.lat != null ? [c.tel.lat, c.tel.lon!] : undefined} follow={c.follow} done={c.doneIdx} height="100%" />
+      <WindBadge kmh={c.tel.wind_kmh ?? 0} fromDeg={c.tel.wind_from_deg ?? 0} head={c.tel.headwind_kmh} cross={c.tel.crosswind_kmh} />
     </div>
   )
 }

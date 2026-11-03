@@ -22,6 +22,30 @@ def make_gpx(n=200, step_deg=0.0001, grade=0.05, noise=0.0) -> str:
     )
 
 
+@pytest.mark.parametrize(
+    "wind_from,head,cross",
+    [(0, 10, 0), (180, -10, 0), (90, 0, 10), (270, 0, -10), (45, 7.071, 7.071)],
+)
+def test_wind_components_on_a_route_heading_north(wind_from, head, cross):
+    r = Route.from_gpx(make_gpx(grade=0.0))  # straight line north
+    h, c = r.wind_components(500, 10.0, wind_from)
+    assert (h, c) == (pytest.approx(head, abs=0.01), pytest.approx(cross, abs=0.01))
+
+
+def test_travel_heading_ignores_gps_zigzag():
+    # ~1.6 m east-west jitter on points 11 m apart: raw headings swing by ~±8°
+    pts = "".join(
+        f'<trkpt lat="{45 + i * 0.0001}" lon="{6 + 0.00002 * (-1) ** i}"><ele>100</ele></trkpt>'
+        for i in range(200)
+    )
+    gpx = f'<?xml version="1.0"?><gpx version="1.1"><trk><trkseg>{pts}</trkseg></trk></gpx>'
+    r = Route.from_gpx(gpx)
+    raw = [(h + 180) % 360 - 180 for h in r.heading[50:-50]]
+    assert max(abs(h) for h in raw) > 5
+    smooth = [(r.travel_heading_deg(d) + 180) % 360 - 180 for d in range(500, 1500, 7)]
+    assert max(abs(h) for h in smooth) < 1.5
+
+
 def test_route_constant_grade():
     r = Route.from_gpx(make_gpx())
     assert r.name == "Test climb"

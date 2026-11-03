@@ -37,7 +37,6 @@ _BOUNDS: dict[str, tuple[float, float]] = {
     "max_speed_kmh": (10, 150),
     "temperature_c": (-30, 50),
     "relative_humidity": (0.0, 1.0),
-    "headwind_ms": (-30, 30),
     "grade_curve_min_frac": (0.0, 2.0),
     "grade_curve_max_frac": (0.1, 3.0),
     "grade_lookahead_m": (0, 1000),
@@ -126,7 +125,7 @@ class Profile:
     # environment
     temperature_c: float = 20.0
     relative_humidity: float = 0.5
-    headwind_ms: float = 0.0
+    # (wind is chosen per GPX ride, with its direction: see RideSession)
     # power source for speed model / recording: auto = power meter if present, else trainer
     power_source: PowerSource = "auto"
     # in ERG modes, correct the trainer target so the power meter reads the requested power
@@ -204,7 +203,6 @@ class Profile:
             max_speed_ms=self.max_speed_kmh / 3.6,
             temperature_c=self.temperature_c,
             relative_humidity=self.relative_humidity,
-            headwind_ms=self.headwind_ms,
         )
 
     def grade_power_curve(self) -> GradePowerCurve:

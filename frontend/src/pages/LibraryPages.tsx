@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { WindPicker } from '../components/Wind'
+import { loadWind, saveWind, type WindSetting } from '../wind'
 import { api, fmtTime, type PlannedWorkout, type Profile, type Ride, type RouteDetail, type RouteSummary, type Workout } from '../api'
 import { ElevationProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
@@ -108,8 +110,9 @@ export function WorkoutsPage({ profile, canStart, onStart }: { profile: Profile 
 }
 
 // ---------------------------------------------------------------------------------------
-export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: (r: RouteDetail, w?: Workout) => void }) {
+export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: (r: RouteDetail, w: Workout | undefined, wind: WindSetting) => void }) {
   const [list, setList] = useState<RouteSummary[]>([])
+  const [wind, setWind] = useState<WindSetting>(loadWind) // last wind used, per browser
   const [sel, setSel] = useState<RouteDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [workouts, setWorkouts] = useState<Workout[]>([])
@@ -186,7 +189,16 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
                   ))}
                 </select>
               </label>
-              <button className="primary" disabled={!canStart} title={canStart ? '' : 'Connect sensors first'} onClick={() => onStart(sel, chosenWorkout)}>
+              <WindPicker value={wind} onChange={setWind} />
+              <button
+                className="primary"
+                disabled={!canStart}
+                title={canStart ? '' : 'Connect sensors first'}
+                onClick={() => {
+                  saveWind(wind)
+                  onStart(sel, chosenWorkout, wind)
+                }}
+              >
                 {chosenWorkout ? 'Ride with workout' : 'Ride this route'}
               </button>
             </div>
