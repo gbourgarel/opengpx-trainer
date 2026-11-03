@@ -572,3 +572,38 @@ def test_finished_ride_hands_the_trainer_back_to_free_ride():
     n = len(h.targets)
     s.tick(t + 0.25)
     assert len(h.targets) == n  # nothing more is commanded once finished
+
+
+def test_erg_auto_pauses_on_pedalling_alone():
+    """Roadmap: in ERG the virtual coast-down (~2 min) delayed the auto-pause."""
+    h = FakeHub()
+    w = Workout("t", [Step(600, 1.0, 1.0)])
+    s = RideSession(h, Profile(ftp_w=250, power_match=False), "erg", workout=w)
+    t = 1000.0
+    for _ in range(240):  # 60 s at 250 W: well above 0.5 m/s
+        h.feed(trainer=250, pm=250)
+        s.tick(t := t + 0.25)
+    assert s.state == "running"
+    h.feed(trainer=0, pm=0, cad=0)
+    for _ in range(16):  # 4 s without pedalling
+        tel = s.tick(t := t + 0.25)
+    assert s.state == "paused" and tel["speed_kmh"] > 10
+    elapsed = s.elapsed_s
+    for _ in range(40):
+        s.tick(t := t + 0.25)
+    assert s.elapsed_s == elapsed  # the workout clock stopped
+    h.feed(trainer=200, pm=200)
+    s.tick(t := t + 0.25)
+    assert s.state == "running"  # auto-resume
+
+
+def test_gpx_auto_pause_still_waits_for_the_virtual_stop():
+    h, s = _gpx_session(grade=0.0)
+    t = 1000.0
+    for _ in range(120):
+        h.feed(trainer=250, pm=250)
+        s.tick(t := t + 0.25)
+    h.feed(trainer=0, pm=0, cad=0)
+    for _ in range(16):
+        s.tick(t := t + 0.25)
+    assert s.state == "running"  # still coasting on the route

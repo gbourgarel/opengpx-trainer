@@ -370,8 +370,11 @@ class RideSession:
         if running and self.mode == "gpx":
             self.climb.update(self.elapsed_s, st.altitude_m)
 
-        # auto pause: no power, no cadence, (virtually) stopped
-        if running and not pedaling and st.speed_ms < 0.5:
+        # auto pause: no power, no cadence and, on a route, (virtually) stopped. In ERG the
+        # flat virtual road coasts down for ~2 min from 34 km/h, which kept the workout clock
+        # running and recorded zeros: pause on pedalling alone there.
+        stopped = self.mode == "erg" or st.speed_ms < 0.5
+        if running and not pedaling and stopped:
             self._idle_s += dt
             if self._idle_s >= AUTO_PAUSE_AFTER_S:
                 self.state = "paused"
