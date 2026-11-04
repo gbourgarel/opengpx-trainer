@@ -113,6 +113,16 @@ progress). Environment variables:
 * FIT activity: one lap per workout step (avg / max power, NP, HR, cadence,
   `workout_step_index`), the target power as a `target_power` developer field on records and
   laps.
+* Dual-sided power meter (ANT+), the same fields as a Garmin head unit: L/R balance, torque
+  effectiveness and pedal smoothness (left / right), power phase and peak power phase (start
+  / end angles), platform centre offset (only when the meter says it supports it), seated /
+  standing (`rider_position_change` events, time standing, power and cadence per position).
+  Records carry the per-second values; laps and the session the averages, computed like an
+  Edge: over the pedalling seconds, balance weighted by power, angles averaged on the circle,
+  transitions attributed to the following position (checked on a real ride against an Edge 540
+  with the same pedals).
+* HRV: beat-to-beat (R-R) intervals as FIT `hrv` messages, unless they are just 60 / HR (some
+  straps over ANT+, e.g. a Polar, compute the beat times from their averaged heart rate).
 * Checkpoint: every 30 s the new samples are appended (and fsync'd) to
   `checkpoints/<session>.jsonl`; the file is deleted once the ride is saved or discarded. At
   startup, a leftover file becomes a ride named "… (recovered)".
@@ -159,11 +169,18 @@ One ANT node, three slave channels with wildcard pairing (the first device found
 | Device        | Type | Period | Pages used                                                  |
 |---------------|------|--------|-------------------------------------------------------------|
 | FE-C trainer  | 17   | 8192   | rx 16, 25, 71 · tx 49 (target power), 48 (free ride), 55 (user config) |
-| Power meter   | 11   | 8182   | rx 18 (crank torque: power and cadence per crank revolution), else rx 16 (power-only; event-averaged power) |
-| Heart rate    | 120  | 8070   | rx byte 7                                                   |
+| Power meter   | 11   | 8182   | rx 18 (crank torque: power and cadence per crank revolution), else rx 16 (power-only; event-averaged power) · rx 16 byte 2 (L/R balance), 19 (torque effectiveness, pedal smoothness), 0xE0–0xE2 (Cycling Dynamics), 2 / 0xFE (capabilities) · tx 70 (request), 2 / 0xFE (enable Cycling Dynamics) |
+| Heart rate    | 120  | 8070   | rx byte 7 (HR), bytes 4–6 (beat time and count → R-R), page 4 (previous beat time) |
 
 Commands go out as acknowledged messages from a single sender thread, which coalesces requests
 and re-sends the target every 2 s.
+
+Cycling Dynamics (power phase, rider position, PCO) are only sent once a display enables them.
+The app does it like a Garmin head unit (Bicycle Power profile §4.5.2): it requests the
+meter's Advanced Capabilities 2, sets 8 Hz + the supported elements, and checks again; again
+after the meter was lost for a while. The receiving channel stays at 4 Hz: the meter
+interleaves these pages so that a 4 Hz receiver gets them. A meter already sending them (e.g.
+enabled by a head unit) is left alone.
 
 ## Bluetooth LE
 

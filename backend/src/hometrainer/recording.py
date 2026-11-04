@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,7 @@ from fit_tool.profile.messages.developer_data_id_message import DeveloperDataIdM
 from fit_tool.profile.messages.event_message import EventMessage
 from fit_tool.profile.messages.field_description_message import FieldDescriptionMessage
 from fit_tool.profile.messages.file_id_message import FileIdMessage
+from fit_tool.profile.messages.hrv_message import HrvMessage
 from fit_tool.profile.messages.lap_message import LapMessage
 from fit_tool.profile.messages.record_message import RecordMessage
 from fit_tool.profile.messages.session_message import SessionMessage
@@ -23,9 +25,14 @@ from fit_tool.profile.profile_type import (
     FileType,
     LapTrigger,
     Manufacturer,
+    RiderPositionType,
     Sport,
     SubSport,
 )
+
+from .pedaling import pedal_summary, position_changes
+
+log = logging.getLogger(__name__)
 
 # developer data: identifies this app's fields in the FIT file (16-byte application id)
 TARGET_POWER_APP_ID = b"hometrainer\x00\x00\x00\x00\x01"
@@ -47,6 +54,46 @@ class Sample:
     grade: float | None = None
     target_w: float | None = None
     step_index: int | None = None  # workout step being ridden (None: no workout / over)
+    # dual-sided power meter (see hub.PedalData): FIT balance byte, %, [start, end] degrees
+    lr_balance: int | None = None
+    left_te: float | None = None
+    right_te: float | None = None
+    left_ps: float | None = None
+    right_ps: float | None = None
+    combined_ps: float | None = None
+    left_power_phase: list[float] | None = None
+    left_power_phase_peak: list[float] | None = None
+    right_power_phase: list[float] | None = None
+    right_power_phase_peak: list[float] | None = None
+    left_pco: int | None = None
+    right_pco: int | None = None
+    rider_position: int | None = None  # FIT RiderPositionType
+    rr_s: list[float] | None = None  # beat-to-beat intervals received during this second
+
+
+def pedal_fields(p) -> dict:
+    """Sample fields from a ``hub.PedalData`` (None: no dual-sided power meter)."""
+    if p is None:
+        return {}
+
+    def pair(v):
+        return None if v is None else [float(v[0]), float(v[1])]
+
+    return {
+        "lr_balance": p.balance,
+        "left_te": p.left_te,
+        "right_te": p.right_te,
+        "left_ps": p.left_ps,
+        "right_ps": p.right_ps,
+        "combined_ps": p.combined_ps,
+        "left_power_phase": pair(p.left_phase),
+        "left_power_phase_peak": pair(p.left_peak_phase),
+        "right_power_phase": pair(p.right_phase),
+        "right_power_phase_peak": pair(p.right_peak_phase),
+        "left_pco": p.left_pco_mm,
+        "right_pco": p.right_pco_mm,
+        "rider_position": p.rider_position,
+    }
 
 
 def ms(t: float) -> int:
@@ -67,6 +114,46 @@ def _target_field(watts: float) -> DeveloperField:
     )
     f.set_value(0, int(round(max(0.0, min(watts, 65534.0)))))
     return f
+
+
+# Sample attribute -> FIT record field (pedal metrics of a dual-sided power meter)
+_RECORD_PEDAL_FIELDS = (
+    ("lr_balance", "left_right_balance"),
+    ("left_te", "left_torque_effectiveness"),
+    ("right_te", "right_torque_effectiveness"),
+    ("left_ps", "left_pedal_smoothness"),
+    ("right_ps", "right_pedal_smoothness"),
+    ("combined_ps", "combined_pedal_smoothness"),
+    ("left_power_phase", "left_power_phase"),
+    ("left_power_phase_peak", "left_power_phase_peak"),
+    ("right_power_phase", "right_power_phase"),
+    ("right_power_phase_peak", "right_power_phase_peak"),
+    ("left_pco", "left_pco"),
+    ("right_pco", "right_pco"),
+)
+
+
+def hrv_is_synthetic(samples: list[Sample], tol_s: float = 0.010, share: float = 0.95) -> bool:
+    """True when the "beat-to-beat" intervals are just 60 / heart rate.
+
+    Some straps (a Polar over ANT+, seen on a real ride: 99.6 % of intervals within 10 ms of
+    60/HR) fill the beat-time field from their averaged heart rate instead of the real beats.
+    Real R-R intervals scatter around 60/HR (beat-to-beat variability, and the displayed HR is
+    an average over several beats), so over a ride they are never almost all that close.
+    Writing such intervals as HRV would mislead HRV analyses (e.g. DFA alpha 1)."""
+    pairs = [
+        (rr, s.heart_rate_bpm) for s in samples if s.heart_rate_bpm and s.rr_s for rr in s.rr_s
+    ]
+    if len(pairs) < 30:
+        return False
+    close = sum(1 for rr, hr in pairs if abs(rr - 60.0 / hr) <= tol_s)
+    return close >= share * len(pairs)
+
+
+def _hrv_message(rr_s: list[float]) -> HrvMessage:
+    m = HrvMessage()
+    m.time = list(rr_s) + [None] * (5 - len(rr_s))  # padding: FIT invalid (0xFFFF)
+    return m
 
 
 def split_laps(samples: list[Sample]) -> list[list[Sample]]:
@@ -94,6 +181,9 @@ class Recorder:
     def add(self, s: Sample) -> None:
         sec = int(s.timestamp_s)
         if sec == self._last_second and self.samples:
+            prev_rr = self.samples[-1].rr_s
+            if prev_rr:  # beats are events, not a state: keep those of the replaced tick
+                s.rr_s = prev_rr + (s.rr_s or [])
             self.samples[-1] = s
         else:
             self.samples.append(s)
@@ -163,7 +253,19 @@ class Recorder:
         ev.timestamp = ms(first.timestamp_s)
         b.add(ev)
 
+        changes = dict(position_changes(self.samples))  # timestamp -> FIT rider position
+        rr_pending: list[float] = []
+        write_hrv = not hrv_is_synthetic(self.samples)
+        if not write_hrv:
+            log.warning("R-R intervals are 60/HR (strap does not send real beats): no HRV in FIT")
         for s in self.samples:
+            if s.timestamp_s in changes:
+                pev = EventMessage()
+                pev.timestamp = ms(s.timestamp_s)
+                pev.event = Event.RIDER_POSITION_CHANGE
+                pev.event_type = EventType.MARKER
+                pev.rider_position = RiderPositionType(changes[s.timestamp_s])
+                b.add(pev)
             # no target during free-ride steps
             fields = [] if s.target_w is None else [_target_field(s.target_w)]
             r = RecordMessage(developer_fields=fields)
@@ -183,7 +285,17 @@ class Recorder:
                 r.position_long = s.lon
             if s.grade is not None:
                 r.grade = s.grade * 100
+            for attr, field in _RECORD_PEDAL_FIELDS:
+                if (v := getattr(s, attr)) is not None:
+                    setattr(r, field, v)
             b.add(r)
+            # HRV: beat-to-beat intervals, 5 per message (fixed size: one definition only)
+            rr_pending += (s.rr_s or []) if write_hrv else []
+            while len(rr_pending) >= 5:
+                b.add(_hrv_message(rr_pending[:5]))
+                del rr_pending[:5]
+        if rr_pending:
+            b.add(_hrv_message(rr_pending))
 
         ev = EventMessage()
         ev.event = Event.TIMER
@@ -217,6 +329,8 @@ class Recorder:
             ses.normalized_power = int(summ["normalized_power_w"])
         if summ.get("avg_hr_bpm"):
             ses.avg_heart_rate = int(summ["avg_hr_bpm"])
+        for k, v in pedal_summary(self.samples).items():
+            setattr(ses, k, v)
         b.add(ses)
 
         act = ActivityMessage()
@@ -262,6 +376,8 @@ class Recorder:
         if first.step_index is not None:
             lap.workout_step_index = first.step_index
         lap.lap_trigger = LapTrigger.SESSION_END if is_last else LapTrigger.TIME
+        for k, v in pedal_summary(group).items():
+            setattr(lap, k, v)
         return lap
 
 

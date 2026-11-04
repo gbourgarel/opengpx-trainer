@@ -33,7 +33,7 @@ from .gpx.route import Route
 from .physics.grade_power import RateLimiter
 from .physics.model import VirtualBike, flat_road, no_wind
 from .profile import Profile
-from .recording import Recorder, RideAverages, Sample
+from .recording import Recorder, RideAverages, Sample, pedal_fields
 from .workouts.model import Step, Workout, WorkoutPosition
 
 Mode = Literal["erg", "gpx"]
@@ -372,6 +372,7 @@ class RideSession:
         dt = 0.0 if self._last_tick is None else min(max(now - self._last_tick, 0.0), 1.0)
         self._last_tick = now
         r = self.hub.readings()
+        rr = self.hub.drain_rr()  # beats since the last tick (dropped unless running)
         pc = choose_power(r, self.profile.power_source)
         pedaling = (pc.power_w or 0) > 5 or (pc.cadence_rpm or 0) > 5
 
@@ -472,6 +473,8 @@ class RideSession:
                     step_index=self.workout.position(self.elapsed_s).step_index
                     if self.workout is not None and (self.mode == "erg" or not self.workout_done)
                     else None,
+                    rr_s=rr or None,
+                    **pedal_fields(r.pedal),
                 )
             )
 

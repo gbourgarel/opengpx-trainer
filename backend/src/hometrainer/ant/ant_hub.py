@@ -10,6 +10,12 @@ itself instead of the rider's power meter. The power-meter channel is therefore 
 the trainer's device number is known, with that number on an ANT exclusion list. When a power-
 meter device number is configured, the channel pairs with that device only.
 
+Dual-sided power meters also send pedal metrics: L/R balance (page 16), torque effectiveness and
+pedal smoothness (page 19) and, once enabled by the display, Cycling Dynamics (pages 0xE0-0xE2:
+power phase, rider position, platform centre offset). The hub enables Cycling Dynamics itself
+(see ``profiles.CyclingDynamicsEnabler``), as a Garmin head unit does. The heart-rate channel
+also yields beat-to-beat (R-R) intervals.
+
 Set ``HOMETRAINER_ANT_LOG=/path/file.csv`` to log every raw ANT page (for debugging).
 
 openant's ``easy`` API is used directly. Its high-level ``devices.FitnessEquipment`` is not used
@@ -25,7 +31,7 @@ import threading
 import time
 
 from . import profiles as pf
-from .hub import SensorHub
+from .hub import STALE_AFTER_S, SensorHub
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +96,10 @@ class AntHub(SensorHub):
         self._pm_power = pf.EventAveragedPower(65536)
         self._pm_torque = pf.CrankTorquePower()
         self._pm_torque_seen_at = float("-inf")
+        self._pm_ch = None
+        self._pm_seen_at = float("-inf")
+        self._dynamics = pf.CyclingDynamicsEnabler()
+        self._rr = pf.RRIntervals()
         self.last_command_status: pf.FecCommandStatus | None = None
 
     # -- lifecycle ----------------------------------------------------------------------
@@ -208,7 +218,7 @@ class AntHub(SensorHub):
         pm_id = self.wanted["power_meter"]
         if pm_id:
             try:
-                self._open_channel(
+                self._pm_ch = self._open_channel(
                     pf.PWR_DEVICE_TYPE, pf.PWR_PERIOD, self._on_power, device_number=pm_id
                 )
                 log.info("Power-meter channel opened, paired to device %s", pm_id)
@@ -226,7 +236,9 @@ class AntHub(SensorHub):
         trainer_num = self.devices["trainer"].device_number
         exclude = [trainer_num] if trainer_num is not None else []
         try:
-            self._open_channel(pf.PWR_DEVICE_TYPE, pf.PWR_PERIOD, self._on_power, exclude)
+            self._pm_ch = self._open_channel(
+                pf.PWR_DEVICE_TYPE, pf.PWR_PERIOD, self._on_power, exclude
+            )
             log.info("Power-meter search opened (excluding trainer %s)", trainer_num)
         except Exception:
             log.exception("Could not open power-meter channel")
@@ -328,10 +340,17 @@ class AntHub(SensorHub):
             return  # the trainer's own power broadcast, not an independent power meter
         if not self._accept("power_meter", num):
             return
-        msg = pf.decode_power(data)
+        msg = pf.decode_power(data) or pf.decode_power_extra(data)
         now = time.monotonic()
+        # a meter lost for a while (asleep, battery) may have forgotten Cycling Dynamics
+        if now - self._pm_seen_at > STALE_AFTER_S:
+            self._dynamics.reset()
+        self._pm_seen_at = now
+        for cmd in self._dynamics.on_page(msg, now) + self._dynamics.poll(now):
+            self._tx_queue.put(("pm", tuple(cmd)))
         with self._lock:
             self._seen("power_meter", num, transport="ant")
+            self._store_pedal(msg)
             if isinstance(msg, pf.CrankTorque):
                 # crank-torque pages: a fresh value at every crank revolution
                 self._pm_torque_seen_at = now
@@ -350,15 +369,39 @@ class AntHub(SensorHub):
                     self._s.pm_power.set(avg)
                     self._s.pm_cadence.set(self._pm_power.cadence(msg.cadence_rpm))
 
+    def _store_pedal(self, msg) -> None:
+        """Pedal metrics of a dual-sided meter (``_lock`` held)."""
+        s = self._s
+        if isinstance(msg, pf.PowerOnly):
+            if msg.pedal_balance is not None:
+                s.pm_balance.set(msg.pedal_balance)
+        elif isinstance(msg, pf.PedalEfficiency):
+            s.pm_te.set((msg.left_te, msg.right_te))
+            s.pm_ps.set((msg.left_ps, msg.right_ps, msg.combined_ps))
+        elif isinstance(msg, pf.ForceAngle):
+            side = s.pm_left_angles if msg.side == "left" else s.pm_right_angles
+            side.set((msg.phase_deg, msg.peak_phase_deg))
+        elif isinstance(msg, pf.PedalPosition):
+            s.pm_position.set(
+                (
+                    pf.ANT_TO_FIT_RIDER_POSITION[msg.rider_position],
+                    msg.left_pco_mm if self._dynamics.pco_supported else None,
+                    msg.right_pco_mm if self._dynamics.pco_supported else None,
+                )
+            )
+
     def _on_hrm(self, data) -> None:
         self._log_raw("hrm", data)
         num = self._device_number(data)
         if not self._accept("heart_rate", num):
             return
         hr = pf.decode_hrm(data)
+        rr = self._rr.update(data)
         with self._lock:
             self._seen("heart_rate", num, transport="ant")
             self._s.heart_rate.set(hr)
+            if rr:
+                self.add_rr(rr)
 
     # -- transmit -----------------------------------------------------------------------
     def _set_command(self, data: list[int]) -> None:
@@ -376,38 +419,49 @@ class AntHub(SensorHub):
         self._user_cfg = pf.encode_user_configuration(rider_kg, bike_kg, wheel_d_m)
         self._tx_queue.put("user")
 
-    def _send_ack(self, data: list[int], retries: int = 3) -> bool:
+    def _send_ack(self, data: list[int], ch=None, retries: int = 3) -> bool:
         from openant.base.message import Message
         from openant.easy.exception import AntException
 
-        ch = self._fec
+        ch = self._fec if ch is None else ch
+        if ch is None:
+            return False
         for _ in range(retries):
             try:
-                ch._ant.send_acknowledged_data(ch.id, data)
+                ch._ant.send_acknowledged_data(ch.id, list(data))
                 ch.wait_for_event([Message.Code.EVENT_TRANSFER_TX_COMPLETED])
                 return True
             except AntException:
                 time.sleep(0.1)
-        log.warning("FE-C command %#04x not acknowledged", data[0])
+        log.warning("ANT+ command %#04x not acknowledged", data[0])
         return False
 
     def _tx_loop(self) -> None:
-        """Single sender thread. Only the latest control command matters, so queued requests
-        are coalesced; the command is also re-sent periodically."""
+        """Single sender thread. Only the latest trainer control command matters, so queued
+        requests are coalesced; the command is also re-sent periodically. Commands to the power
+        meter (``("pm", data)``, Cycling Dynamics set-up) are sent in order, once."""
         last_sent = 0.0
         user_sent = False
         while self._running:
             try:
-                items = {self._tx_queue.get(timeout=0.5)}
+                items = [self._tx_queue.get(timeout=0.5)]
             except queue.Empty:
-                items = {"tick"}
+                items = ["tick"]
             while True:
                 try:
-                    items.add(self._tx_queue.get_nowait())
+                    items.append(self._tx_queue.get_nowait())
                 except queue.Empty:
                     break
-            if None in items or self._fec is None:
+            if None in items:
                 return
+            for item in items:
+                if isinstance(item, tuple) and item[0] == "pm":
+                    if self._pm_ch is None:  # never fall back on the trainer's channel
+                        continue
+                    sent = self._send_ack(item[1], ch=self._pm_ch)
+                    log.info("Power meter command %s: %s", bytes(item[1]).hex(), sent)
+            if self._fec is None:
+                continue  # trainer not on ANT+
             if not self.devices["trainer"].connected:
                 user_sent = False  # (re)send user config once the trainer shows up again
                 continue

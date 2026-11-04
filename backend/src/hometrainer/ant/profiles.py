@@ -122,9 +122,11 @@ def encode_user_configuration(
     ]
 
 
-def encode_request_page(page: int) -> list[int]:
-    """Common page 70 (0x46): request a data page (sent 2 times, as broadcast reply)."""
-    return [0x46, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, page & 0xFF, 0x01]
+def encode_request_page(page: int, descriptor: int = 0xFF) -> list[int]:
+    """Common page 70 (0x46): request a data page (sent 2 times, as broadcast reply).
+    ``descriptor`` (byte 3) selects a subpage, e.g. 0xFE for the power meter's Advanced
+    Capabilities 2 (Get/Set Parameters page 0x02)."""
+    return [0x46, 0xFF, 0xFF, descriptor & 0xFF, 0xFF, 0x02, page & 0xFF, 0x01]
 
 
 # --- Heart rate ----------------------------------------------------------------------------
@@ -133,14 +135,225 @@ def decode_hrm(data: bytes | list[int]) -> int | None:
     return None if hr == 0 else int(hr)
 
 
+class RRIntervals:
+    """Beat-to-beat (R-R) intervals from the heart-rate pages (ANT+ Heart Rate profile).
+
+    Every page carries the time of the last beat (bytes 4-5, 1/1024 s, rolls over at 64 s)
+    and a beat count (byte 6). Page 4 also carries the time of the previous beat (bytes 2-3).
+    When the count goes up by exactly one, the interval is the difference of the two last-beat
+    times; when beats were missed, only page 4 still gives the last interval. Implausible
+    intervals (outside 0.2-3 s, i.e. 20-300 bpm) are dropped.
+    """
+
+    MIN_S, MAX_S = 0.2, 3.0
+
+    def __init__(self) -> None:
+        self.last: tuple[int, int] | None = None  # (beat count, last beat time)
+
+    def update(self, data: bytes | list[int]) -> list[float]:
+        d = list(data[:8])
+        page = d[0] & 0x7F  # bit 7 is the page-change toggle
+        t, n = d[4] | (d[5] << 8), d[6]
+        prev, self.last = self.last, (n, t)
+        if prev is None or (n - prev[0]) % 256 == 0:
+            return []
+        if (n - prev[0]) % 256 == 1:
+            rr = ((t - prev[1]) % 65536) / 1024.0
+        elif page == 4:
+            rr = ((t - (d[2] | (d[3] << 8))) % 65536) / 1024.0
+        else:
+            return []  # beats missed: interval unknown
+        return [rr] if self.MIN_S <= rr <= self.MAX_S else []
+
+
 # --- Bicycle power -------------------------------------------------------------------------
 @dataclass
 class PowerOnly:  # page 16 (0x10)
     event_count: int
+    # byte 2 as sent (None if 0xFF): bit 7 set = bits 0-6 are the *right* pedal's share (%),
+    # else the share of an unknown pedal. Same encoding as the FIT left_right_balance field.
     pedal_balance: int | None
     cadence_rpm: int | None
     accumulated_power_w: int
     instantaneous_power_w: int
+
+
+def _half_pct(b: int) -> float | None:
+    return None if b == 0xFF else b / 2.0
+
+
+@dataclass
+class PedalEfficiency:  # page 19 (0x13): torque effectiveness and pedal smoothness, %
+    event_count: int
+    left_te: float | None
+    right_te: float | None
+    left_ps: float | None  # None when combined
+    right_ps: float | None
+    combined_ps: float | None  # sensors that cannot tell the legs apart (byte 5 = 0xFE)
+
+
+def brads_to_deg(b: int) -> float:
+    """Crank angle: 256 binary radians per turn, 0 at the top, clockwise (seen from the right)."""
+    return b * 360.0 / 256.0
+
+
+@dataclass
+class ForceAngle:  # pages 0xE0 (right) / 0xE1 (left): power phase, Cycling Dynamics
+    side: str  # "left" | "right"
+    event_count: int
+    phase_deg: tuple[float, float] | None  # (start, end) of positive torque
+    peak_phase_deg: tuple[float, float] | None  # (start, end) of peak torque
+    torque_nm: float  # mean torque over the event interval
+
+
+@dataclass
+class PedalPosition:  # page 0xE2: rider position and platform centre offset
+    event_count: int
+    rider_position: int  # ANT: 0 seated, 1 transition to seated, 2 standing, 3 to standing
+    cadence_rpm: int | None
+    right_pco_mm: int | None
+    left_pco_mm: int | None
+
+
+@dataclass
+class AdvancedCapabilities2:  # page 0x02, subpage 0xFE (from the sensor)
+    mask: int  # bit = 0: capability supported
+    value: int  # bit = 0: capability enabled (4 Hz / 8 Hz bits: transmitting at that rate)
+
+
+# Advanced Capabilities 2 bits (Bicycle Power profile rev 5.1, tables 15-14 and 15-15)
+CAP_8HZ, CAP_POWER_PHASE, CAP_PCO, CAP_RIDER_POSITION = 1, 3, 4, 5
+CYCLING_DYNAMICS = (CAP_POWER_PHASE, CAP_PCO, CAP_RIDER_POSITION)
+
+
+def _angles(a: int, b: int) -> tuple[float, float] | None:
+    return None if a == 0xC0 and b == 0xC0 else (brads_to_deg(a), brads_to_deg(b))
+
+
+def _pco(b: int) -> int | None:
+    v = b - 256 if b > 127 else b
+    return None if v == -128 else v
+
+
+def decode_power_extra(
+    data: bytes | list[int],
+) -> PedalEfficiency | ForceAngle | PedalPosition | AdvancedCapabilities2 | None:
+    """Pages of a dual-sided power meter beyond power and cadence (see decode_power)."""
+    d = list(data[:8])
+    page = d[0]
+    if page == 0x13:
+        combined = d[5] == 0xFE
+        return PedalEfficiency(
+            event_count=d[1],
+            left_te=_half_pct(d[2]),
+            right_te=_half_pct(d[3]),
+            left_ps=None if combined else _half_pct(d[4]),
+            right_ps=None if combined else _half_pct(d[5]),
+            combined_ps=_half_pct(d[4]) if combined else None,
+        )
+    if page in (0xE0, 0xE1):
+        return ForceAngle(
+            side="right" if page == 0xE0 else "left",
+            event_count=d[1],
+            phase_deg=_angles(d[2], d[3]),
+            peak_phase_deg=_angles(d[4], d[5]),
+            torque_nm=(d[6] | (d[7] << 8)) / 32.0,
+        )
+    if page == 0xE2:
+        return PedalPosition(
+            event_count=d[1],
+            rider_position=(d[2] >> 6) & 0x03,
+            cadence_rpm=None if d[3] == 0xFF else d[3],
+            right_pco_mm=_pco(d[4]),
+            left_pco_mm=_pco(d[5]),
+        )
+    if page == 0x02 and d[1] == 0xFE:
+        return AdvancedCapabilities2(mask=d[4], value=d[6])
+    return None
+
+
+# ANT+ rider position -> FIT RiderPositionType (0 seated, 1 standing, 2 / 3 transitions)
+ANT_TO_FIT_RIDER_POSITION = {0: 0, 1: 2, 2: 1, 3: 3}
+
+
+def encode_enable_cycling_dynamics(caps: AdvancedCapabilities2) -> list[int] | None:
+    """Set Advanced Capabilities 2 (from the display): 8 Hz transmission plus every Cycling
+    Dynamics element the sensor supports. None when it supports none (or no 8 Hz).
+
+    From the display, a mask bit at 0 means "apply this bit of the value"; a value bit at 0
+    enables the capability (or transmits at that rate). Reserved bits 2 and 7 are set to 1."""
+    supported = [b for b in CYCLING_DYNAMICS if not caps.mask >> b & 1]
+    if caps.mask >> CAP_8HZ & 1 or not supported:
+        return None
+    mask = 0xFF
+    for b in (CAP_8HZ, *supported):
+        mask &= ~(1 << b)
+    return [0x02, 0xFE, 0xFF, 0xFF, mask, 0xFF, mask, 0xFF]  # value: same bits cleared
+
+
+def cycling_dynamics_enabled(caps: AdvancedCapabilities2) -> bool:
+    """True when the sensor transmits at 8 Hz with every supported Cycling Dynamics element."""
+    if caps.value >> CAP_8HZ & 1:
+        return False
+    return all(caps.value >> b & 1 == 0 for b in CYCLING_DYNAMICS if not caps.mask >> b & 1)
+
+
+class CyclingDynamicsEnabler:
+    """Turns Cycling Dynamics on in a power meter (Bicycle Power profile §4.5.2): request its
+    Advanced Capabilities 2, then set 8 Hz + the supported elements, and check again.
+
+    Pure state machine: feed it the pages received (``on_page``) and call ``poll``
+    regularly; both return the commands to send (acknowledged) to the power meter. The
+    receiving channel stays at 4 Hz: the sensor interleaves the dynamics pages so that a 4 Hz
+    receiver gets them (§15.2.5.1.2). A meter that never answers is left alone after
+    ``max_requests``; one already sending dynamics pages (e.g. enabled by a head unit) needs
+    nothing.
+    """
+
+    RETRY_S = 3.0
+
+    def __init__(self, max_requests: int = 5, max_sets: int = 3):
+        self.max_requests = max_requests
+        self.max_sets = max_sets
+        self.state = "unknown"  # unknown | enabled | unsupported
+        self.requests = 0
+        self.sets = 0
+        self._next_request = 0.0
+        # Some meters send 0 mm in the PCO bytes without supporting PCO (Assioma: mask bit 4
+        # set): trust PCO only when the capabilities say so.
+        self.pco_supported = False
+
+    def reset(self) -> None:
+        """The meter was lost (asleep, battery): it may have forgotten its configuration."""
+        self.state, self.requests, self.sets, self._next_request = "unknown", 0, 0, 0.0
+
+    def on_page(self, msg, now: float) -> list[list[int]]:
+        if isinstance(msg, AdvancedCapabilities2):
+            self.pco_supported = not msg.mask >> CAP_PCO & 1
+        if isinstance(msg, ForceAngle | PedalPosition):
+            self.state = "enabled"
+        elif isinstance(msg, AdvancedCapabilities2) and self.state == "unknown":
+            if cycling_dynamics_enabled(msg):
+                self.state = "enabled"
+                return []
+            cmd = encode_enable_cycling_dynamics(msg)
+            if cmd is None or self.sets >= self.max_sets:
+                self.state = "unsupported"
+                return []
+            self.sets += 1
+            self._next_request = now + self.RETRY_S  # then check it was applied
+            return [cmd]
+        return []
+
+    def poll(self, now: float) -> list[list[int]]:
+        if self.state != "unknown" or now < self._next_request:
+            return []
+        if self.requests >= self.max_requests:
+            self.state = "unsupported"
+            return []
+        self.requests += 1
+        self._next_request = now + self.RETRY_S
+        return [encode_request_page(0x02, descriptor=0xFE)]
 
 
 @dataclass
@@ -153,6 +366,7 @@ class CrankTorque:  # page 18 (0x12), standard crank torque
 
 
 def decode_power(data: bytes | list[int]) -> PowerOnly | CrankTorque | None:
+    """Power and cadence pages (16 and 18); other pages: decode_power_extra."""
     d = list(data[:8])
     if d[0] == 0x12:
         return CrankTorque(
@@ -166,7 +380,7 @@ def decode_power(data: bytes | list[int]) -> PowerOnly | CrankTorque | None:
         return None
     return PowerOnly(
         event_count=d[1],
-        pedal_balance=None if d[2] == 0xFF else d[2] & 0x7F,
+        pedal_balance=None if d[2] == 0xFF else d[2],
         cadence_rpm=None if d[3] == 0xFF else d[3],
         accumulated_power_w=d[4] | (d[5] << 8),
         instantaneous_power_w=d[6] | (d[7] << 8),

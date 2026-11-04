@@ -6,6 +6,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Any
 
 # A reading (and a device's "connected" flag) is dropped after this long without any message.
 # 5 s rides through short reception gaps (a real ride had all ANT+ devices silent for 4.2 s at
@@ -16,16 +17,43 @@ STALE_AFTER_S = 5.0
 
 @dataclass
 class SensorValue:
-    value: float | None = None
+    value: Any = None  # a number, or a tuple for multi-field pages (pedal metrics)
     updated: float = 0.0  # time.monotonic()
 
-    def set(self, v: float | None) -> None:
+    def set(self, v: Any) -> None:
         self.value = v
         self.updated = time.monotonic()
 
-    def fresh(self, now: float | None = None) -> float | None:
+    def fresh(self, now: float | None = None) -> Any:
         now = time.monotonic() if now is None else now
         return self.value if now - self.updated <= STALE_AFTER_S else None
+
+
+@dataclass(frozen=True)
+class PedalData:
+    """Pedalling metrics of a dual-sided power meter (None: not sent, or stale).
+
+    Angles in degrees on the crank circle (0 at the top, clockwise seen from the right).
+    """
+
+    # FIT ``left_right_balance`` byte: bit 7 set = bits 0-6 are the right pedal's share (%)
+    balance: int | None = None
+    left_te: float | None = None  # torque effectiveness, %
+    right_te: float | None = None
+    left_ps: float | None = None  # pedal smoothness, %
+    right_ps: float | None = None
+    combined_ps: float | None = None
+    left_phase: tuple[float, float] | None = None  # power phase (start, end)
+    left_peak_phase: tuple[float, float] | None = None
+    right_phase: tuple[float, float] | None = None
+    right_peak_phase: tuple[float, float] | None = None
+    left_pco_mm: int | None = None  # platform centre offset
+    right_pco_mm: int | None = None
+    # FIT RiderPositionType: 0 seated, 1 standing, 2 / 3 transition to seated / standing
+    rider_position: int | None = None
+
+    def any(self) -> bool:
+        return any(v is not None for v in vars(self).values())
 
 
 @dataclass
@@ -53,6 +81,10 @@ class Readings:
     trainer_connected: bool
     power_meter_connected: bool
     heart_rate_connected: bool
+    pedal: PedalData | None = None  # dual-sided power meter metrics, when any is fresh
+
+
+MAX_PENDING_RR = 64  # R-R intervals kept when nobody drains them (no ride in progress)
 
 
 @dataclass
@@ -63,6 +95,16 @@ class _Store:
     pm_power: SensorValue = field(default_factory=SensorValue)
     pm_cadence: SensorValue = field(default_factory=SensorValue)
     heart_rate: SensorValue = field(default_factory=SensorValue)
+    # pedal metrics, one value per page: balance byte; (left TE, right TE); (left PS, right
+    # PS, combined PS); (phase, peak phase) per side; (FIT rider position, left PCO, right PCO)
+    pm_balance: SensorValue = field(default_factory=SensorValue)
+    pm_te: SensorValue = field(default_factory=SensorValue)
+    pm_ps: SensorValue = field(default_factory=SensorValue)
+    pm_left_angles: SensorValue = field(default_factory=SensorValue)
+    pm_right_angles: SensorValue = field(default_factory=SensorValue)
+    pm_position: SensorValue = field(default_factory=SensorValue)
+    # beat-to-beat intervals (s) not read yet (drain_rr)
+    rr_intervals: list[float] = field(default_factory=list)
 
 
 ROLES = ("trainer", "power_meter", "heart_rate")
@@ -135,7 +177,45 @@ class SensorHub(ABC):
                 trainer_connected=self.devices["trainer"].connected,
                 power_meter_connected=self.devices["power_meter"].connected,
                 heart_rate_connected=self.devices["heart_rate"].connected,
+                pedal=self._pedal(now),
             )
+
+    def _pedal(self, now: float) -> PedalData | None:
+        s = self._s
+        te = s.pm_te.fresh(now) or (None, None)
+        ps = s.pm_ps.fresh(now) or (None, None, None)
+        la = s.pm_left_angles.fresh(now) or (None, None)
+        ra = s.pm_right_angles.fresh(now) or (None, None)
+        pos = s.pm_position.fresh(now) or (None, None, None)
+        p = PedalData(
+            balance=s.pm_balance.fresh(now),
+            left_te=te[0],
+            right_te=te[1],
+            left_ps=ps[0],
+            right_ps=ps[1],
+            combined_ps=ps[2],
+            left_phase=la[0],
+            left_peak_phase=la[1],
+            right_phase=ra[0],
+            right_peak_phase=ra[1],
+            rider_position=pos[0],
+            left_pco_mm=pos[1],
+            right_pco_mm=pos[2],
+        )
+        return p if p.any() else None
+
+    def add_rr(self, intervals: list[float]) -> None:
+        """Queue beat-to-beat intervals (call with ``_lock`` held)."""
+        rr = self._s.rr_intervals
+        rr.extend(intervals)
+        del rr[:-MAX_PENDING_RR]
+
+    def drain_rr(self) -> list[float]:
+        """R-R intervals (s) received since the last call, oldest first."""
+        with self._lock:
+            out = list(self._s.rr_intervals)
+            self._s.rr_intervals.clear()
+            return out
 
     def status(self) -> dict:
         self.readings()  # refresh connection flags
