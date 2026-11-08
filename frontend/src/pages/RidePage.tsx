@@ -83,9 +83,10 @@ export function RidePage({
   const inSession = ['ready', 'running', 'paused', 'finished'].includes(tel.state)
   const route = active?.route
   const workout = active?.workout
-  // immersive 3D view, per ride (a new ride starts on the normal screen)
+  // immersive 3D view, per ride (a new ride starts on the normal screen); left when the ride
+  // ends, so the "finished" message and the upload prompt are not hidden behind it
   const [immersiveRide, setImmersiveRide] = useState<string | null>(null)
-  const canImmersive = inSession && !!route
+  const canImmersive = ['ready', 'running', 'paused'].includes(tel.state) && !!route
   const immersive = canImmersive && immersiveRide === active?.sessionId
   const setImmersive = (on: boolean) => setImmersiveRide(on && active ? active.sessionId : null)
   useRideShortcuts({ tel, enabled: inSession && !!active, hasWorkout: !!workout, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
@@ -125,6 +126,23 @@ export function RidePage({
   const lap = tel.lap ?? 1
   const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : 'GPX · pseudo-ERG'
 
+  const pauseButton =
+    tel.state === 'running' ? (
+      <button onClick={() => act(api.pause)}>Pause</button>
+    ) : tel.state === 'paused' || tel.state === 'ready' ? (
+      <button onClick={() => act(api.resume)}>Resume</button>
+    ) : null
+  const stopButton = (
+    <button
+      className="danger"
+      onClick={() => {
+        if (tel.state === 'finished' || confirm('Stop and save this ride?')) act(() => api.stop(true).then((r) => onEnd(r.saved?.ride_id)))
+      }}
+    >
+      {tel.state === 'finished' ? 'Close' : 'Stop & save'}
+    </button>
+  )
+
   // head (title, badges, pause/stop) and controls, laid out by RideCockpit
   const head = (
     <>
@@ -157,16 +175,8 @@ export function RidePage({
               {sound ? 'Sound on' : 'Sound off'}
             </button>
           )}
-          {tel.state === 'running' && <button onClick={() => act(api.pause)}>Pause</button>}
-          {(tel.state === 'paused' || tel.state === 'ready') && <button onClick={() => act(api.resume)}>Resume</button>}
-          <button
-            className="danger"
-            onClick={() => {
-              if (tel.state === 'finished' || confirm('Stop and save this ride?')) act(() => api.stop(true).then((r) => onEnd(r.saved?.ride_id)))
-            }}
-          >
-            {tel.state === 'finished' ? 'Close' : 'Stop & save'}
-          </button>
+          {pauseButton}
+          {stopButton}
         </div>
       </div>
       {error && <div className="error">{error}</div>}
@@ -234,11 +244,43 @@ export function RidePage({
       </div>
   )
 
+  // compact controls of the immersive view (GPX rides): pause / stop, workout step, effort or
+  // manual target, difficulty
+  const immersiveControls = (
+    <>
+      {pauseButton}
+      {stopButton}
+      {stepControls}
+      {workout && <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />}
+      {tel.target_mode === 'manual' && tel.manual_target_w != null ? (
+        <ManualTarget key={tel.name} initial={tel.manual_target_w} onError={setError} />
+      ) : (
+        <Stepper label={workout ? 'Slope effort' : 'Effort'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
+      )}
+      <Stepper label="Difficulty" value={tel.difficulty_pct ?? 0} step={1} signed onChange={(v) => act(() => api.adjust({ difficulty_pct: v }))} />
+    </>
+  )
+
   // Cockpit layout (RideCockpit): fits the window on desktop screens; the immersive view covers it
   return (
     <>
       <RideCockpit c={{ tel, history, route, workout, ftp, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls }} />
-      {immersive && route && <Immersive tel={tel} route={route} onExit={() => setImmersive(false)} />}
+      {immersive && route && (
+        <Immersive
+          tel={tel}
+          route={route}
+          workout={workout}
+          ftp={ftp}
+          routePos={routePos}
+          remainingDist={remainingDist}
+          doneIdx={doneIdx}
+          controls={immersiveControls}
+          sound={sound}
+          setSound={setSound}
+          error={error}
+          onExit={() => setImmersive(false)}
+        />
+      )}
     </>
   )
 }

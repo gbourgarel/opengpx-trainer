@@ -1,9 +1,16 @@
-/* Immersive mode: the 3D view over the whole window, above the app's header and tabs. */
+/* Immersive mode: the 3D view over the whole window (above the app's header and tabs), metrics
+   on frosted panels. Layout from the validated mock-up (spikes/immersive-mockup). */
 .immersive {
+  --im-glass: rgba(12, 15, 21, 0.62);
+  --im-border: rgba(255, 255, 255, 0.1);
   position: fixed;
   inset: 0;
   z-index: 1000;
   background: #000;
+  overflow: hidden;
+}
+.immersive.im-idle {
+  cursor: none;
 }
 .immersive .scenery3d {
   position: absolute;
@@ -16,6 +23,44 @@
   place-items: center;
   color: var(--muted);
 }
+.im-glass {
+  background: var(--im-glass);
+  border: 1px solid var(--im-border);
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.im-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.im-unit {
+  font-size: 0.45em;
+  color: var(--muted);
+  margin-left: 4px;
+  font-weight: 500;
+}
+.immersive kbd {
+  font: 11px ui-monospace, monospace;
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--muted);
+  margin-left: 4px;
+}
+.im-open kbd {
+  font: 11px ui-monospace, monospace;
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+/* top strip */
 .im-top {
   position: absolute;
   top: 0;
@@ -27,28 +72,315 @@
   gap: 10px;
   padding: 0 16px;
   background: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
-  pointer-events: none;
-}
-.im-top > * {
-  pointer-events: auto;
 }
 .im-top h2 {
   font-size: 16px;
   font-weight: 600;
   text-shadow: 0 1px 3px #000;
 }
+.im-top button {
+  background: rgba(31, 36, 48, 0.85);
+}
 .im-sp {
   flex: 1;
 }
-.im-exit {
-  background: rgba(31, 36, 48, 0.85);
+
+/* controls: top centre, over the sky, hidden when the mouse is idle */
+.im-controls {
+  position: absolute;
+  left: 50%;
+  top: 64px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  white-space: nowrap;
+  transition: opacity 0.3s;
 }
-.im-exit kbd,
-.im-open kbd {
-  font: 11px ui-monospace, monospace;
-  border: 1px solid var(--grid);
-  border-radius: 4px;
-  padding: 0 4px;
+.im-controls.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+/* compact: it must fit between the power block and the tiles (~830 px on a 1440 px screen) */
+.im-controls button {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.im-controls .stepper {
+  gap: 3px;
+  padding: 0 2px;
+}
+.im-controls .stepper .label {
+  font-size: 11px;
   color: var(--muted);
-  margin-left: 4px;
+}
+.im-controls .stepper .val {
+  font-size: 13px;
+  min-width: 40px;
+  text-align: center;
+}
+.im-controls .stepper button {
+  width: 24px;
+  font-size: 14px;
+  padding: 2px;
+}
+.im-controls .seg {
+  display: flex;
+  gap: 4px;
+}
+.im-controls .manual-target input {
+  width: 56px;
+}
+.im-error,
+.im-hint {
+  position: absolute;
+  left: 50%;
+  top: 120px;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.im-error {
+  background: rgba(229, 72, 77, 0.85);
+}
+.im-hint {
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 18px;
+}
+
+/* power block, top left */
+.im-power {
+  position: absolute;
+  top: 64px;
+  left: 16px;
+  width: 300px;
+  padding: 14px 16px;
+}
+.im-watts {
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.im-sub {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.im-sub b {
+  color: var(--target);
+}
+.im-zonebar {
+  position: relative;
+  margin: 12px 0 4px;
+}
+.im-zonebar-track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.im-zonebar-track i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.im-zonebar-tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: 50%;
+  width: 2px;
+  background: #fff;
+}
+.im-zonebar-marker {
+  position: absolute;
+  top: -3px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid #000;
+  transition: left 0.25s linear;
+}
+.im-zone {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 10px;
+}
+.zone-fg-on { color: var(--zone-on); }
+.zone-fg-high { color: var(--zone-high); }
+.zone-fg-too-high { color: var(--zone-too-high); }
+.zone-fg-low { color: var(--zone-low); }
+.zone-fg-too-low { color: var(--zone-low); }
+.zone-bg-on { background: var(--zone-on); }
+.zone-bg-high { background: var(--zone-high); }
+.zone-bg-too-high { background: var(--zone-too-high); }
+.zone-bg-low { background: var(--zone-low); }
+.zone-bg-too-low { background: var(--zone-too-low); }
+.im-step {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--im-border);
+}
+.im-step b {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.im-step small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.im-step small b {
+  font-size: 12px;
+  color: var(--target);
+}
+.im-band {
+  margin-top: 10px;
+}
+.im-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+/* tiles, top right */
+.im-tiles {
+  position: absolute;
+  top: 64px;
+  right: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, 132px);
+  gap: 8px;
+}
+.im-tile {
+  padding: 8px 12px;
+}
+.im-tile b {
+  display: block;
+  font-size: 30px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.im-tile b.small {
+  font-size: 22px;
+}
+.im-tile small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.im-tile.big {
+  grid-column: span 2;
+}
+.im-tile.big b {
+  font-size: 40px;
+}
+.im-tile.hr b {
+  color: var(--hr);
+}
+
+/* road ahead, bottom left */
+.im-ahead {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  width: 470px;
+  padding: 10px 14px 8px;
+}
+
+/* whole route + mini map, bottom right */
+.im-route {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 290px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.im-route-profile {
+  padding: 7px 12px 6px;
+}
+.im-route-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.im-route-row b {
+  color: var(--text);
+  font-size: 12px;
+}
+.im-route-svg {
+  position: relative;
+  margin-top: 4px;
+}
+.im-done-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(0, 0, 0, 0.45);
+  border-right: 1.5px solid #fff;
+  pointer-events: none;
+}
+.im-mini {
+  position: relative;
+  height: 160px;
+  overflow: hidden;
+}
+.im-mini-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: rgba(23, 27, 35, 0.55);
+}
+.im-mini-all {
+  fill: none;
+  stroke: #8a93a6;
+  stroke-width: 2.5;
+}
+.im-mini-done {
+  fill: none;
+  stroke: #ff6a00;
+  stroke-width: 3;
+}
+.im-mini-me {
+  fill: #fff;
+  stroke: #ff3d00;
+  stroke-width: 3;
+}
+.im-mini .wind-badge {
+  top: 8px;
+  left: 8px;
+  bottom: auto;
+}
+
+/* map attributions (required), one small line between the bottom panels */
+.im-attrib {
+  position: absolute;
+  left: 502px;
+  right: 322px;
+  bottom: 6px;
+  font-size: 10px;
+  line-height: 1.3;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 2px #000;
+}
+.im-attrib a {
+  color: inherit;
 }

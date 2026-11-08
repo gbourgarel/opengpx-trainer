@@ -9,7 +9,7 @@ import { useEffect, useRef } from 'react'
 import type { RouteDetail, Telemetry } from '../api'
 import { autoCamera, newCameraState, type Frame } from '../scenery/camera'
 import { followPosition, pointAt, routeGeo, toLngLat } from '../scenery/route3d'
-import { ATTRIBUTION, clearTileCache, DEM_MAX_ZOOM, DEM_URL, IMAGERY_MAX_ZOOM, IMAGERY_URL, loadTile, prefetch, tileStats, wantedTiles } from '../scenery/tiles'
+import { clearTileCache, DEM_MAX_ZOOM, DEM_URL, IMAGERY_MAX_ZOOM, IMAGERY_URL, loadTile, prefetch, tileStats, wantedTiles } from '../scenery/tiles'
 
 /** Vertical field of view (deg): a wide angle shows the landscape around the road. */
 const FOV = 65
@@ -45,7 +45,8 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       container: box.current,
       interactive: false,
       maxPitch: 85,
-      attributionControl: { compact: true },
+      // the attributions are shown by the immersive overlay (one line between its panels)
+      attributionControl: false,
       // a pitched view shows many tiles at several zooms: the default cache (sized from the
       // viewport) dropped tiles still in view, which were then fetched again
       maxTileCacheSize: 3000,
@@ -55,7 +56,7 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       style: {
         version: 8,
         sources: {
-          imagery: { type: 'raster', tiles: [IMAGERY_URL], tileSize: 256, maxzoom: IMAGERY_MAX_ZOOM, attribution: ATTRIBUTION },
+          imagery: { type: 'raster', tiles: [IMAGERY_URL], tileSize: 256, maxzoom: IMAGERY_MAX_ZOOM },
           dem: { type: 'raster-dem', tiles: [DEM_URL], tileSize: 256, maxzoom: DEM_MAX_ZOOM, encoding: 'terrarium' },
           route: { type: 'geojson', data: { type: 'LineString', coordinates: route.latlon.map(([lat, lon]) => [lon, lat]) } },
           rider: { type: 'geojson', data: { type: 'Point', coordinates: [g.lon0, g.lat0] } },

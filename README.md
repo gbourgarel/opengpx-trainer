@@ -103,6 +103,7 @@ progress). Environment variables:
   | ↑ / ↓ (+ / −)  | workout intensity ±1 % (ERG, GPX + workout); effort ±2 % on a GPX ride following the slope |
   | M              | sound on / off                                                      |
   | V / Esc        | immersive 3D view on / off (GPX rides)                              |
+  | F              | browser full screen (immersive view)                                |
 
 * GPX: **Immersive** (or V) shows the route in 3D over the whole window: terrain draped with
   aerial imagery, a camera following the rider, wide angle. The camera is automatic: on flat,
@@ -116,8 +117,12 @@ progress). Environment variables:
   next kilometre are downloaded ahead (a corridor along the route, wider for the coarse levels)
   so fast descents do not outrun the network; they are kept **in memory only**, dropped once
   behind, and the cache is emptied when the view closes or the ride ends. Expect a few tens of
-  MB per minute at descent speed. The metrics
-  overlays of this mode are still to come.
+  MB per minute at descent speed. Over the view: 3 s power in its zone colour with a zone bar
+  (target ± 25 %) and, with a workout, the step left, next target, interval average and a band
+  of the workout (top left); speed, time, HR, cadence, average / NP (top right); the road
+  ahead (bottom left); the whole route and a small fixed map (bottom right). The controls
+  (pause, stop, step, effort, difficulty) sit at the top centre and hide after 3 s without
+  moving the mouse. The view closes by itself when the ride ends.
 
 * When a ride ends (end of the workout or route, or *Stop & save*) the trainer goes back to
   free ride, the FIT file is written in the background, and the upload to intervals.icu is
