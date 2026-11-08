@@ -169,18 +169,17 @@ One ANT node, three slave channels with wildcard pairing (the first device found
 | Device        | Type | Period | Pages used                                                  |
 |---------------|------|--------|-------------------------------------------------------------|
 | FE-C trainer  | 17   | 8192   | rx 16, 25, 71 · tx 49 (target power), 48 (free ride), 55 (user config) |
-| Power meter   | 11   | 8182   | rx 18 (crank torque: power and cadence per crank revolution), else rx 16 (power-only; event-averaged power) · rx 16 byte 2 (L/R balance), 19 (torque effectiveness, pedal smoothness), 0xE0–0xE2 (Cycling Dynamics), 2 / 0xFE (capabilities) · tx 70 (request), 2 / 0xFE (enable Cycling Dynamics) |
+| Power meter   | 11   | 8182   | rx 18 (crank torque: power and cadence per crank revolution), else rx 16 (power-only; event-averaged power) · rx 16 byte 2 (L/R balance), 19 (torque effectiveness, pedal smoothness), 0xE0–0xE2 (Cycling Dynamics), 2 / 0xFE (capabilities) |
 | Heart rate    | 120  | 8070   | rx byte 7 (HR), bytes 4–6 (beat time and count → R-R), page 4 (previous beat time) |
 
 Commands go out as acknowledged messages from a single sender thread, which coalesces requests
 and re-sends the target every 2 s.
 
 Cycling Dynamics (power phase, rider position, PCO) are only sent once a display enables them.
-The app does it like a Garmin head unit (Bicycle Power profile §4.5.2): it requests the
-meter's Advanced Capabilities 2, sets 8 Hz + the supported elements, and checks again; again
-after the meter was lost for a while. The receiving channel stays at 4 Hz: the meter
-interleaves these pages so that a 4 Hz receiver gets them. A meter already sending them (e.g.
-enabled by a head unit) is left alone.
+The app records them when a head unit (e.g. a Garmin Edge) has enabled them. Enabling them
+from the app (Bicycle Power profile §4.5.2) is implemented but switched off: on a real ride
+the power-meter channel went silent as soon as the app sent its first request. L/R balance,
+torque effectiveness and pedal smoothness need no set-up.
 
 ## Bluetooth LE
 

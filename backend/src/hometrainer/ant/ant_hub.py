@@ -12,9 +12,10 @@ meter device number is configured, the channel pairs with that device only.
 
 Dual-sided power meters also send pedal metrics: L/R balance (page 16), torque effectiveness and
 pedal smoothness (page 19) and, once enabled by the display, Cycling Dynamics (pages 0xE0-0xE2:
-power phase, rider position, platform centre offset). The hub enables Cycling Dynamics itself
-(see ``profiles.CyclingDynamicsEnabler``), as a Garmin head unit does. The heart-rate channel
-also yields beat-to-beat (R-R) intervals.
+power phase, rider position, platform centre offset). Enabling Cycling Dynamics from the app
+(``profiles.CyclingDynamicsEnabler``) is switched off for now (``ENABLE_CYCLING_DYNAMICS``):
+the pages are recorded when a head unit enables them. The heart-rate channel also yields
+beat-to-beat (R-R) intervals.
 
 Set ``HOMETRAINER_ANT_LOG=/path/file.csv`` to log every raw ANT page (for debugging).
 
@@ -45,6 +46,11 @@ class AntUnavailable(RuntimeError):
 
 class AntHub(SensorHub):
     TARGET_RESEND_S = 2.0  # re-send ERG target periodically (survives trainer reconnects)
+    # Send the Cycling Dynamics set-up to the power meter. Off: on a real ride (2026-11-08,
+    # Assioma) the power-meter channel received nothing more once the first request (page 70)
+    # was sent, 0.3 s after pairing, on the 4 Hz channel. The pages are still decoded when a
+    # head unit enables them; balance, TE and PS need no set-up.
+    ENABLE_CYCLING_DYNAMICS = False
 
     def __init__(
         self,
@@ -346,8 +352,10 @@ class AntHub(SensorHub):
         if now - self._pm_seen_at > STALE_AFTER_S:
             self._dynamics.reset()
         self._pm_seen_at = now
-        for cmd in self._dynamics.on_page(msg, now) + self._dynamics.poll(now):
-            self._tx_queue.put(("pm", tuple(cmd)))
+        cmds = self._dynamics.on_page(msg, now)  # also learns PCO support from the capabilities
+        if self.ENABLE_CYCLING_DYNAMICS:
+            for cmd in cmds + self._dynamics.poll(now):
+                self._tx_queue.put(("pm", tuple(cmd)))
         with self._lock:
             self._seen("power_meter", num, transport="ant")
             self._store_pedal(msg)

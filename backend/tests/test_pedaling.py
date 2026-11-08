@@ -136,21 +136,33 @@ def test_hub_exposes_pedal_metrics_and_queues_dynamics_requests(clocked_hub):
     assert p.left_phase == pytest.approx((2.8125, 199.6875)) and p.right_phase is None
     assert p.rider_position == 1  # ANT "standing" -> FIT STANDING
     assert p.left_pco_mm is None  # PCO not trusted until the meter says it supports it
-    items = []
-    while not hub._tx_queue.empty():
-        items.append(hub._tx_queue.get())
-    assert ("pm", tuple(pf.encode_request_page(0x02, descriptor=0xFE))) in items
+    assert hub._tx_queue.empty()  # Cycling Dynamics set-up off: nothing sent to the meter
     clock[0] += 6.0  # stale
     assert hub.readings().pedal is None
 
 
-def test_hub_sets_cycling_dynamics_when_the_meter_reports_them_off(clocked_hub):
-    hub, _ = clocked_hub
-    hub._on_power([0x02, 0xFE, 0xFF, 0xFF, 212, 0xFF, 0xFF, 0xFF] + EXT)
+def queued(hub):
     items = []
     while not hub._tx_queue.empty():
         items.append(hub._tx_queue.get())
-    assert ("pm", (0x02, 0xFE, 0xFF, 0xFF, 213, 0xFF, 213, 0xFF)) in items
+    return items
+
+
+def test_hub_sends_nothing_to_the_meter_by_default(clocked_hub):
+    hub, _ = clocked_hub
+    hub._on_power([0x02, 0xFE, 0xFF, 0xFF, 212, 0xFF, 0xFF, 0xFF] + EXT)
+    hub._on_power([0x10, 1, 178, 85, 0, 0, 200, 0] + EXT)
+    assert queued(hub) == []
+    assert not hub._dynamics.pco_supported  # capabilities still read
+
+
+def test_hub_cycling_dynamics_set_up_when_switched_on(clocked_hub, monkeypatch):
+    hub, _ = clocked_hub
+    monkeypatch.setattr(hub, "ENABLE_CYCLING_DYNAMICS", True)
+    hub._on_power([0x10, 1, 178, 85, 0, 0, 200, 0] + EXT)
+    assert ("pm", tuple(pf.encode_request_page(0x02, descriptor=0xFE))) in queued(hub)
+    hub._on_power([0x02, 0xFE, 0xFF, 0xFF, 212, 0xFF, 0xFF, 0xFF] + EXT)
+    assert ("pm", (0x02, 0xFE, 0xFF, 0xFF, 213, 0xFF, 213, 0xFF)) in queued(hub)
 
 
 def test_hub_rr_intervals_are_drained_once(clocked_hub):
