@@ -7,7 +7,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef } from 'react'
 import type { RouteDetail, Telemetry } from '../api'
-import { chaseCamera, newCameraState } from '../scenery/camera'
+import { autoCamera, newCameraState, type Frame } from '../scenery/camera'
 import { followPosition, pointAt, routeGeo, toLngLat } from '../scenery/route3d'
 import { ATTRIBUTION, DEM_MAX_ZOOM, DEM_URL, IMAGERY_MAX_ZOOM, IMAGERY_URL, loadTile } from '../scenery/tiles'
 
@@ -81,7 +81,10 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       const l = live.current
       if (l.known) {
         shown = followPosition(shown, { s: l.s, v: l.v, ageS: (performance.now() - l.at) / 1000 }, dt, g.total)
-        const pose = chaseCamera(g, shown, cam, dt, ground, map.transform.cameraToCenterDistance)
+        const c = map.getCanvas()
+        // the rider stays out of the bottom 14 % (overlays) and away from the side edges
+        const frame: Frame = { width: c.clientWidth, height: c.clientHeight, fovDeg: FOV, bottomMarginPx: 0.14 * c.clientHeight, sideMarginPx: 60 }
+        const { pose } = autoCamera(g, shown, l.v, cam, dt, ground, frame, map.transform.cameraToCenterDistance)
         map.jumpTo(pose)
         const [x, y] = pointAt(g, shown)
         ;(map.getSource('rider') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'Point', coordinates: toLngLat(g, x, y) })

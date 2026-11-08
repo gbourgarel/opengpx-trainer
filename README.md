@@ -105,7 +105,11 @@ progress). Environment variables:
   | V / Esc        | immersive 3D view on / off (GPX rides)                              |
 
 * GPX: **Immersive** (or V) shows the route in 3D over the whole window: terrain draped with
-  aerial imagery, a camera following the rider, wide angle. Imagery: IGN orthophotos where IGN
+  aerial imagery, a camera following the rider, wide angle. The camera is automatic: on flat,
+  straight roads it rides low (3 m up) looking at the horizon, backing away until the rider is
+  in view; on climbs, descents and in turns it follows from higher up (5 s behind, at least
+  70 m), looks at the road ahead and swings to the outside of the bends; it stays above the
+  terrain and keeps the rider in the frame. Imagery: IGN orthophotos where IGN
   has data (France: Géoplateforme, Licence Ouverte Etalab 2.0, no key), Esri World Imagery
   elsewhere, chosen per tile; terrain: AWS Terrain Tiles (Terrarium). Needs an internet
   connection; MapLibre GL (WebGL) is only downloaded when the view is opened. The metrics
