@@ -9,7 +9,7 @@ import { useEffect, useRef } from 'react'
 import type { RouteDetail, Telemetry } from '../api'
 import { autoCamera, newCameraState, type Frame } from '../scenery/camera'
 import { followPosition, pointAt, routeGeo, toLngLat } from '../scenery/route3d'
-import { ATTRIBUTION, DEM_MAX_ZOOM, DEM_URL, IMAGERY_MAX_ZOOM, IMAGERY_URL, loadTile } from '../scenery/tiles'
+import { ATTRIBUTION, clearTileCache, DEM_MAX_ZOOM, DEM_URL, IMAGERY_MAX_ZOOM, IMAGERY_URL, loadTile, prefetch, tileStats, wantedTiles } from '../scenery/tiles'
 
 /** Vertical field of view (deg): a wide angle shows the landscape around the road. */
 const FOV = 65
@@ -27,6 +27,12 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
     if (s == null) return
     live.current = { s, v: speed, at: performance.now(), known: true }
   }, [s, speed])
+
+  // the ride is over: the prefetched tiles are no longer needed
+  const over = !['ready', 'running', 'paused'].includes(tel.state)
+  useEffect(() => {
+    if (over) clearTileCache()
+  }, [over])
 
   useEffect(() => {
     if (!box.current) return
@@ -72,6 +78,12 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
     let raf = 0
     let last: number | null = null
     let shown: number | null = null
+    let prefetchedAt = -1e9
+    const lngLatAt = (d: number) => {
+      const [x, y] = pointAt(g, d)
+      return toLngLat(g, x, y)
+    }
+    if (new URLSearchParams(location.search).has('debug3d')) Object.assign(window, { __tileStats: tileStats })
     const cam = newCameraState()
     const ground = (lng: number, lat: number) => map.queryTerrainElevation([lng, lat])
 
@@ -81,6 +93,11 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       const l = live.current
       if (l.known) {
         shown = followPosition(shown, { s: l.s, v: l.v, ageS: (performance.now() - l.at) / 1000 }, dt, g.total)
+        if (Math.abs(shown - prefetchedAt) >= 25) {
+          // the next kilometre of tiles, refreshed every 25 m ridden
+          prefetchedAt = shown
+          prefetch(wantedTiles(lngLatAt, shown, g.total))
+        }
         const c = map.getCanvas()
         // the rider stays out of the bottom 14 % (overlays) and away from the side edges
         const frame: Frame = { width: c.clientWidth, height: c.clientHeight, fovDeg: FOV, bottomMarginPx: 0.14 * c.clientHeight, sideMarginPx: 60 }
@@ -98,6 +115,7 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
     return () => {
       cancelAnimationFrame(raf)
       map.remove()
+      clearTileCache() // view closed: nothing kept
     }
   }, [route])
 

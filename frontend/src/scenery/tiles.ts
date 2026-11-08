@@ -41,6 +41,163 @@ export async function fetchTile(key: string, signal: AbortSignal): Promise<Array
   return r.arrayBuffer()
 }
 
-export const loadTile: AddProtocolAction = async (params, abortController) => ({
-  data: await fetchTile(params.url.slice('ht://'.length), abortController.signal),
-})
+// ---- rolling prefetch --------------------------------------------------------------------
+// The tiles of the next kilometre of the route are downloaded ahead, so fast riding (descents)
+// does not outrun the network. Memory only: tiles left behind are dropped, and the whole cache
+// is cleared when the view closes or the ride ends ("it is only a cache").
+
+const cache = new Map<string, ArrayBuffer>()
+const inflight = new Map<string, Promise<ArrayBuffer>>()
+let generation = 0 // bumped by clearTileCache: late downloads are thrown away
+let queue: string[] = []
+let active = 0
+const MAX_PARALLEL = 6
+
+export const tileStats = {
+  requests: 0,
+  hits: 0,
+  waits: 0,
+  misses: 0,
+  prefetched: 0,
+  prefetchedBytes: 0,
+  cachedTiles: 0,
+  cachedBytes: 0,
+  missesByLayer: {} as Record<string, number>, // "sat z17" -> count (tuning the corridor)
+}
+
+function download(key: string): Promise<ArrayBuffer> {
+  let p = inflight.get(key)
+  if (!p) {
+    p = fetchTile(key, new AbortController().signal).finally(() => inflight.delete(key))
+    inflight.set(key, p)
+  }
+  return p
+}
+
+/** MapLibre's tile loader: from the prefetch cache when there, else from the network. Always a
+ *  copy: MapLibre transfers the buffer to a worker, which empties it. */
+export const loadTile: AddProtocolAction = async (params, abortController) => {
+  const key = params.url.slice('ht://'.length)
+  tileStats.requests++
+  const hit = cache.get(key)
+  if (hit) {
+    tileStats.hits++
+    return { data: hit.slice(0) }
+  }
+  const pending = inflight.get(key)
+  if (pending) {
+    tileStats.waits++
+    return { data: (await pending).slice(0) }
+  }
+  tileStats.misses++
+  const [kind, z] = key.split('/')
+  const layer = `${kind} z${z}`
+  tileStats.missesByLayer[layer] = (tileStats.missesByLayer[layer] ?? 0) + 1
+  return { data: await fetchTile(key, abortController.signal) }
+}
+
+export function tileOf(lng: number, lat: number, z: number): [number, number] {
+  const n = 2 ** z
+  return [Math.floor(((lng + 180) / 360) * n), Math.floor(((1 - Math.asinh(Math.tan((lat * Math.PI) / 180)) / Math.PI) / 2) * n)]
+}
+
+/**
+ * Corridor along the route, per layer and zoom: radius in tiles around each point of the route
+ * stretch, and how far ahead that zoom is needed. Measured in the spike: at every zoom the
+ * camera asks for tiles up to 3-4 tiles from the route (p90); the finest levels only near it.
+ * In the app the finest IGN level (z19, ~54 m tiles) needs a wider radius: the camera swings to
+ * the outside of turns, up to ~80 m off the route (simulator descent: z19 made 84 of the 123
+ * misses with radius 2).
+ */
+export const CORRIDOR: Record<'sat' | 'dem', Record<number, { radius: number; aheadM: number }>> = {
+  sat: {
+    19: { radius: 4, aheadM: 400 },
+    18: { radius: 4, aheadM: 500 },
+    17: { radius: 3, aheadM: 700 },
+    16: { radius: 3, aheadM: 1000 },
+    15: { radius: 3, aheadM: 1000 },
+    14: { radius: 3, aheadM: 1000 },
+    13: { radius: 3, aheadM: 1000 },
+    12: { radius: 3, aheadM: 1000 },
+    11: { radius: 2, aheadM: 1000 },
+    10: { radius: 2, aheadM: 1000 },
+  },
+  dem: {
+    14: { radius: 3, aheadM: 1000 },
+    13: { radius: 3, aheadM: 1000 },
+    12: { radius: 3, aheadM: 1000 },
+    11: { radius: 3, aheadM: 1000 },
+    10: { radius: 2, aheadM: 1000 },
+    9: { radius: 2, aheadM: 1000 },
+  },
+}
+export const BEHIND_M = 300
+
+/** Tile keys wanted around the route stretch [s - behind, s + ahead], nearest first. */
+export function wantedTiles(points: (s: number) => [number, number], s: number, total: number, stepM = 25): string[] {
+  const order = new Map<string, number>()
+  for (let d = Math.max(0, s - BEHIND_M); d <= Math.min(total, s + 1000); d += stepM) {
+    const [lng, lat] = points(d)
+    for (const kind of ['sat', 'dem'] as const) {
+      for (const [zs, c] of Object.entries(CORRIDOR[kind])) {
+        if (d > s + c.aheadM) continue
+        const z = Number(zs)
+        const [tx, ty] = tileOf(lng, lat, z)
+        const r = Math.ceil(c.radius)
+        for (let dx = -r; dx <= r; dx++) {
+          for (let dy = -r; dy <= r; dy++) {
+            if (dx * dx + dy * dy > (c.radius + 0.5) ** 2) continue // a disc, not a square
+            const key = `${kind}/${z}/${tx + dx}/${ty + dy}`
+            const prio = Math.abs(d - s)
+            if (!order.has(key) || order.get(key)! > prio) order.set(key, prio)
+          }
+        }
+      }
+    }
+  }
+  return [...order.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k)
+}
+
+/** Keep the cache to `keys` (drop the others) and queue the missing ones, nearest first. */
+export function prefetch(keys: string[]): void {
+  const keep = new Set(keys)
+  for (const [k, buf] of cache) {
+    if (!keep.has(k)) {
+      cache.delete(k)
+      tileStats.cachedBytes -= buf.byteLength
+    }
+  }
+  tileStats.cachedTiles = cache.size
+  queue = keys.filter((k) => !cache.has(k) && !inflight.has(k))
+  pump()
+}
+
+function pump(): void {
+  while (active < MAX_PARALLEL && queue.length) {
+    const key = queue.shift()!
+    const gen = generation
+    active++
+    download(key)
+      .then((buf) => {
+        if (gen !== generation || cache.has(key)) return
+        cache.set(key, buf)
+        tileStats.prefetched++
+        tileStats.prefetchedBytes += buf.byteLength
+        tileStats.cachedBytes += buf.byteLength
+        tileStats.cachedTiles = cache.size
+      })
+      .catch(() => {}) // a missing tile is not fatal: MapLibre asks again if it needs it
+      .finally(() => {
+        active--
+        pump()
+      })
+  }
+}
+
+export function clearTileCache(): void {
+  generation++
+  cache.clear()
+  queue = []
+  tileStats.cachedTiles = 0
+  tileStats.cachedBytes = 0
+}

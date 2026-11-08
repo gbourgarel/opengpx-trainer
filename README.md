@@ -112,7 +112,11 @@ progress). Environment variables:
   terrain and keeps the rider in the frame. Imagery: IGN orthophotos where IGN
   has data (France: Géoplateforme, Licence Ouverte Etalab 2.0, no key), Esri World Imagery
   elsewhere, chosen per tile; terrain: AWS Terrain Tiles (Terrarium). Needs an internet
-  connection; MapLibre GL (WebGL) is only downloaded when the view is opened. The metrics
+  connection; MapLibre GL (WebGL) is only downloaded when the view is opened. The tiles of the
+  next kilometre are downloaded ahead (a corridor along the route, wider for the coarse levels)
+  so fast descents do not outrun the network; they are kept **in memory only**, dropped once
+  behind, and the cache is emptied when the view closes or the ride ends. Expect a few tens of
+  MB per minute at descent speed. The metrics
   overlays of this mode are still to come.
 
 * When a ride ends (end of the workout or route, or *Stop & save*) the trainer goes back to
