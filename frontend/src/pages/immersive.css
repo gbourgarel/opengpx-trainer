@@ -1,0 +1,54 @@
+/* Immersive mode: the 3D view over the whole window, above the app's header and tabs. */
+.immersive {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #000;
+}
+.immersive .scenery3d {
+  position: absolute;
+  inset: 0;
+}
+.im-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.im-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  background: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+.im-top > * {
+  pointer-events: auto;
+}
+.im-top h2 {
+  font-size: 16px;
+  font-weight: 600;
+  text-shadow: 0 1px 3px #000;
+}
+.im-sp {
+  flex: 1;
+}
+.im-exit {
+  background: rgba(31, 36, 48, 0.85);
+}
+.im-exit kbd,
+.im-open kbd {
+  font: 11px ui-monospace, monospace;
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--muted);
+  margin-left: 4px;
+}

@@ -5,6 +5,7 @@ import { SHORTCUTS_HELP, useRideShortcuts } from '../rideKeys'
 import { useStepCues } from '../stepCues'
 import type { WakeLockStatus } from '../wakeLock'
 import type { HistoryPoint } from '../useLive'
+import { Immersive } from './Immersive'
 import { RideCockpit } from './RideCockpit'
 
 export interface ActiveRide {
@@ -82,7 +83,12 @@ export function RidePage({
   const inSession = ['ready', 'running', 'paused', 'finished'].includes(tel.state)
   const route = active?.route
   const workout = active?.workout
-  useRideShortcuts({ tel, enabled: inSession && !!active, hasWorkout: !!workout, sound, setSound, onError: setError })
+  // immersive 3D view, per ride (a new ride starts on the normal screen)
+  const [immersiveRide, setImmersiveRide] = useState<string | null>(null)
+  const canImmersive = inSession && !!route
+  const immersive = canImmersive && immersiveRide === active?.sessionId
+  const setImmersive = (on: boolean) => setImmersiveRide(on && active ? active.sessionId : null)
+  useRideShortcuts({ tel, enabled: inSession && !!active, hasWorkout: !!workout, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
   const ftp = profile?.ftp_w ?? 250
 
   // position within the current lap (the route loops in GPX + workout rides)
@@ -141,6 +147,11 @@ export function RidePage({
           )}
         </div>
         <div className="controls">
+          {canImmersive && (
+            <button className="im-open" onClick={() => setImmersive(true)} title="Immersive 3D view of the route (V)">
+              ⤢ Immersive <kbd>V</kbd>
+            </button>
+          )}
           {workout && (
             <button className={sound ? '' : 'muted'} onClick={() => setSound(!sound)} title="Beeps 3-2-1 before each step change, a rising tone when the target goes up">
               {sound ? 'Sound on' : 'Sound off'}
@@ -223,6 +234,11 @@ export function RidePage({
       </div>
   )
 
-  // Cockpit layout (RideCockpit): fits the window on desktop screens
-  return <RideCockpit c={{ tel, history, route, workout, ftp, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls }} />
+  // Cockpit layout (RideCockpit): fits the window on desktop screens; the immersive view covers it
+  return (
+    <>
+      <RideCockpit c={{ tel, history, route, workout, ftp, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls }} />
+      {immersive && route && <Immersive tel={tel} route={route} onExit={() => setImmersive(false)} />}
+    </>
+  )
 }

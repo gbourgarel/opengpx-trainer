@@ -102,6 +102,14 @@ progress). Environment variables:
   | Space          | pause / resume                                                      |
   | ↑ / ↓ (+ / −)  | workout intensity ±1 % (ERG, GPX + workout); effort ±2 % on a GPX ride following the slope |
   | M              | sound on / off                                                      |
+  | V / Esc        | immersive 3D view on / off (GPX rides)                              |
+
+* GPX: **Immersive** (or V) shows the route in 3D over the whole window: terrain draped with
+  aerial imagery, a camera following the rider, wide angle. Imagery: IGN orthophotos where IGN
+  has data (France: Géoplateforme, Licence Ouverte Etalab 2.0, no key), Esri World Imagery
+  elsewhere, chosen per tile; terrain: AWS Terrain Tiles (Terrarium). Needs an internet
+  connection; MapLibre GL (WebGL) is only downloaded when the view is opened. The metrics
+  overlays of this mode are still to come.
 
 * When a ride ends (end of the workout or route, or *Stop & save*) the trainer goes back to
   free ride, the FIT file is written in the background, and the upload to intervals.icu is

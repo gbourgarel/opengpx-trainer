@@ -7,9 +7,10 @@ import { api, type Telemetry } from './api'
  * * ↑ / ↓ (or + / −): workout intensity ±1 % (ERG, GPX + workout); effort ±2 % on a plain
  *   GPX ride following the slope (no effect in manual target mode)
  * * M: sound on / off
+ * * V: immersive 3D view on / off (GPX rides); Esc leaves it
  *
  * Ignored while typing in a field or with Ctrl / Cmd / Alt held. */
-export const SHORTCUTS_HELP = 'Space pause/resume · ↑↓ intensity · M sound'
+export const SHORTCUTS_HELP = 'Space pause/resume · ↑↓ intensity · M sound · V 3D view'
 
 type Field = 'intensity_pct' | 'effort_pct'
 
@@ -23,6 +24,10 @@ export function useRideShortcuts(opts: {
   sound: boolean
   setSound: (on: boolean) => void
   onError: (msg: string) => void
+  /** immersive view: available (GPX ride with its route), shown, switch */
+  canImmersive?: boolean
+  immersive?: boolean
+  setImmersive?: (on: boolean) => void
 }) {
   const latest = useRef(opts)
   useEffect(() => {
@@ -34,11 +39,20 @@ export function useRideShortcuts(opts: {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const { tel, enabled, hasWorkout, sound, setSound, onError } = latest.current
+      const { tel, enabled, hasWorkout, sound, setSound, onError, canImmersive, immersive, setImmersive } = latest.current
       if (!enabled || e.ctrlKey || e.metaKey || e.altKey) return
       const el = e.target as HTMLElement | null
       if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
       const fail = (err: Error) => onError(err.message)
+
+      if ((e.key === 'v' || e.key === 'V') && canImmersive && setImmersive) {
+        setImmersive(!immersive)
+        return
+      }
+      if (e.key === 'Escape' && immersive && setImmersive) {
+        setImmersive(false)
+        return
+      }
 
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault() // no page scroll, no click on the focused button
