@@ -41,20 +41,31 @@ export async function fetchTile(key: string, signal: AbortSignal): Promise<Array
   const [z, x, y] = [Number(zs), Number(xs), Number(ys)]
   if (kind === 'dem') {
     const r = await fetch(terrarium(z, x, y), { signal })
-    if (!r.ok) throw new Error(`terrain tile ${key}: ${r.status}`)
-    return r.arrayBuffer()
+    if (!r.ok) {
+      fail(`terrain ${r.status}`)
+      throw new Error(`terrain tile ${key}: ${r.status}`)
+    }
+    return body(r)
   }
   if (missing.has(key)) throw new NoTile(key)
   const r0 = await fetch(ign(z, x, y), { signal })
-  if (r0.ok) return r0.arrayBuffer()
-  if (r0.status !== 404) throw new Error(`IGN tile ${key}: ${r0.status}`)
+  if (r0.ok) return body(r0)
+  if (r0.status !== 404) {
+    fail(`IGN ${r0.status}`)
+    throw new Error(`IGN tile ${key}: ${r0.status}`)
+  }
   if (z >= BONUS_ZOOM) {
+    fail(`IGN z${z} 404`)
     missing.add(key) // no finer IGN tile here: stay at the coarser level, same source
     throw new NoTile(key)
   }
+  fail('IGN 404 -> Esri')
   const r = await fetch(esri(z, x, y), { signal }) // outside IGN's coverage
-  if (!r.ok) throw new Error(`Esri tile ${key}: ${r.status}`)
-  return r.arrayBuffer()
+  if (!r.ok) {
+    fail(`Esri ${r.status}`)
+    throw new Error(`Esri tile ${key}: ${r.status}`)
+  }
+  return body(r)
 }
 
 // ---- rolling prefetch --------------------------------------------------------------------
@@ -79,6 +90,18 @@ export const tileStats = {
   cachedTiles: 0,
   cachedBytes: 0,
   missesByLayer: {} as Record<string, number>, // "sat z17" -> count (tuning the corridor)
+  // everything fetched from the network (prefetch + direct loads), and the failed answers
+  downloadedBytes: 0,
+  downloadedTiles: 0,
+  failures: {} as Record<string, number>, // "IGN 502", "Esri 404", "IGN z19 404"...
+}
+
+const fail = (what: string) => (tileStats.failures[what] = (tileStats.failures[what] ?? 0) + 1)
+async function body(r: Response): Promise<ArrayBuffer> {
+  const buf = await r.arrayBuffer()
+  tileStats.downloadedBytes += buf.byteLength
+  tileStats.downloadedTiles++
+  return buf
 }
 
 function download(key: string): Promise<ArrayBuffer> {

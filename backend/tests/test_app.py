@@ -225,3 +225,14 @@ def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):
         time.sleep(0.05)
     assert s.saved is not None and lock_free == [True]
     assert len(client.get("/api/rides").json()) == 1
+
+
+def test_scenery_stats_are_appended(client, tmp_path):
+    """TEMPORARY endpoint (3D view measurements on a real ride): one JSON line per post."""
+    import json
+
+    assert client.post("/api/scenery-stats", json={"view": "a", "bytes": 1}).status_code == 200
+    assert client.post("/api/scenery-stats", json={"view": "a", "bytes": 2}).status_code == 200
+    lines = (tmp_path / "scenery-stats.jsonl").read_text().splitlines()
+    assert [json.loads(x)["bytes"] for x in lines] == [1, 2] and "t" in json.loads(lines[0])
+    assert client.post("/api/scenery-stats", json={"x": "y" * 20_000}).status_code == 413
