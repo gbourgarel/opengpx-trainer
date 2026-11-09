@@ -41,6 +41,13 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       protocolAdded = true
     }
     const g = routeGeo(route)
+    // ?debug3d: counters on window.__scenery (fps, rider on screen, tiles); ?debug3d&imgz=18 caps
+    // the imagery zoom (to compare levels)
+    const params = new URLSearchParams(location.search)
+    const debug = params.has('debug3d')
+    const imageryMaxZoom = debug && params.get('imgz') ? Number(params.get('imgz')) : IMAGERY_MAX_ZOOM
+    const stats = { frames: 0, riderOut: 0, riderNearEdge: 0, riderMinMarginPx: Infinity, worst: null as null | { s: number; x: number; y: number }, rider: { x: 0, y: 0 } }
+    if (debug) Object.assign(window, { __tileStats: tileStats, __scenery: stats })
     const map = new maplibregl.Map({
       container: box.current,
       interactive: false,
@@ -56,7 +63,7 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       style: {
         version: 8,
         sources: {
-          imagery: { type: 'raster', tiles: [IMAGERY_URL], tileSize: 256, maxzoom: IMAGERY_MAX_ZOOM },
+          imagery: { type: 'raster', tiles: [IMAGERY_URL], tileSize: 256, maxzoom: imageryMaxZoom },
           dem: { type: 'raster-dem', tiles: [DEM_URL], tileSize: 256, maxzoom: DEM_MAX_ZOOM, encoding: 'terrarium' },
           route: { type: 'geojson', data: { type: 'LineString', coordinates: route.latlon.map(([lat, lon]) => [lon, lat]) } },
           rider: { type: 'geojson', data: { type: 'Point', coordinates: [g.lon0, g.lat0] } },
@@ -84,7 +91,6 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       const [x, y] = pointAt(g, d)
       return toLngLat(g, x, y)
     }
-    if (new URLSearchParams(location.search).has('debug3d')) Object.assign(window, { __tileStats: tileStats })
     const cam = newCameraState()
     const ground = (lng: number, lat: number) => map.queryTerrainElevation([lng, lat])
 
@@ -100,15 +106,42 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
           prefetch(wantedTiles(lngLatAt, shown, g.total))
         }
         const c = map.getCanvas()
-        // the rider stays out of the bottom 14 % (overlays) and away from the side edges
-        const frame: Frame = { width: c.clientWidth, height: c.clientHeight, fovDeg: FOV, bottomMarginPx: 0.14 * c.clientHeight, sideMarginPx: 60 }
+        // the rider stays clear of the immersive view's panels: above the bottom ones (~28 % of
+        // the height) and between the side ones (~310 px wide on the right) — with 14 % / 60 px
+        // the rider went under the route block in the first town turns
+        const frame: Frame = {
+          width: c.clientWidth,
+          height: c.clientHeight,
+          fovDeg: FOV,
+          bottomMarginPx: 0.3 * c.clientHeight,
+          sideMarginPx: Math.min(320, 0.22 * c.clientWidth),
+        }
         const { pose } = autoCamera(g, shown, l.v, cam, dt, ground, frame, map.transform.cameraToCenterDistance)
         map.jumpTo(pose)
         const [x, y] = pointAt(g, shown)
-        ;(map.getSource('rider') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'Point', coordinates: toLngLat(g, x, y) })
+        const riderLL = toLngLat(g, x, y)
+        ;(map.getSource('rider') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'Point', coordinates: riderLL })
+        if (debug) {
+          // where the rider really is on screen (MapLibre's projection, terrain included)
+          stats.frames++
+          const p = map.project(riderLL)
+          stats.rider = { x: p.x, y: p.y }
+          const margin = Math.min(p.x, p.y, frame.width - p.x, frame.height - p.y)
+          if (margin < 0) stats.riderOut++
+          else if (margin < 40) stats.riderNearEdge++
+          if (margin < stats.riderMinMarginPx) {
+            stats.riderMinMarginPx = margin
+            stats.worst = { s: Math.round(shown), x: Math.round(p.x), y: Math.round(p.y) }
+          }
+        }
       }
       raf = requestAnimationFrame(frame)
     }
+    // a tile missing at the finest level is expected (the coarser one is shown): not an error
+    map.on('error', (e) => {
+      if ((e.error as Error | undefined)?.name === 'NoTile' || String(e.error?.message).startsWith('no tile')) return
+      console.error(e.error)
+    })
     map.on('load', () => {
       map.setVerticalFieldOfView(FOV)
       raf = requestAnimationFrame(frame)

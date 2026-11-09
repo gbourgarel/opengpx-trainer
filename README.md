@@ -112,7 +112,9 @@ progress). Environment variables:
   70 m), looks at the road ahead and swings to the outside of the bends; it stays above the
   terrain and keeps the rider in the frame. Imagery: IGN orthophotos where IGN
   has data (France: Géoplateforme, Licence Ouverte Etalab 2.0, no key), Esri World Imagery
-  elsewhere, chosen per tile; terrain: AWS Terrain Tiles (Terrarium). Needs an internet
+  elsewhere, chosen per tile; the finest IGN level (~30 cm/px) is used where IGN has it and
+  the network keeps up (prefetched last), otherwise the view stays one level coarser rather
+  than switching source; terrain: AWS Terrain Tiles (Terrarium). Needs an internet
   connection; MapLibre GL (WebGL) is only downloaded when the view is opened. The tiles of the
   next kilometre are downloaded ahead (a corridor along the route, wider for the coarse levels)
   so fast descents do not outrun the network; they are kept **in memory only**, dropped once
