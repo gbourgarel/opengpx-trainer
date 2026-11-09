@@ -218,7 +218,7 @@ export function RidePage({
               </button>
             </div>
             {tel.target_mode === 'manual' && tel.manual_target_w != null ? (
-              <ManualTarget key={tel.name} initial={tel.manual_target_w} onError={setError} />
+              <ManualTarget key={tel.session_id} server={tel.manual_target_w} onError={setError} />
             ) : (
               <Stepper label={workout ? 'Slope effort' : 'Effort (target power)'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
             )}
@@ -253,7 +253,7 @@ export function RidePage({
       {stepControls}
       {workout && <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />}
       {tel.target_mode === 'manual' && tel.manual_target_w != null ? (
-        <ManualTarget key={tel.name} initial={tel.manual_target_w} onError={setError} />
+        <ManualTarget key={tel.session_id} server={tel.manual_target_w} onError={setError} />
       ) : (
         <Stepper label={workout ? 'Slope effort' : 'Effort'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
       )}
