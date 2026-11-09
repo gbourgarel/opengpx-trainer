@@ -1,5 +1,7 @@
 """API-level regression tests (code review 2026-10-31)."""
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -225,6 +227,54 @@ def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):
         time.sleep(0.05)
     assert s.saved is not None and lock_free == [True]
     assert len(client.get("/api/rides").json()) == 1
+
+
+def test_publish_latest_keeps_only_the_newest_message():
+    import asyncio
+
+    from hometrainer.app import publish_latest
+
+    q: asyncio.Queue = asyncio.Queue(maxsize=1)
+    for i in range(3):
+        publish_latest(q, {"i": i})
+    assert q.qsize() == 1 and q.get_nowait() == {"i": 2}
+
+
+def test_live_websocket_sends_telemetry(client):
+    with client.websocket_connect("/ws/live") as ws:
+        assert ws.receive_json()["state"] == "disconnected"
+        assert len(client.st.clients) == 1
+    deadline = time.monotonic() + 2
+    while client.st.clients and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not client.st.clients  # forgotten once closed
+
+
+def test_a_client_that_stops_reading_does_not_stall_the_engine(client, monkeypatch):
+    """Review #11: a sleeping tablet blocked ``await send_json`` in the engine loop, so the
+    ride stopped ticking (riding time lost, no samples) until the socket timed out."""
+    import asyncio
+
+    from starlette.websockets import WebSocket
+
+    import hometrainer.app as app_mod
+
+    async def never_sent(self, data, mode="text"):
+        await asyncio.sleep(3600)  # the client's TCP buffer is full
+
+    monkeypatch.setattr(WebSocket, "send_json", never_sent)
+    monkeypatch.setattr(app_mod, "WS_SEND_TIMEOUT_S", 0.5)
+    start_erg(client)
+    s = client.st.session
+    with client.websocket_connect("/ws/live"):
+        time.sleep(0.3)
+        first = s._last_tick
+        time.sleep(0.6)
+        assert s._last_tick is not None and s._last_tick > first  # the engine keeps ticking
+        deadline = time.monotonic() + 2
+        while client.st.clients and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not client.st.clients  # the stalled client was dropped
 
 
 def test_scenery_stats_are_appended(client, tmp_path):

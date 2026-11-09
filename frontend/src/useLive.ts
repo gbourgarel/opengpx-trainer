@@ -25,16 +25,19 @@ export function useLive() {
     let ws: WebSocket | null = null
     let timer: number | undefined
     let closed = false
+    let lastMessage = 0
 
     const open = () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
       ws = new WebSocket(`${proto}://${location.host}/ws/live`)
+      lastMessage = performance.now()
       ws.onopen = () => setConnected(true)
       ws.onclose = () => {
         setConnected(false)
         if (!closed) timer = window.setTimeout(open, 1000)
       }
       ws.onmessage = (ev) => {
+        lastMessage = performance.now()
         const m = JSON.parse(ev.data) as Telemetry
         // The history belongs to one ride: start a fresh one whenever the session changes
         // (inferring "new ride" from elapsed time going backwards missed rides separated by
@@ -69,10 +72,22 @@ export function useLive() {
     }
     open()
     const ping = window.setInterval(() => ws?.readyState === 1 && ws.send('ping'), 15000)
+    // The server sends 4 messages a second. Silence means a dead connection that the browser
+    // has not noticed (e.g. a tablet waking up: the server dropped it while it slept). Start
+    // a new one now instead of waiting for TCP to give up.
+    const watchdog = window.setInterval(() => {
+      if (!ws || ws.readyState !== WebSocket.OPEN || performance.now() - lastMessage < 5000) return
+      const old = ws
+      old.onclose = old.onmessage = null
+      old.close()
+      setConnected(false)
+      open()
+    }, 1000)
     return () => {
       closed = true
       window.clearTimeout(timer)
       window.clearInterval(ping)
+      window.clearInterval(watchdog)
       ws?.close()
     }
   }, [])

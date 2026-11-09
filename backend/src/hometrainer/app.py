@@ -14,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -36,6 +36,17 @@ from .workouts.parsers import parse_workout
 
 log = logging.getLogger(__name__)
 TICK_S = 0.25
+# a client that has not taken a message for this long (asleep tablet, dead Wi-Fi) is dropped;
+# it reconnects by itself when it wakes up
+WS_SEND_TIMEOUT_S = 10.0
+
+
+def publish_latest(q: asyncio.Queue, msg: dict) -> None:
+    """Put ``msg`` in a client's one-slot queue, replacing a message it has not taken yet:
+    a slow client gets the latest telemetry, never a backlog, and never slows the engine."""
+    with contextlib.suppress(asyncio.QueueEmpty):
+        q.get_nowait()
+    q.put_nowait(msg)
 
 
 class HubBusy(RuntimeError):
@@ -49,7 +60,9 @@ class AppState:
         self.hub: SensorHub | None = None
         self.hub_kind: str | None = None
         self.session: RideSession | None = None
-        self.clients: set[WebSocket] = set()
+        # live telemetry: one slot per WebSocket client holding the latest message not sent yet
+        # (see live()); the engine never waits for a client
+        self.clients: dict[WebSocket, asyncio.Queue] = {}
         self.last_ride_id: int | None = None
         self._hub_lock = threading.Lock()
         # Serialises everything that touches the current session: the engine tick (event
@@ -255,14 +268,8 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 tel["hub"] = st.hub_kind
                 if isinstance(st.hub, SimulatedHub):
                     tel["sim"] = asdict(st.hub.settings)
-                dead = []
-                for ws in list(st.clients):
-                    try:
-                        await ws.send_json(tel)
-                    except Exception:
-                        dead.append(ws)
-                for ws in dead:
-                    st.clients.discard(ws)
+                for q in list(st.clients.values()):
+                    publish_latest(q, tel)
             except Exception:
                 log.exception("engine tick failed")
             await asyncio.sleep(TICK_S)
@@ -648,12 +655,33 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     @app.websocket("/ws/live")
     async def live(ws: WebSocket):
         await ws.accept()
-        st.clients.add(ws)
-        try:
+        q: asyncio.Queue = asyncio.Queue(maxsize=1)
+        st.clients[ws] = q
+
+        async def receive():
             while True:
                 await ws.receive_text()  # keep-alive; client messages are ignored
-        except WebSocketDisconnect:
-            st.clients.discard(ws)
+
+        async def send():
+            # A sleeping client stops reading: its send blocks once the TCP buffer is full.
+            # Only this task waits (the engine just replaces the queued message), and the
+            # client is dropped after WS_SEND_TIMEOUT_S.
+            while True:
+                msg = await q.get()
+                await asyncio.wait_for(ws.send_json(msg), WS_SEND_TIMEOUT_S)
+
+        receiver, sender = asyncio.create_task(receive()), asyncio.create_task(send())
+        try:
+            # the first task to end (disconnect, send error or timeout) ends the connection
+            await asyncio.wait((receiver, sender), return_when=asyncio.FIRST_COMPLETED)
+            if sender.done():
+                # stalled or failed client: close our side; it reconnects when it wakes up
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(ws.close(), 1.0)
+        finally:
+            st.clients.pop(ws, None)
+            receiver.cancel()
+            sender.cancel()
 
     # -- built frontend (production) ----------------------------------------------------
     dist = Path(
