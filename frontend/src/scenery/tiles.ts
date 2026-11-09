@@ -75,6 +75,7 @@ export async function fetchTile(key: string, signal: AbortSignal): Promise<Array
 
 const cache = new Map<string, ArrayBuffer>()
 const inflight = new Map<string, Promise<ArrayBuffer>>()
+let wanted = new Set<string>() // the corridor of the last prefetch: what the cache may hold
 let generation = 0 // bumped by clearTileCache: late downloads are thrown away
 let queue: string[] = []
 let active = 0
@@ -113,6 +114,15 @@ function download(key: string): Promise<ArrayBuffer> {
   return p
 }
 
+/** Put a downloaded tile in the cache if it is still wanted (same view, inside the corridor). */
+function keep(key: string, buf: ArrayBuffer, gen: number): boolean {
+  if (gen !== generation || !wanted.has(key) || cache.has(key)) return false
+  cache.set(key, buf)
+  tileStats.cachedBytes += buf.byteLength
+  tileStats.cachedTiles = cache.size
+  return true
+}
+
 /** MapLibre's tile loader: from the prefetch cache when there, else from the network. Always a
  *  copy: MapLibre transfers the buffer to a worker, which empties it. */
 export const loadTile: AddProtocolAction = async (params, abortController) => {
@@ -132,6 +142,15 @@ export const loadTile: AddProtocolAction = async (params, abortController) => {
   const [kind, z] = key.split('/')
   const layer = `${kind} z${z}`
   tileStats.missesByLayer[layer] = (tileStats.missesByLayer[layer] ?? 0) + 1
+  if (wanted.has(key)) {
+    // inside the corridor: shared with the prefetch and kept in the cache, otherwise the next
+    // prefetch would download it a second time (not aborted with MapLibre's request: the tile
+    // is still worth having)
+    const gen = generation
+    const buf = await download(key)
+    keep(key, buf, gen)
+    return { data: buf.slice(0) }
+  }
   return { data: await fetchTile(key, abortController.signal) }
 }
 
@@ -201,9 +220,9 @@ export function wantedTiles(points: (s: number) => [number, number], s: number, 
 
 /** Keep the cache to `keys` (drop the others) and queue the missing ones, nearest first. */
 export function prefetch(keys: string[]): void {
-  const keep = new Set(keys)
+  wanted = new Set(keys)
   for (const [k, buf] of cache) {
-    if (!keep.has(k)) {
+    if (!wanted.has(k)) {
       cache.delete(k)
       tileStats.cachedBytes -= buf.byteLength
     }
@@ -216,16 +235,14 @@ export function prefetch(keys: string[]): void {
 function pump(): void {
   while (active < MAX_PARALLEL && queue.length) {
     const key = queue.shift()!
+    if (cache.has(key)) continue // MapLibre asked for it first, while it was queued
     const gen = generation
     active++
     download(key)
       .then((buf) => {
-        if (gen !== generation || cache.has(key)) return
-        cache.set(key, buf)
+        if (!keep(key, buf, gen)) return
         tileStats.prefetched++
         tileStats.prefetchedBytes += buf.byteLength
-        tileStats.cachedBytes += buf.byteLength
-        tileStats.cachedTiles = cache.size
       })
       .catch(() => {}) // a missing tile is not fatal: MapLibre asks again if it needs it
       .finally(() => {
@@ -238,6 +255,7 @@ function pump(): void {
 export function clearTileCache(): void {
   generation++
   cache.clear()
+  wanted = new Set()
   queue = []
   tileStats.cachedTiles = 0
   tileStats.cachedBytes = 0
