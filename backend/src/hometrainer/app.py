@@ -366,7 +366,13 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
     @app.post("/api/devices/disconnect")
     def disconnect():
-        st.disconnect()
+        # Not during a ride: without a hub the engine no longer ticks the session, so the ride
+        # vanished from the screen (no Stop button), stopped recording and the trainer was no
+        # longer driven. Stop the ride first (it is saved), then disconnect.
+        with st.session_lock:
+            if st.session is not None and st.session.state in ("ready", "running", "paused"):
+                raise HTTPException(409, "A ride is in progress: stop it first")
+        st.disconnect()  # outside the lock: stopping the hub can take seconds (BLE)
         return {"hub": None}
 
     @app.get("/api/devices")

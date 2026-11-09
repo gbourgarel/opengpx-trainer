@@ -58,7 +58,8 @@ export default function App() {
   const hub = tel.hub
   const dev = tel.devices
   // keep the screen on during a ride, whatever the tab shown
-  const wake = useWakeLock(['ready', 'running', 'paused'].includes(tel.state))
+  const riding = ['ready', 'running', 'paused'].includes(tel.state)
+  const wake = useWakeLock(riding)
 
   // Once a ride is saved, offer (never force) the upload to intervals.icu: when it finishes on
   // its own (telemetry) or is stopped with "Stop & save". Asked once per ride in this window.
@@ -173,7 +174,12 @@ export default function App() {
               <Dot status={dev?.power_meter} label="Power" />
               <Dot status={dev?.heart_rate} label="HR" />
               <span className="muted">{hub === 'simulator' ? 'simulator' : 'sensors'}</span>
-              <button className="ghost" onClick={() => api.disconnect()}>
+              <button
+                className="ghost"
+                disabled={riding}
+                title={riding ? 'Stop the ride first (the sensors drive and record it)' : undefined}
+                onClick={() => api.disconnect().catch((e: Error) => setError(e.message))}
+              >
                 Disconnect
               </button>
             </>

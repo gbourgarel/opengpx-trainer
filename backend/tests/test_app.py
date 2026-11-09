@@ -229,6 +229,16 @@ def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):
     assert len(client.get("/api/rides").json()) == 1
 
 
+def test_disconnect_is_refused_during_a_ride(client):
+    """Review #12: disconnecting mid-ride hid the ride and stopped ticking / recording it."""
+    start_erg(client)  # "ready": waiting for the first pedal stroke
+    assert client.post("/api/devices/disconnect").status_code == 409
+    assert client.st.hub is not None
+    client.post("/api/session/stop", params={"save": "false"})
+    assert client.post("/api/devices/disconnect").status_code == 200
+    assert client.st.hub is None
+
+
 def test_publish_latest_keeps_only_the_newest_message():
     import asyncio
 
