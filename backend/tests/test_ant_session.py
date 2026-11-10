@@ -462,9 +462,10 @@ def test_gpx_manual_target_overrides_slope_and_is_immediate():
     slope_target = tel["target_w"]
     assert slope_target == pytest.approx(0.92 * 250, abs=3)
 
-    s.adjust(target_mode="manual")  # starts from the current target: no jump
+    s.adjust(target_mode="manual")  # starts from the current target, rounded to 5 W
     tel = s.tick(t := t + 0.25)
-    assert tel["target_mode"] == "manual" and tel["target_w"] == round(slope_target)
+    assert tel["target_mode"] == "manual" and tel["target_w"] % 5 == 0
+    assert abs(tel["target_w"] - slope_target) <= 2.5
 
     s.adjust(manual_target_w=150)  # immediate, no 15 W/s ramp
     tel = s.tick(t := t + 0.25)

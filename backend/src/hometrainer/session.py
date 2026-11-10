@@ -273,11 +273,12 @@ class RideSession:
             if self.mode != "gpx":
                 raise ValueError("target_mode only applies to GPX rides")
             if target_mode == "manual" and self.manual_target_w is None:
-                # start from the current target so switching mode causes no jump
+                # start from the current target so switching mode causes no real jump, rounded
+                # to 5 W so the ±5 W steps land on round values
                 current = self.requested_target_w
                 if current is None:
                     current = self.curve.target_watts(0.0, self.profile.ftp_w)
-                self.manual_target_w = float(round(current))
+                self.manual_target_w = float(5 * round(current / 5))
             self.target_mode = target_mode
         if manual_target_w is not None:
             if self.mode != "gpx":
