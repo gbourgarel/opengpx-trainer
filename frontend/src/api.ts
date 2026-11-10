@@ -284,11 +284,6 @@ export const api = {
   rides: () => req<Ride[]>('GET', '/api/rides'),
   /** idempotent: a ride already on intervals.icu is not sent again (already = true) */
   uploadRide: (id: number) => req<{ intervals_activity_id: string; already?: boolean }>('POST', `/api/rides/${id}/upload`),
-
-  /** TEMPORARY (3D view measurements on a real ride, to be removed after): fire and forget,
-   *  survives the page being closed (sendBeacon). */
-  sceneryStats: (stats: Record<string, unknown>) =>
-    navigator.sendBeacon('/api/scenery-stats', new Blob([JSON.stringify(stats)], { type: 'application/json' })),
 }
 
 export const fmtTime = (s: number | undefined | null) => {
