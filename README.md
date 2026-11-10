@@ -100,7 +100,7 @@ progress). Environment variables:
   | Key            | Action                                                              |
   |----------------|---------------------------------------------------------------------|
   | Space          | pause / resume                                                      |
-  | ↑ / ↓ (+ / −)  | workout intensity ±1 % (ERG, GPX + workout); effort ±2 % on a GPX ride following the slope |
+  | ↑ / ↓ (+ / −)  | workout intensity ±1 % (ERG, GPX + workout); effort ±2 % on a GPX ride following the slope; target ±5 W in manual target mode |
   | M              | sound on / off                                                      |
   | V / Esc        | immersive 3D view on / off (GPX rides)                              |
   | F              | browser full screen (immersive view)                                |

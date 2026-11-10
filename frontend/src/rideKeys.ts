@@ -5,14 +5,14 @@ import { api, type Telemetry } from './api'
  *
  * * Space: pause / resume
  * * ↑ / ↓ (or + / −): workout intensity ±1 % (ERG, GPX + workout); effort ±2 % on a plain
- *   GPX ride following the slope (no effect in manual target mode)
+ *   GPX ride following the slope; target ±5 W on a GPX ride in manual target mode
  * * M: sound on / off
  * * V: immersive 3D view on / off (GPX rides); Esc leaves it
  *
  * Ignored while typing in a field or with Ctrl / Cmd / Alt held. */
 export const SHORTCUTS_HELP = 'Space pause/resume · ↑↓ intensity · M sound · V 3D view'
 
-type Field = 'intensity_pct' | 'effort_pct'
+type Field = 'intensity_pct' | 'effort_pct' | 'manual_target_w'
 
 // how long a sent value is preferred over the telemetry (which may not reflect it yet)
 const PENDING_MS = 1500
@@ -69,14 +69,16 @@ export function useRideShortcuts(opts: {
       const down = e.key === 'ArrowDown' || e.key === '-' || e.key === '_'
       if (!up && !down) return
       e.preventDefault()
-      let field: Field, step: number
-      if (tel.mode === 'erg' || hasWorkout) [field, step] = ['intensity_pct', 1]
-      else if (tel.target_mode !== 'manual') [field, step] = ['effort_pct', 2]
-      else return
+      let field: Field, step: number, lo: number, hi: number, fallback: number
+      if (tel.mode === 'erg' || hasWorkout) [field, step, lo, hi, fallback] = ['intensity_pct', 1, 10, 200, 100]
+      else if (tel.target_mode === 'manual') [field, step, lo, hi, fallback] = ['manual_target_w', 5, 0, 2000, tel.target_w ?? 0]
+      else [field, step, lo, hi, fallback] = ['effort_pct', 2, 10, 200, 100]
       const p = pending.current
       const now = performance.now()
-      const base = p && p.field === field && now - p.at < PENDING_MS ? p.value : (tel[field] ?? 100)
-      const value = Math.max(10, Math.min(200, Math.round(base) + (up ? step : -step)))
+      const base = p && p.field === field && now - p.at < PENDING_MS ? p.value : (tel[field] ?? fallback)
+      // to the next multiple of the step (a typed 203 W goes to 205 / 200, not 208 / 198)
+      const next = up ? Math.floor(base / step + 1e-9) * step + step : Math.ceil(base / step - 1e-9) * step - step
+      const value = Math.max(lo, Math.min(hi, next))
       pending.current = { field, value, at: now }
       // one request at a time, in order: concurrent ones could land out of order
       queue.current = queue.current.then(() => api.adjust({ [field]: value }).then(() => undefined, fail))
