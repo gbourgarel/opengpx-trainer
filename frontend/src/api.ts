@@ -154,7 +154,9 @@ export interface Telemetry {
   elapsed_s?: number
   power_w?: number | null
   power_source?: string
+  /** instantaneous power_w / rider mass; next to a 3 s power, use wkg() on that value */
   power_wkg?: number | null
+  rider_mass_kg?: number
   avg_speed_kmh?: number | null
   avg_power_w?: number | null
   np_w?: number | null
@@ -204,6 +206,12 @@ export interface Telemetry {
   sim?: SimSettings
   /** client-side: 3 s moving average of power_w */
   power_avg3_w?: number | null
+}
+
+/** W/kg of a displayed power (rider mass only, as on the server), formatted, or '—'. */
+export function wkg(watts: number | null | undefined, massKg: number | undefined): string {
+  if (watts == null || !massKg || massKg <= 0) return '—'
+  return (watts / massKg).toFixed(2)
 }
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {

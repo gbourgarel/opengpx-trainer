@@ -504,6 +504,8 @@ class RideSession:
             "power_w": None if pc.power_w is None else round(pc.power_w),
             "power_wkg": w_per_kg(pc.power_w, self.profile.rider_mass_kg),
             "target_wkg": w_per_kg(self.requested_target_w, self.profile.rider_mass_kg),
+            # lets the client give the W/kg of the power it shows (its 3 s average)
+            "rider_mass_kg": self.profile.rider_mass_kg,
             "power_source": pc.source,
             "cadence_source": pc.cadence_source,
             "trainer_power_w": r.trainer_power_w and round(r.trainer_power_w),

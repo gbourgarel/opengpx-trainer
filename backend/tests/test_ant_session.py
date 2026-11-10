@@ -495,6 +495,7 @@ def test_power_to_weight_uses_rider_mass_only():
         tel = s.tick(t := t + 0.25)
     assert tel["power_wkg"] == pytest.approx(3.0)  # 210 W / 70 kg
     assert tel["target_wkg"] == pytest.approx(4.0)  # 280 W / 70 kg
+    assert tel["rider_mass_kg"] == 70  # the client's W/kg of its 3 s power
 
 
 def test_climb_tracker_vam_and_gain():

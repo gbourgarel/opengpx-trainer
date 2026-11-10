@@ -5,7 +5,7 @@
 // current grade and climb rate), route progress (done / left on the full profile) and the map.
 // Bottom: controls and the live chart.
 import type { ReactNode } from 'react'
-import { fmtTime, type RouteDetail, type Telemetry, type Workout } from '../api'
+import { fmtTime, wkg, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ElevationProfile, LiveChart, LocalProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
 import { WindBadge } from '../components/Wind'
@@ -123,7 +123,7 @@ function Dial({ c }: { c: RideCtx }) {
         {shown ?? '—'}
       </text>
       <text x={cx} y={cy + 8} className="ck-unit">
-        W (3 s) · {t.power_wkg?.toFixed(2) ?? '—'} W/kg
+        W (3 s) · {wkg(shown, t.rider_mass_kg)} W/kg
       </text>
       <text x={cx} y={cy + 44} className="ck-target">
         {target ? `target ${target} W` : 'free ride'}

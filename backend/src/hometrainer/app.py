@@ -192,6 +192,7 @@ class AppState:
             "state": "idle",
             "power_w": pc.power_w and round(pc.power_w),
             "power_wkg": w_per_kg(pc.power_w, self.profile.rider_mass_kg),
+            "rider_mass_kg": self.profile.rider_mass_kg,
             "power_source": pc.source,
             "cadence_source": pc.cadence_source,
             "trainer_power_w": r.trainer_power_w and round(r.trainer_power_w),

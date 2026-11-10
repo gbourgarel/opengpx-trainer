@@ -10,7 +10,7 @@
 //
 // V or Esc: back to the normal screen; F: browser full screen.
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { fmtTime, type RouteDetail, type Telemetry, type Workout } from '../api'
+import { fmtTime, wkg, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ElevationProfile, LocalProfile, WorkoutProfile } from '../components/charts'
 import { WindBadge } from '../components/Wind'
 import { ATTRIBUTION } from '../scenery/tiles'
@@ -113,10 +113,10 @@ function PowerBlock({ tel, workout, ftp }: ImmersiveProps) {
       <div className="im-sub">
         {target ? (
           <>
-            target <b>{target} W</b> · {tel.power_wkg?.toFixed(2) ?? '—'} W/kg
+            target <b>{target} W</b> · {wkg(shown, tel.rider_mass_kg)} W/kg
           </>
         ) : (
-          <>free ride · {tel.power_wkg?.toFixed(2) ?? '—'} W/kg</>
+          <>free ride · {wkg(shown, tel.rider_mass_kg)} W/kg</>
         )}
       </div>
       {target && zone && (
