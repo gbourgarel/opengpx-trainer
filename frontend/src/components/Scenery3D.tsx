@@ -92,7 +92,12 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       return toLngLat(g, x, y)
     }
     const cam = newCameraState()
-    const ground = (lng: number, lat: number) => map.queryTerrainElevation([lng, lat])
+    // Ground height for the camera (many points per frame: line of sight to the rider). Not
+    // map.queryTerrainElevation: it recomputes the tiles covering the view on every call only to
+    // pick the DEM zoom (~40 % of the main thread in a profile, the frame rate's bottleneck). The
+    // finest DEM level is asked directly; MapLibre falls back to the loaded parent tile.
+    const ground = (lng: number, lat: number) =>
+      map.terrain ? map.terrain.getElevationForLngLatZoom(new maplibregl.LngLat(lng, lat), DEM_MAX_ZOOM) : null
 
     const frame = (t: number) => {
       const dt = last == null ? 0 : Math.min((t - last) / 1000, 0.25)
