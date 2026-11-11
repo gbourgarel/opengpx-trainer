@@ -13,6 +13,8 @@ import { clearTileCache, DEM_MAX_ZOOM, DEM_URL, IMAGERY_MAX_ZOOM, IMAGERY_URL, l
 
 /** Vertical field of view (deg): a wide angle shows the landscape around the road. */
 const FOV = 65
+/** Resolution of the 3D view on high-density screens (the overlays stay at full resolution). */
+const MAX_PIXEL_RATIO = 1.5
 
 let protocolAdded = false
 
@@ -58,6 +60,9 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       // viewport) dropped tiles still in view, which were then fetched again
       maxTileCacheSize: 3000,
       maxTileCacheZoomLevels: 10,
+      // drawn at 1.5x at most on Retina screens: hardly distinguishable from 2x (the imagery is
+      // the limit, not the pixels) and +15 % frame rate on the user's Mac (user's choice)
+      pixelRatio: Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO),
       center: [g.lon0, g.lat0],
       zoom: 13,
       style: {

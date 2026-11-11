@@ -141,7 +141,9 @@ progress). Environment variables:
   elsewhere, chosen per tile; the finest IGN level (~30 cm/px) is used where IGN has it and
   the network keeps up (prefetched last), otherwise the view stays one level coarser rather
   than switching source; terrain: AWS Terrain Tiles (Terrarium). Needs an internet
-  connection; MapLibre GL (WebGL) is only downloaded when the view is opened. The tiles of the
+  connection; MapLibre GL (WebGL) is only downloaded when the view is opened. On high-density
+  (Retina) screens the 3D scene is drawn at 1.5x rather than 2x, for the frame rate (the
+  panels over it stay sharp). The tiles of the
   next kilometre are downloaded ahead (a corridor along the route, wider for the coarse levels)
   so fast descents do not outrun the network; they are kept **in memory only**, dropped once
   behind, and the cache is emptied when the view closes or the ride ends. Expect a few tens of
