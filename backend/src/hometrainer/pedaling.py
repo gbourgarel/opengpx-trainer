@@ -41,7 +41,13 @@ def circular_mean_deg(angles: Sequence[float]) -> float | None:
     if math.hypot(s, c) < 1e-9 * len(angles):
         return None  # evenly spread: no meaningful mean
     a = math.degrees(math.atan2(s, c)) % 360.0
-    return 0.0 if a >= 360.0 else a  # -1e-15 % 360 == 360.0 (would overflow the FIT byte)
+    return 0.0 if a >= 360.0 else a  # -1e-15 % 360 == 360.0
+
+
+def fit_angle(a: float) -> float:
+    """``a`` (degrees) rounded to the FIT power-phase resolution (360/256°, one byte), wrapped
+    so that angles in [359.3°, 360°), which round to 256, become 0° instead of overflowing."""
+    return (round(a * 256 / 360) % 256) * 360 / 256
 
 
 def balance_100(samples: Sequence[Sample]) -> int | None:
@@ -123,7 +129,7 @@ def pedal_summary(samples: Sequence[Sample]) -> dict:
         start = circular_mean_deg([p[0] for p in pairs])
         end = circular_mean_deg([p[1] for p in pairs])
         if start is not None and end is not None:
-            out[f"avg_{attr}"] = [start, end]
+            out[f"avg_{attr}"] = [fit_angle(start), fit_angle(end)]
 
     positions = attributed_positions(samples)
     if any(p is not None for p in positions):

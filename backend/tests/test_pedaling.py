@@ -18,6 +18,7 @@ from hometrainer.pedaling import (
     attributed_positions,
     balance_100,
     circular_mean_deg,
+    fit_angle,
     pedal_summary,
     position_changes,
 )
@@ -305,7 +306,8 @@ def test_pedal_summary_over_pedalling_samples():
     assert out["avg_left_torque_effectiveness"] == pytest.approx(82.0)
     assert out["avg_right_pedal_smoothness"] == pytest.approx(23.0)
     start, end = out["avg_left_power_phase"]
-    assert min(start, 360 - start) == pytest.approx(0.0, abs=1e-6) and end == pytest.approx(215.0)
+    # rounded to the FIT resolution (360/256°)
+    assert start == 0.0 and end == pytest.approx(215.0, abs=360 / 512)
     assert out["avg_power_position"] == [200, 300] and out["max_cadence_position"] == [80, 70]
     assert out["time_standing"] == 1.0 and out["stand_count"] == 1
     assert "left_right_balance" not in out and "avg_left_pco" not in out
@@ -380,6 +382,19 @@ def test_fit_has_pedal_records_laps_session_events_and_hrv(tmp_path):
     hrv = [t for h in m["HrvMessage"] for t in h.time if t is not None and t < 60]
     assert hrv == pytest.approx([x for i in range(60) for x in real_rr(i)], abs=0.001)
     assert all(len(h.time) == 5 for h in m["HrvMessage"])
+
+
+def test_fit_power_phase_average_just_below_360_wraps_to_zero(tmp_path):
+    # ANT+ angles are multiples of 360/256°; 0° and 358.59375° (255 units) average to
+    # 359.3°, which rounds to 256 units and overflowed the FIT byte
+    rec = Recorder()
+    for i in range(10):
+        a = 358.59375 if i % 2 else 0.0
+        rec.add(sample(i, 200.0, right_power_phase=[a, 199.6875]))
+    assert fit_angle(359.6) == 0.0 and fit_angle(359.2) == pytest.approx(358.59375)
+    m = fit_messages(rec.write_fit(tmp_path / "ride.fit"))
+    assert m["SessionMessage"][0].avg_right_power_phase == pytest.approx([0.0, 199.69], abs=0.01)
+    assert m["LapMessage"][0].avg_right_power_phase == pytest.approx([0.0, 199.69], abs=0.01)
 
 
 def test_fit_without_hrv_when_intervals_are_just_60_over_hr(tmp_path):
