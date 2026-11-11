@@ -5,7 +5,8 @@ Modes
 * ``erg``: target power from a structured workout x intensity %. Virtual speed on flat road.
 * ``gpx``: pseudo-ERG; target power from the grade->power curve on the look-ahead grade x effort %
   (``target_mode="slope"``), or set directly by the rider in watts (``target_mode="manual"``).
-  Virtual speed comes from the dynamic model fed with ``measured power x (1 + difficulty %)``.
+  Virtual speed comes from the dynamic model fed with
+  ``measured power x (1 + profile.speed_power_scale_pct / 100)`` (in every mode).
 * ``gpx`` + workout (mixed): the workout sets the target (x intensity %) while the route gives
   speed, position, grade and VAM; free-ride steps use the slope curve. The route loops while the
   workout lasts; once the workout is over, the slope curve takes over until the end of the lap.
@@ -190,7 +191,6 @@ class RideSession:
         self.elapsed_s = 0.0
         self.intensity_pct = 100.0  # ERG: scales workout targets
         self.effort_pct = 100.0  # GPX: scales the grade->power curve target
-        self.difficulty_pct = 0.0  # GPX: speed model uses P * (1 + difficulty)
         self.target_mode: TargetMode = "slope"  # GPX: grade curve, or rider-set watts
         self.manual_target_w: float | None = None
         self.curve = profile.grade_power_curve()
@@ -263,7 +263,6 @@ class RideSession:
         self,
         intensity_pct=None,
         effort_pct=None,
-        difficulty_pct=None,
         target_mode=None,
         manual_target_w=None,
     ) -> None:
@@ -289,8 +288,6 @@ class RideSession:
             self.intensity_pct = max(10.0, min(float(intensity_pct), 200.0))
         if effort_pct is not None:
             self.effort_pct = max(10.0, min(float(effort_pct), 200.0))
-        if difficulty_pct is not None:
-            self.difficulty_pct = max(-90.0, min(float(difficulty_pct), 200.0))
 
     # -- workout edits (rider) ------------------------------------------------------------
     def _current_step(self) -> tuple[Step, WorkoutPosition]:
@@ -405,10 +402,11 @@ class RideSession:
                 self.hub.set_target_power(self.sent_target_w)
 
         # virtual bike
-        mult = 1.0 + (self.difficulty_pct / 100.0 if self.mode == "gpx" else 0.0)
+        # the profile's speed-model power scale changes the virtual speed only
+        mult = 1.0 + self.profile.speed_power_scale_pct / 100.0
         if running:
             self.bike.step((pc.power_w or 0.0) * mult, dt)
-            self.averages.add(pc.power_w or 0.0, dt)  # measured power (no difficulty factor)
+            self.averages.add(pc.power_w or 0.0, dt)  # measured power (not scaled)
             if self.workout is not None and not self.workout_done:
                 # the tick's power belongs to the step being ridden at the end of the tick
                 idx = self.workout.position(self.elapsed_s).step_index
@@ -534,7 +532,6 @@ class RideSession:
             },
             "intensity_pct": self.intensity_pct,
             "effort_pct": self.effort_pct,
-            "difficulty_pct": self.difficulty_pct,
             "target_mode": self.target_mode,
             "manual_target_w": self.manual_target_w,
         }

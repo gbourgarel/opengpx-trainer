@@ -114,22 +114,24 @@ def test_erg_session_flow():
     assert tel["speed_kmh"] > 0
 
 
-def test_gpx_session_difficulty_affects_speed_only():
+def test_speed_power_scale_affects_speed_only():
     from hometrainer.gpx.route import Route
     from tests.test_gpx_workouts import make_gpx
 
     route = Route.from_gpx(make_gpx(grade=0.0))
-    res = {}
-    for diff in (0.0, 20.0):
-        h = FakeHub()
-        s = RideSession(h, Profile(ftp_w=250), "gpx", route=route)
-        s.adjust(difficulty_pct=diff)
-        for i in range(200):
-            h.feed(trainer=200, pm=200)
-            tel = s.tick(1000 + i * 0.25)
-        res[diff] = tel
-    assert res[20.0]["speed_kmh"] > res[0.0]["speed_kmh"]
-    assert res[20.0]["target_w"] == res[0.0]["target_w"] == round(0.70 * 250)
+    w = Workout(name="w", steps=[Step(600, 0.8, 0.8)])
+    for mode, kw in (("gpx", {"route": route}), ("erg", {"workout": w})):
+        res = {}
+        for scale in (0.0, 20.0):
+            h = FakeHub()
+            s = RideSession(h, Profile(ftp_w=250, speed_power_scale_pct=scale), mode, **kw)
+            for i in range(200):
+                h.feed(trainer=200, pm=200)
+                tel = s.tick(1000 + i * 0.25)
+            res[scale] = tel
+        assert res[20.0]["speed_kmh"] > res[0.0]["speed_kmh"], mode
+        assert res[20.0]["target_w"] == res[0.0]["target_w"], mode
+        assert res[20.0]["avg_power_w"] == res[0.0]["avg_power_w"], mode  # recorded power unscaled
 
 
 def test_fit_export_roundtrip(tmp_path):

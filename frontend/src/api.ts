@@ -13,6 +13,8 @@ export interface Profile {
   wheel_inertia_kg_m2: number
   wheel_diameter_m: number
   max_speed_kmh: number
+  /** the speed model is fed with measured power × (1 + x / 100) */
+  speed_power_scale_pct: number
   temperature_c: number
   relative_humidity: number
   power_source: PowerSource
@@ -183,7 +185,6 @@ export interface Telemetry {
   power_split_w?: { gravity: number; rolling: number; aero: number }
   intensity_pct?: number
   effort_pct?: number
-  difficulty_pct?: number
   target_mode?: 'slope' | 'manual'
   manual_target_w?: number | null
   lat?: number
@@ -269,7 +270,6 @@ export const api = {
   adjust: (a: {
     intensity_pct?: number
     effort_pct?: number
-    difficulty_pct?: number
     target_mode?: 'slope' | 'manual'
     manual_target_w?: number
   }) =>

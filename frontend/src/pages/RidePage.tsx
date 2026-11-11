@@ -224,7 +224,6 @@ export function RidePage({
             ) : (
               <Stepper label={workoutActive ? 'Slope effort' : 'Effort (target power)'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
             )}
-            <Stepper label="Difficulty (speed = P×)" value={tel.difficulty_pct ?? 0} step={1} signed onChange={(v) => act(() => api.adjust({ difficulty_pct: v }))} />
           </>
         )}
         {split && (
@@ -247,7 +246,7 @@ export function RidePage({
   )
 
   // compact controls of the immersive view (GPX rides): pause / stop, workout step, effort or
-  // manual target, difficulty
+  // manual target
   const immersiveControls = (
     <>
       {pauseButton}
@@ -259,7 +258,6 @@ export function RidePage({
       ) : (
         <Stepper label={workoutActive ? 'Slope effort' : 'Effort'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
       )}
-      <Stepper label="Difficulty" value={tel.difficulty_pct ?? 0} step={1} signed onChange={(v) => act(() => api.adjust({ difficulty_pct: v }))} />
     </>
   )
 

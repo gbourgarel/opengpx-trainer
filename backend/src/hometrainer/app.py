@@ -220,7 +220,6 @@ class StartBody(BaseModel):
 class AdjustBody(BaseModel):
     intensity_pct: float | None = None
     effort_pct: float | None = None
-    difficulty_pct: float | None = None
     target_mode: Literal["slope", "manual"] | None = None
     manual_target_w: float | None = None
 
@@ -556,7 +555,6 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 s.adjust(
                     body.intensity_pct,
                     body.effort_pct,
-                    body.difficulty_pct,
                     body.target_mode,
                     body.manual_target_w,
                 )
@@ -565,7 +563,6 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             return {
                 "intensity_pct": s.intensity_pct,
                 "effort_pct": s.effort_pct,
-                "difficulty_pct": s.difficulty_pct,
                 "target_mode": s.target_mode,
                 "manual_target_w": s.manual_target_w,
             }

@@ -8,7 +8,8 @@ Bluetooth LE (FTMS), with power meter and heart-rate sensors on either protocol.
   3-2-1 beeps announce each step change (a rising tone when the target goes up).
 * **GPX routes** (pseudo-ERG): the trainer target power follows a configurable *grade → %FTP* curve
   on the look-ahead grade, or a target set by hand. Virtual speed and position on the trace come
-  from a dynamic physics model fed with the measured power × (1 + difficulty %), with an optional
+  from a dynamic physics model fed with the measured power (see the *speed-model power scale*
+  below), with an optional
   **wind** (speed and direction, set when starting the route). Climb rate (VAM) and elevation
   gain are shown.
 * **Workout on a route**: a GPX ride can follow a workout. The workout sets the target, the route
@@ -153,7 +154,7 @@ progress). Environment variables:
   (target ± 25 %) and, with a workout, the step left, next target, interval average and a band
   of the workout (top left); speed, time, HR, cadence, average / NP (top right); the road
   ahead (bottom left); the whole route and a small fixed map (bottom right). The controls
-  (pause, stop, step, effort, difficulty) sit at the top centre and hide after 3 s without
+  (pause, stop, step, effort or manual target) sit at the top centre and hide after 3 s without
   moving the mouse. The view closes by itself when the ride ends.
 
 * When a ride ends (end of the workout or route, or *Stop & save*) the trainer goes back to
@@ -203,8 +204,10 @@ relative to the direction of travel `v_w` (headwind, negative = tailwind) and `v
 * GPX processing: haversine distances, uniform resampling (~5 m), Gaussian smoothing of
   elevation in the distance domain (σ = 25 m, odd-reflected edges so end slopes are preserved),
   then `grade = d(ele)/d(dist)` clipped to ±30 %.
-* Difficulty `x %` scales only the power fed to the speed model: `P_model = P_measured·(1+x)`.
-  The trainer target is unchanged.
+* The **speed-model power scale** `x %` (Profile, default 0) scales only the power fed to the
+  speed model, in every mode: `P_model = P_measured·(1+x)`. The trainer target and the recorded
+  power are unchanged; the virtual speed and distance (also in the FIT file) follow. Like the
+  other model parameters, a change applies from the next ride.
 * Wind (GPX rides, chosen when starting the route: speed `W` and the direction `φ` it blows
   from) is projected on the route heading `ψ` at each sub-step: `v_w = W·cos(φ−ψ)`,
   `v_c = W·sin(φ−ψ)`. The drag acts along the apparent wind, so a crosswind adds drag (CdA is

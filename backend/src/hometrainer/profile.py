@@ -35,6 +35,7 @@ _BOUNDS: dict[str, tuple[float, float]] = {
     "wheel_inertia_kg_m2": (0.0, 1.0),
     "wheel_diameter_m": (0.3, 1.0),
     "max_speed_kmh": (10, 150),
+    "speed_power_scale_pct": (-90, 200),
     "temperature_c": (-30, 50),
     "relative_humidity": (0.0, 1.0),
     "grade_curve_min_frac": (0.0, 2.0),
@@ -122,6 +123,9 @@ class Profile:
     wheel_inertia_kg_m2: float = 0.14
     wheel_diameter_m: float = 0.67  # 700x25c ~ 0.67 m
     max_speed_kmh: float = 70.0
+    # the speed model is fed with measured power x (1 + x / 100); the trainer target and the
+    # recorded power are unchanged (e.g. to compensate a power meter reading low)
+    speed_power_scale_pct: float = 0.0
     # environment
     temperature_c: float = 20.0
     relative_humidity: float = 0.5
