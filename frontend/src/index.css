@@ -9,7 +9,6 @@
   --danger: #e5484d;
   --ok: #30a46c;
   --power: #ffb224;
-  --power-fill: rgba(255, 178, 36, 0.12);
   --target: #8ab4ff;
   --hr: #ff5c7a;
   --z1: #7b8496;
@@ -340,10 +339,6 @@ th {
 .map {
   border-radius: 8px;
   margin-bottom: 8px;
-}
-.live-chart .u-legend {
-  color: var(--muted);
-  font-size: 12px;
 }
 
 /* ride */
@@ -839,12 +834,8 @@ b.warn {
   flex-direction: column;
   gap: 14px;
 }
-.side-card,
-.chart-card {
+.side-card {
   margin: 0;
-}
-.chart-card .live-chart {
-  height: 240px;
 }
 
 @media (min-width: 1000px) and (min-height: 680px) {
@@ -985,18 +976,5 @@ b.warn {
   .ride-fit .side-card {
     flex: none;
     padding: 6px 10px;
-  }
-  .ride-fit .chart-card {
-    flex: 1 1 0;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    padding: 6px 10px;
-  }
-  .ride-fit .chart-card .live-chart {
-    flex: 1 1 0;
-    min-height: 0;
-    height: auto;
-    overflow: hidden;
   }
 }

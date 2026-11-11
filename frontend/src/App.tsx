@@ -44,7 +44,7 @@ function Dot({ status, label }: { status?: DeviceStatus; label: string }) {
 }
 
 export default function App() {
-  const { tel, connected, history } = useLive()
+  const { tel, connected } = useLive()
   const [tab, setTab] = useState<Tab>('ride')
   const [profile, setProfile] = useState<Profile | null>(null)
   const [active, setActive] = useState<ActiveRide | null>(null)
@@ -206,7 +206,6 @@ export default function App() {
         {tab === 'ride' && (
           <RidePage
             tel={tel}
-            history={history}
             active={active}
             profile={profile}
             wake={wake}

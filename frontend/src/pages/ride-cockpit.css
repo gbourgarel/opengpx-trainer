@@ -231,22 +231,11 @@
   transition: width 0.25s linear;
 }
 
-/* bottom row: controls | live chart */
+/* bottom row: the controls, full width and only as tall as they need (the rest goes to the
+   dial and the route cards) */
 .ck-bottom {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-  gap: 8px;
-  height: 150px;
+  flex: none;
 }
 .ck-bottom > .card {
   padding: 8px 12px;
-}
-.ck-chart {
-  display: flex;
-  flex-direction: column;
-}
-.ck-chart .live-chart {
-  flex: 1 1 0;
-  min-height: 0;
-  height: auto !important;
 }

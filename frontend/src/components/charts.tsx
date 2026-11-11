@@ -1,8 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
-import uPlot from 'uplot'
-import 'uplot/dist/uPlot.min.css'
-import { fmtTime, stepWatts, type Step } from '../api'
-import type { HistoryPoint } from '../useLive'
+import { useMemo } from 'react'
+import { stepWatts, type Step } from '../api'
 
 // ---------------------------------------------------------------------------------------
 // Workout profile (SVG): one polygon per step, coloured by intensity zone, progress cursor.
@@ -255,63 +252,4 @@ export function LocalProfile({
       </div>
     </div>
   )
-}
-
-// ---------------------------------------------------------------------------------------
-// Live power / target / HR chart (uPlot), last `windowS` seconds.
-export function LiveChart({ history, tick, windowS = 600 }: { history: { current: HistoryPoint[] }; tick: unknown; windowS?: number }) {
-  const el = useRef<HTMLDivElement>(null)
-  const plot = useRef<uPlot | null>(null)
-
-  useEffect(() => {
-    if (!el.current) return
-    const box = el.current
-    // fill the container (sized by the layout), minus the legend under the plot
-    const size = () => {
-      const legend = box.querySelector<HTMLElement>('.u-legend')?.offsetHeight ?? 26
-      return { width: box.clientWidth, height: Math.max(100, box.clientHeight - legend - 4) }
-    }
-    const css = getComputedStyle(document.documentElement)
-    const c = (v: string) => css.getPropertyValue(v).trim()
-    const opts: uPlot.Options = {
-      ...size(),
-      legend: { show: true },
-      cursor: { drag: { x: false, y: false } },
-      scales: { x: { time: false }, hr: { range: [60, 200] } },
-      axes: [
-        { stroke: c('--muted'), grid: { stroke: c('--grid') }, values: (_u, v) => v.map((s) => fmtTime(s)) },
-        { stroke: c('--muted'), grid: { stroke: c('--grid') }, label: 'W' },
-        { scale: 'hr', side: 1, stroke: c('--hr'), grid: { show: false } },
-      ],
-      series: [
-        { label: 't' },
-        { label: 'Target', stroke: c('--target'), width: 2, dash: [6, 4], points: { show: false } },
-        { label: 'Power', stroke: c('--power'), width: 1.5, fill: c('--power-fill'), points: { show: false } },
-        { label: 'HR', scale: 'hr', stroke: c('--hr'), width: 1.5, points: { show: false } },
-      ],
-    }
-    plot.current = new uPlot(opts, [[], [], [], []], box)
-    plot.current.setSize(size()) // the legend exists now: account for its real height
-    const ro = new ResizeObserver(() => plot.current?.setSize(size()))
-    ro.observe(box)
-    return () => {
-      ro.disconnect()
-      plot.current?.destroy()
-    }
-  }, [])
-
-  useEffect(() => {
-    const h = history.current
-    if (!plot.current || !h.length) return
-    const t0 = h[h.length - 1].t - windowS
-    const pts = h.filter((p) => p.t >= t0)
-    plot.current.setData([
-      pts.map((p) => p.t),
-      pts.map((p) => p.target),
-      pts.map((p) => p.power),
-      pts.map((p) => p.hr),
-    ])
-  }, [tick, history, windowS])
-
-  return <div ref={el} className="live-chart" />
 }

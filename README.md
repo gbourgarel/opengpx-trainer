@@ -31,7 +31,7 @@ Bluetooth LE (FTMS), with power meter and heart-rate sensors on either protocol.
 
 ```
 backend/   Python 3.12 · FastAPI · openant · bleak · numpy · SQLite   (uv)
-frontend/  React · Vite · TypeScript · Leaflet · uPlot
+frontend/  React · Vite · TypeScript · Leaflet · MapLibre GL
 samples/   sample GPX route and ZWO workout
 ```
 

@@ -2,21 +2,19 @@
 //
 // Left: the workout session on top, then the power dial with the step countdown and the
 // interval average in big type around it. Right: what is coming (zoomed profile with the
-// current grade and climb rate), route progress (done / left on the full profile) and the map.
-// Bottom: controls and the live chart.
+// current grade and climb rate), route progress (done / left on the full profile) and the map
+// (empty on ERG rides for now). Bottom: controls.
 import type { ReactNode } from 'react'
 import { fmtTime, wkg, type RouteDetail, type Telemetry, type Workout } from '../api'
-import { ElevationProfile, LiveChart, LocalProfile, WorkoutProfile } from '../components/charts'
+import { ElevationProfile, LocalProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
 import { WindBadge } from '../components/Wind'
 import { targetZone, type TargetZone } from '../targetZone'
-import type { HistoryPoint } from '../useLive'
 import { Metric } from './RidePage'
 import './ride-cockpit.css'
 
 export interface RideCtx {
   tel: Telemetry
-  history: { current: HistoryPoint[] }
   route?: RouteDetail
   workout?: Workout
   ftp: number
@@ -235,14 +233,6 @@ function MapCard({ c }: { c: RideCtx }) {
   )
 }
 
-function ChartCard({ c, className }: { c: RideCtx; className: string }) {
-  return (
-    <div className={`card chart-card ${className}`}>
-      <LiveChart history={c.history} tick={c.tel.elapsed_s} />
-    </div>
-  )
-}
-
 // ---------------------------------------------------------------------------------------
 export function RideCockpit({ c }: { c: RideCtx }) {
   const t = c.tel
@@ -281,13 +271,9 @@ export function RideCockpit({ c }: { c: RideCtx }) {
           <AheadCard c={c} />
           <RouteProgressCard c={c} />
           <MapCard c={c} />
-          {!c.route && <ChartCard c={c} className="ck-fill" />}
         </div>
       </div>
-      <div className="ck-bottom">
-        {c.controls}
-        {c.route && <ChartCard c={c} className="ck-chart" />}
-      </div>
+      <div className="ck-bottom">{c.controls}</div>
     </div>
   )
 }

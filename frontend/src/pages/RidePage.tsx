@@ -5,7 +5,6 @@ import { useRideShortcuts } from '../rideKeys'
 import { shortcutsHelp, SOURCE_LABEL, targetSource } from '../targetSource'
 import { useStepCues } from '../stepCues'
 import type { WakeLockStatus } from '../wakeLock'
-import type { HistoryPoint } from '../useLive'
 import { Immersive } from './Immersive'
 import { RideCockpit } from './RideCockpit'
 
@@ -63,14 +62,12 @@ function Stepper({ label, value, step, onChange, unit = '%', title }: { label: s
 
 export function RidePage({
   tel,
-  history,
   active,
   profile,
   wake,
   onEnd,
 }: {
   tel: Telemetry
-  history: { current: HistoryPoint[] }
   active: ActiveRide | null
   profile: Profile | null
   wake: WakeLockStatus
@@ -288,7 +285,7 @@ export function RidePage({
   // Cockpit layout (RideCockpit): fits the window on desktop screens; the immersive view covers it
   return (
     <>
-      <RideCockpit c={{ tel, history, route, workout, ftp, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls, sourceLabel }} />
+      <RideCockpit c={{ tel, route, workout, ftp, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls, sourceLabel }} />
       {immersive && route && (
         <Immersive
           tel={tel}
