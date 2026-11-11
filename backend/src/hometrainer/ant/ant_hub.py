@@ -44,6 +44,26 @@ class AntUnavailable(RuntimeError):
     pass
 
 
+# message for a stick that cannot be opened (no libusb, no driver, or held by another app)
+NO_STICK_HINT = (
+    "Is it plugged in and Garmin Express / Zwift closed? On Windows the stick needs the WinUSB "
+    "driver (install it once with Zadig)."
+)
+
+
+def load_libusb() -> None:
+    """Load the libusb shipped by the ``libusb-package`` wheel into pyusb, so the stick works
+    without a system libusb (Homebrew on macOS, a DLL on Windows). pyusb keeps the first
+    library it loads, and openant's ``usb.core.find()`` then uses it. Falls back to the
+    system libusb when the wheel has none for this platform."""
+    try:
+        import libusb_package
+        import usb.backend.libusb1
+    except ImportError:  # pragma: no cover
+        return
+    usb.backend.libusb1.get_backend(find_library=libusb_package.find_library)
+
+
 class AntHub(SensorHub):
     TARGET_RESEND_S = 2.0  # re-send ERG target periodically (survives trainer reconnects)
     # Send the Cycling Dynamics set-up to the power meter. Off: on a real ride (2026-11-08,
@@ -137,13 +157,11 @@ class AntHub(SensorHub):
         from openant.easy.channel import Channel
         from openant.easy.node import Node
 
+        load_libusb()
         try:
             node = Node()
         except Exception as e:  # usb.core.NoBackendError, DriverNotFound, USBError ...
-            raise AntUnavailable(
-                f"No usable ANT+ USB stick ({e}). Is it plugged in, libusb installed "
-                "(brew install libusb) and Garmin Express / Zwift closed?"
-            ) from e
+            raise AntUnavailable(f"No usable ANT+ USB stick ({e}). {NO_STICK_HINT}") from e
         # Register the node *before* any call that can fail, so stop() can always release the
         # USB device. (Otherwise openant's reader thread keeps the stick busy forever.)
         self._node = node

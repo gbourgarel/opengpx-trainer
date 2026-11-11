@@ -29,9 +29,35 @@ frontend/  React · Vite · TypeScript · Leaflet · uPlot
 samples/   sample GPX route and ZWO workout
 ```
 
-## Running
+## Installing (macOS, Windows)
 
-Prerequisites: [uv](https://docs.astral.sh/uv/), Node ≥ 20, and `brew install libusb` for the ANT+ stick.
+No Node or Python needed beforehand: [uv](https://docs.astral.sh/uv/) installs Python for the
+app, and the release wheel contains the UI and libusb.
+
+1. Install uv, once. macOS (Terminal):
+   `curl -LsSf https://astral.sh/uv/install.sh | sh`; Windows (PowerShell):
+   `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`.
+   Then open a new terminal.
+2. Install the app from the latest release:
+   `uv tool install <URL of the hometrainer-….whl from the Releases page>`.
+   An update is the same command with the newer wheel.
+3. Run `hometrainer`. The UI opens in the browser at http://127.0.0.1:8000 (`--no-browser`
+   to skip, `--port` to use another port). Stop it with Ctrl+C.
+
+Bluetooth sensors need nothing else (on macOS, allow Bluetooth for Terminal, see below). An
+ANT+ stick works as is on macOS. On Windows it needs the WinUSB driver once: plug the stick in,
+run [Zadig](https://zadig.akeo.ie/), pick the stick (*ANT USBStick2* or *ANT USB-m Stick*) and
+install *WinUSB*. Garmin Express then no longer sees the stick.
+
+A release is made by pushing a tag: `git tag v0.2.0 && git push origin v0.2.0`. The
+`release` workflow builds the UI and the wheel and attaches it to a GitHub release. By hand:
+`cd frontend && npm run build`, then `cd backend && uv build --wheel` (the wheel lands in
+`backend/dist/`).
+
+## Running (development)
+
+Prerequisites: [uv](https://docs.astral.sh/uv/) and Node ≥ 20. The ANT+ stick uses the libusb
+of the `libusb-package` wheel (a system libusb is used where the wheel has none).
 Quit Garmin Express (and Zwift/TrainerRoad…) so that nothing else holds the stick.
 For Bluetooth on macOS, allow Bluetooth for the app that runs the server (Terminal, iTerm, VS Code…)
 in System Settings → Privacy & Security → Bluetooth. Without it, scans never answer. A Bluetooth
@@ -83,7 +109,7 @@ progress). Environment variables:
 |------------------------|---------------------------------------------------------------|
 | `HOMETRAINER_DATA`     | data directory instead of `~/.hometrainer`                    |
 | `HOMETRAINER_ANT_LOG`  | CSV file where every raw ANT+ page is logged (debugging)      |
-| `HOMETRAINER_FRONTEND` | built UI to serve instead of `frontend/dist`                  |
+| `HOMETRAINER_FRONTEND` | built UI to serve instead of the packaged one / `frontend/dist` |
 
 ## Ride screen
 

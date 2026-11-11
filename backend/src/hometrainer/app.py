@@ -179,7 +179,7 @@ class AppState:
                 path.unlink()
             except Exception:
                 log.exception("Cannot recover %s, renamed to .bad", path.name)
-                path.rename(path.with_suffix(".bad"))
+                path.replace(path.with_suffix(".bad"))
         return out
 
     def idle_telemetry(self) -> dict:
@@ -228,6 +228,15 @@ class AdjustBody(BaseModel):
 class StepBody(BaseModel):
     action: Literal["skip", "extend"]
     seconds: float = 60.0  # extend only
+
+
+def frontend_dir() -> Path | None:
+    """The built UI to serve: ``HOMETRAINER_FRONTEND``, else the copy packaged in the wheel
+    (``hometrainer/web``, see ``hatch_build.py``), else ``frontend/dist`` of the repository."""
+    env = os.environ.get("HOMETRAINER_FRONTEND")
+    here = Path(__file__).resolve().parent
+    candidates = [Path(env)] if env else [here / "web", here.parents[2] / "frontend" / "dist"]
+    return next((d for d in candidates if d.is_dir()), None)
 
 
 def create_app(storage: Storage | None = None) -> FastAPI:
@@ -675,12 +684,8 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             sender.cancel()
 
     # -- built frontend (production) ----------------------------------------------------
-    dist = Path(
-        os.environ.get(
-            "HOMETRAINER_FRONTEND", Path(__file__).resolve().parents[3] / "frontend" / "dist"
-        )
-    )
-    if dist.is_dir():
+    dist = frontend_dir()
+    if dist is not None:
         app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
 
     return app

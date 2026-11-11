@@ -1,0 +1,24 @@
+# Backend tests on the systems the app is installed on (macOS, Windows).
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Tests
+        working-directory: backend
+        run: uv run pytest -q
+      - name: Lint
+        working-directory: backend
+        run: uv run ruff check . && uv run ruff format --check .

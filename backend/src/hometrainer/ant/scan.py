@@ -14,7 +14,7 @@ import threading
 import time
 
 from . import profiles as pf
-from .ant_hub import AntUnavailable
+from .ant_hub import NO_STICK_HINT, AntUnavailable, load_libusb
 
 DEVICE_TYPES = {
     pf.FEC_DEVICE_TYPE: ("trainer", "FE-C trainer"),
@@ -87,12 +87,13 @@ def scan_ant(duration_s: float = 6.0) -> list[dict]:
         from openant.easy.node import Node
     except ImportError as e:  # pragma: no cover
         raise AntUnavailable(f"openant not installed: {e}") from e
+    load_libusb()
     collector = ScanCollector()
     for attempt in range(1, START_ATTEMPTS + 1):
         try:
             node = Node()
         except Exception as e:
-            raise AntUnavailable(f"No usable ANT+ USB stick ({e})") from e
+            raise AntUnavailable(f"No usable ANT+ USB stick ({e}). {NO_STICK_HINT}") from e
         try:
             node.set_network_key(0x00, ANTPLUS_NETWORK_KEY)
             ch = node.new_channel(Channel.Type.BIDIRECTIONAL_RECEIVE, 0x00, 0x01)  # background
