@@ -132,3 +132,29 @@ def test_smoothing_preserves_grade_at_route_ends():
     r = Route.from_gpx(make_gpx(grade=0.06))
     assert r.grade_at(0) == pytest.approx(0.06, abs=2e-3)
     assert r.grade_at(r.total_distance_m) == pytest.approx(0.06, abs=2e-3)
+
+
+async def test_intervals_lists_only_cycling_workouts():
+    import datetime as dt
+
+    import httpx
+
+    from hometrainer.workouts.intervals_icu import IntervalsIcuClient
+
+    events = [
+        {"id": 1, "category": "WORKOUT", "type": "Ride", "name": "Sweet spot"},
+        {"id": 2, "category": "WORKOUT", "type": "VirtualRide", "name": "Zwift"},
+        {"id": 3, "category": "WORKOUT", "type": "Run", "name": "Tempo run"},
+        {"id": 4, "category": "WORKOUT", "type": "WeightTraining", "name": "Gym"},
+        {"id": 5, "category": "NOTE", "type": "Ride", "name": "Note"},
+    ]
+    c = IntervalsIcuClient("fake-key")
+    c._client = httpx.AsyncClient(
+        base_url="http://test",
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json=events)),
+    )
+    try:
+        out = await c.planned_workouts(dt.date(2026, 11, 1), dt.date(2026, 11, 8))
+    finally:
+        await c.aclose()
+    assert [w["id"] for w in out] == [1, 2]

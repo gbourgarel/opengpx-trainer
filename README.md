@@ -252,7 +252,8 @@ FTMS has no rider-weight command, so the user configuration is only sent over AN
 On the Profile page, set your athlete id (`0` = owner of the key) and API key (intervals.icu →
 Settings → Developer settings). The app uses:
 
-* `GET /api/v1/athlete/{id}/events?category=WORKOUT` to list planned workouts,
+* `GET /api/v1/athlete/{id}/events?category=WORKOUT` to list planned workouts (cycling
+  types only: Ride, VirtualRide, GravelRide, MountainBikeRide, TrackRide, …),
 * `GET /api/v1/athlete/{id}/events/{eventId}/download.zwo` to import one,
 * `POST /api/v1/athlete/{id}/activities` (multipart `file`) to upload a ride: from the prompt
   shown when a ride is saved, or from History. A ride already uploaded is never sent twice.

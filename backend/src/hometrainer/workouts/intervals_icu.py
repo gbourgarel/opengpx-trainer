@@ -15,6 +15,22 @@ from .parsers import parse_zwo
 
 BASE_URL = "https://intervals.icu/api/v1"
 
+# intervals.icu sport types that can be ridden on a trainer; other planned workouts (Run, Swim,
+# WeightTraining, ...) are not listed.
+CYCLING_TYPES = frozenset(
+    {
+        "Ride",
+        "VirtualRide",
+        "GravelRide",
+        "MountainBikeRide",
+        "TrackRide",
+        "EBikeRide",
+        "EMountainBikeRide",
+        "Handcycle",
+        "Velomobile",
+    }
+)
+
 
 class IntervalsIcuClient:
     def __init__(self, api_key: str, athlete_id: str = "0", base_url: str = BASE_URL):
@@ -38,7 +54,7 @@ class IntervalsIcuClient:
         r.raise_for_status()
         out = []
         for ev in r.json():
-            if ev.get("category") != "WORKOUT":
+            if ev.get("category") != "WORKOUT" or ev.get("type") not in CYCLING_TYPES:
                 continue
             out.append(
                 {
