@@ -285,3 +285,14 @@ def test_a_client_that_stops_reading_does_not_stall_the_engine(client, monkeypat
         while client.st.clients and time.monotonic() < deadline:
             time.sleep(0.05)
         assert not client.st.clients  # the stalled client was dropped
+
+
+def test_scenery_stats_are_appended(client, tmp_path):
+    """TEMPORARY endpoint (3D view measurements on a real ride): one JSON line per post."""
+    import json
+
+    assert client.post("/api/scenery-stats", json={"view": "a", "bytes": 1}).status_code == 200
+    assert client.post("/api/scenery-stats", json={"view": "a", "bytes": 2}).status_code == 200
+    lines = (tmp_path / "scenery-stats.jsonl").read_text().splitlines()
+    assert [json.loads(x)["bytes"] for x in lines] == [1, 2] and "t" in json.loads(lines[0])
+    assert client.post("/api/scenery-stats", json={"x": "y" * 20_000}).status_code == 413
