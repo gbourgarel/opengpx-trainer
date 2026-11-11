@@ -29,6 +29,8 @@ export interface RideCtx {
   lap: number
   head: ReactNode
   controls: ReactNode
+  /** where the target comes from, under the dial (GPX rides) */
+  sourceLabel?: string
 }
 
 const ZONE_LABEL: Record<TargetZone, string> = { on: 'On target', high: 'Slightly high', 'too-high': 'Too high', low: 'Slightly low', 'too-low': 'Too low' }
@@ -131,6 +133,11 @@ function Dial({ c }: { c: RideCtx }) {
       {target && (
         <text x={cx} y={cy + 66} className={`ck-zone zone-text-${zone}`}>
           {ZONE_LABEL[zone!]}
+        </text>
+      )}
+      {target && c.sourceLabel && (
+        <text x={cx} y={cy + 88} className="ck-source">
+          {c.sourceLabel}
         </text>
       )}
       <text x={pt(0)[0]} y={pt(0)[1] + 22} className="ck-scale">

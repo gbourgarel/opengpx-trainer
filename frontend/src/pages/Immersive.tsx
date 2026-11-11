@@ -33,6 +33,8 @@ export interface ImmersiveProps {
   doneIdx: number
   /** pause / stop / step / effort controls (built by RidePage) */
   controls: ReactNode
+  /** where the target comes from ("from the workout", "set by hand"…) */
+  sourceLabel?: string
   sound: boolean
   setSound: (on: boolean) => void
   error: string | null
@@ -97,7 +99,7 @@ export function Immersive(p: ImmersiveProps) {
 
 // ---------------------------------------------------------------------------------------
 
-function PowerBlock({ tel, workout, ftp }: ImmersiveProps) {
+function PowerBlock({ tel, workout, ftp, sourceLabel }: ImmersiveProps) {
   const target = tel.target_w != null && (tel.state === 'running' || tel.state === 'paused') ? tel.target_w : null
   const p3 = tel.power_avg3_w ?? tel.power_w ?? 0
   const shown = tel.power_avg3_w != null ? Math.round(tel.power_avg3_w) : tel.power_w
@@ -113,7 +115,8 @@ function PowerBlock({ tel, workout, ftp }: ImmersiveProps) {
       <div className="im-sub">
         {target ? (
           <>
-            target <b>{target} W</b> · {wkg(shown, tel.rider_mass_kg)} W/kg
+            target <b>{target} W</b>
+            {sourceLabel && <span className="im-source"> {sourceLabel}</span>} · {wkg(shown, tel.rider_mass_kg)} W/kg
           </>
         ) : (
           <>free ride · {wkg(shown, tel.rider_mass_kg)} W/kg</>

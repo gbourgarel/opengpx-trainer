@@ -188,6 +188,12 @@
   font-size: 15px;
   font-weight: 600;
 }
+/* where the target comes from (workout, slope, by hand) */
+.ck-source {
+  text-anchor: middle;
+  font-size: 12px;
+  fill: var(--muted);
+}
 
 /* route progress: done / left on the full-route profile */
 .ck-progress-head {

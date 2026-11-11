@@ -1,19 +1,18 @@
 import { useEffect, useRef } from 'react'
 import { api, type Telemetry } from './api'
+import { keyField, type KeyField, type TargetSource } from './targetSource'
 
 /** Keyboard shortcuts of the ride screen.
  *
  * * Space: pause / resume
- * * ↑ / ↓ (or + / −): workout intensity ±1 % (ERG, GPX + workout while it lasts); effort ±2 %
- *   on a GPX ride following the slope (plain, or once its workout is over); target ±5 W on a
- *   GPX ride in manual target mode
+ * * ↑ / ↓ (or + / −): the value of the current target source (`targetSource.ts`): workout
+ *   intensity ±1 %, effort ±2 % when the slope sets the target (also in the free-ride steps of
+ *   a workout), target ±5 W in manual target mode
  * * M: sound on / off
  * * V: immersive 3D view on / off (GPX rides); Esc leaves it
  *
- * Ignored while typing in a field or with Ctrl / Cmd / Alt held. */
-export const SHORTCUTS_HELP = 'Space pause/resume · ↑↓ intensity · M sound · V 3D view'
-
-type Field = 'intensity_pct' | 'effort_pct' | 'manual_target_w'
+ * Ignored while typing in a field or with Ctrl / Cmd / Alt held. The help line is
+ * `shortcutsHelp` in `targetSource.ts`. */
 
 // how long a sent value is preferred over the telemetry (which may not reflect it yet)
 const PENDING_MS = 1500
@@ -21,8 +20,8 @@ const PENDING_MS = 1500
 export function useRideShortcuts(opts: {
   tel: Telemetry
   enabled: boolean
-  /** the ride has a workout that is not over yet (it sets the target) */
-  hasWorkout: boolean
+  /** what sets the target now: ↑ / ↓ change its value */
+  source: TargetSource
   sound: boolean
   setSound: (on: boolean) => void
   onError: (msg: string) => void
@@ -36,12 +35,12 @@ export function useRideShortcuts(opts: {
     latest.current = opts // the key handler reads the latest telemetry / callbacks
   })
   // last value sent per field: rapid presses add up even before the telemetry catches up
-  const pending = useRef<{ field: Field; value: number; at: number } | null>(null)
+  const pending = useRef<{ field: KeyField; value: number; at: number } | null>(null)
   const queue = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const { tel, enabled, hasWorkout, sound, setSound, onError, canImmersive, immersive, setImmersive } = latest.current
+      const { tel, enabled, source, sound, setSound, onError, canImmersive, immersive, setImmersive } = latest.current
       if (!enabled || e.ctrlKey || e.metaKey || e.altKey) return
       const el = e.target as HTMLElement | null
       if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
@@ -71,10 +70,8 @@ export function useRideShortcuts(opts: {
       const down = e.key === 'ArrowDown' || e.key === '-' || e.key === '_'
       if (!up && !down) return
       e.preventDefault()
-      let field: Field, step: number, lo: number, hi: number, fallback: number
-      if (tel.mode === 'erg' || hasWorkout) [field, step, lo, hi, fallback] = ['intensity_pct', 1, 10, 200, 100]
-      else if (tel.target_mode === 'manual') [field, step, lo, hi, fallback] = ['manual_target_w', 5, 0, 2000, tel.target_w ?? 0]
-      else [field, step, lo, hi, fallback] = ['effort_pct', 2, 10, 200, 100]
+      const { field, step, lo, hi } = keyField(source)
+      const fallback = field === 'manual_target_w' ? (tel.target_w ?? 0) : 100
       const p = pending.current
       const now = performance.now()
       const base = p && p.field === field && now - p.at < PENDING_MS ? p.value : (tel[field] ?? fallback)

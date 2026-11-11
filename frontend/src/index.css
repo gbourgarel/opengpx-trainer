@@ -697,6 +697,9 @@ b.warn {
 }
 
 /* GPX manual target */
+.override-note {
+  font-size: 12px;
+}
 .seg.target-mode button.on {
   background: var(--accent);
   border-color: var(--accent);

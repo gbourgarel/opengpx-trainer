@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { api, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ManualTarget } from '../components/ManualTarget'
-import { SHORTCUTS_HELP, useRideShortcuts } from '../rideKeys'
+import { useRideShortcuts } from '../rideKeys'
+import { shortcutsHelp, SOURCE_LABEL, targetSource } from '../targetSource'
 import { useStepCues } from '../stepCues'
 import type { WakeLockStatus } from '../wakeLock'
 import type { HistoryPoint } from '../useLive'
@@ -46,13 +47,12 @@ export function Metric({
   )
 }
 
-function Stepper({ label, value, step, onChange, unit = '%', signed }: { label: string; value: number; step: number; onChange: (v: number) => void; unit?: string; signed?: boolean }) {
+function Stepper({ label, value, step, onChange, unit = '%', title }: { label: string; value: number; step: number; onChange: (v: number) => void; unit?: string; title?: string }) {
   return (
-    <div className="stepper">
+    <div className="stepper" title={title}>
       <span className="label">{label}</span>
       <button onClick={() => onChange(value - step)}>−</button>
       <span className="val">
-        {signed && value > 0 ? '+' : ''}
         {Math.round(value)}
         {unit}
       </span>
@@ -92,7 +92,16 @@ export function RidePage({
   // the workout still sets the target; once it is over, a GPX + workout ride behaves like a
   // plain GPX ride (slope effort or manual target), so the workout intensity is not offered
   const workoutActive = !!workout && (tel.elapsed_s ?? 0) < (tel.workout_duration_s ?? 0)
-  useRideShortcuts({ tel, enabled: inSession && !!active, hasWorkout: workoutActive, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
+  // what sets the trainer target now (workout, its free-ride steps, slope, manual): the
+  // controls show the value of that source, and ↑ / ↓ change it
+  const source = targetSource({
+    mode: tel.mode,
+    targetMode: tel.target_mode,
+    manualTargetW: tel.manual_target_w,
+    workoutActive,
+    step: tel.step_index != null ? workout?.steps[tel.step_index] : undefined,
+  })
+  useRideShortcuts({ tel, enabled: inSession && !!active, source, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
   const ftp = profile?.ftp_w ?? 250
 
   // position within the current lap (the route loops in GPX + workout rides)
@@ -127,6 +136,8 @@ export function RidePage({
   const totalSplit = split ? Math.max(1, split.gravity + split.rolling + split.aero) : 1
   const remainingDist = route && routePos != null ? route.distance_m - routePos : null
   const lap = tel.lap ?? 1
+  // under the power dial: where the target comes from (GPX rides; in ERG it is the workout)
+  const sourceLabel = tel.mode === 'gpx' ? SOURCE_LABEL[source] : undefined
   const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : 'GPX · pseudo-ERG'
 
   const pauseButton =
@@ -201,31 +212,49 @@ export function RidePage({
     </div>
   )
 
+  // the value of the current target source (see targetSource.ts); in a free-ride step the
+  // workout intensity stays offered, for the steps that follow
+  const intensity = (label: string, title?: string) => (
+    <Stepper label={label} title={title} value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
+  )
+  const effort = (label: string) => (
+    <Stepper label={label} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
+  )
+  const nextStepsTitle = 'Scales the targets of the workout steps (this free-ride step follows the slope)'
+  const sourceControls = (compact: boolean) =>
+    source === 'manual' && tel.manual_target_w != null ? (
+      <ManualTarget key={tel.session_id} server={tel.manual_target_w} onError={setError} />
+    ) : source === 'workout' ? (
+      intensity('Intensity')
+    ) : source === 'free-ride' ? (
+      <>
+        {effort(compact ? 'Free-ride step · effort' : 'Free-ride step → slope · effort')}
+        {intensity(compact ? 'Intensity' : 'Intensity (next steps)', nextStepsTitle)}
+      </>
+    ) : (
+      effort('Effort')
+    )
+
   const controls = (
       <div className="card adjust">
         {stepControls}
-        {tel.mode === 'erg' ? (
-          <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
-        ) : (
-          <>
-            {workoutActive && (
-              <Stepper label="Workout intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
-            )}
-            <div className="seg target-mode" title="How the trainer target is set">
-              <button className={tel.target_mode !== 'manual' ? 'on' : ''} onClick={() => act(() => api.adjust({ target_mode: 'slope' }))}>
-                Slope
-              </button>
-              <button className={tel.target_mode === 'manual' ? 'on' : ''} onClick={() => act(() => api.adjust({ target_mode: 'manual' }))}>
-                Manual
-              </button>
-            </div>
-            {tel.target_mode === 'manual' && tel.manual_target_w != null ? (
-              <ManualTarget key={tel.session_id} server={tel.manual_target_w} onError={setError} />
-            ) : (
-              <Stepper label={workoutActive ? 'Slope effort' : 'Effort (target power)'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
-            )}
-          </>
+        {tel.mode === 'gpx' && (
+          // left button: the automatic source (the workout while it lasts, else the slope)
+          <div className="seg target-mode" title="What sets the trainer target">
+            <button
+              className={source !== 'manual' ? 'on' : ''}
+              onClick={() => act(() => api.adjust({ target_mode: 'slope' }))}
+              title={workoutActive ? 'The workout sets the target (the slope in its free-ride steps)' : 'The slope of the route sets the target'}
+            >
+              {workoutActive ? 'Workout' : 'Slope'}
+            </button>
+            <button className={source === 'manual' ? 'on' : ''} onClick={() => act(() => api.adjust({ target_mode: 'manual' }))} title="Set the target in watts">
+              Manual
+            </button>
+          </div>
         )}
+        {sourceControls(false)}
+        {source === 'manual' && workoutActive && <small className="muted override-note">Workout target overridden; its steps keep running.</small>}
         {split && (
           <div className="split" title="Instantaneous resistive power at current speed">
             <span>Resistive power</span>
@@ -240,31 +269,26 @@ export function RidePage({
           </div>
         )}
         <small className="shortcuts-help" title="Keyboard shortcuts">
-          Keys: {SHORTCUTS_HELP}
+          Keys: {shortcutsHelp(source, { sound: !!workout, immersive: canImmersive })}
         </small>
       </div>
   )
 
-  // compact controls of the immersive view (GPX rides): pause / stop, workout step, effort or
-  // manual target
+  // compact controls of the immersive view (GPX rides): pause / stop, workout step, the value
+  // of the current target source
   const immersiveControls = (
     <>
       {pauseButton}
       {stopButton}
       {stepControls}
-      {workoutActive && <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />}
-      {tel.target_mode === 'manual' && tel.manual_target_w != null ? (
-        <ManualTarget key={tel.session_id} server={tel.manual_target_w} onError={setError} />
-      ) : (
-        <Stepper label={workoutActive ? 'Slope effort' : 'Effort'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
-      )}
+      {sourceControls(true)}
     </>
   )
 
   // Cockpit layout (RideCockpit): fits the window on desktop screens; the immersive view covers it
   return (
     <>
-      <RideCockpit c={{ tel, history, route, workout, ftp, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls }} />
+      <RideCockpit c={{ tel, history, route, workout, ftp, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls, sourceLabel }} />
       {immersive && route && (
         <Immersive
           tel={tel}
@@ -275,6 +299,7 @@ export function RidePage({
           remainingDist={remainingDist}
           doneIdx={doneIdx}
           controls={immersiveControls}
+          sourceLabel={sourceLabel}
           sound={sound}
           setSound={setSound}
           error={error}
