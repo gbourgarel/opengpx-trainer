@@ -4,8 +4,9 @@ import { api, type Telemetry } from './api'
 /** Keyboard shortcuts of the ride screen.
  *
  * * Space: pause / resume
- * * ↑ / ↓ (or + / −): workout intensity ±1 % (ERG, GPX + workout); effort ±2 % on a plain
- *   GPX ride following the slope; target ±5 W on a GPX ride in manual target mode
+ * * ↑ / ↓ (or + / −): workout intensity ±1 % (ERG, GPX + workout while it lasts); effort ±2 %
+ *   on a GPX ride following the slope (plain, or once its workout is over); target ±5 W on a
+ *   GPX ride in manual target mode
  * * M: sound on / off
  * * V: immersive 3D view on / off (GPX rides); Esc leaves it
  *
@@ -20,6 +21,7 @@ const PENDING_MS = 1500
 export function useRideShortcuts(opts: {
   tel: Telemetry
   enabled: boolean
+  /** the ride has a workout that is not over yet (it sets the target) */
   hasWorkout: boolean
   sound: boolean
   setSound: (on: boolean) => void

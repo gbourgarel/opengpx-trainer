@@ -12,7 +12,9 @@ Bluetooth LE (FTMS), with power meter and heart-rate sensors on either protocol.
   **wind** (speed and direction, set when starting the route). Climb rate (VAM) and elevation
   gain are shown.
 * **Workout on a route**: a GPX ride can follow a workout. The workout sets the target, the route
-  gives speed and position, and the route loops while the workout lasts.
+  gives speed and position, and the route loops while the workout lasts. Once the workout is
+  over, the ride carries on as a plain GPX ride (slope effort or manual target, ↑/↓ included)
+  until the end of the current lap.
 * Power is also shown in **W/kg** (rider mass).
 * **Power source**: the power meter if one is detected (or forced), else the trainer. With a
   power meter, *power match* corrects the ERG target so the meter reads the requested power.
@@ -126,7 +128,7 @@ progress). Environment variables:
   | Key            | Action                                                              |
   |----------------|---------------------------------------------------------------------|
   | Space          | pause / resume                                                      |
-  | ↑ / ↓ (+ / −)  | workout intensity ±1 % (ERG, GPX + workout); effort ±2 % on a GPX ride following the slope; target ±5 W in manual target mode |
+  | ↑ / ↓ (+ / −)  | workout intensity ±1 % (ERG, GPX + workout while it lasts); effort ±2 % on a GPX ride following the slope; target ±5 W in manual target mode |
   | M              | sound on / off                                                      |
   | V / Esc        | immersive 3D view on / off (GPX rides)                              |
   | F              | browser full screen (immersive view)                                |

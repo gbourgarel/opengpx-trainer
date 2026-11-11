@@ -89,7 +89,10 @@ export function RidePage({
   const canImmersive = ['ready', 'running', 'paused'].includes(tel.state) && !!route
   const immersive = canImmersive && immersiveRide === active?.sessionId
   const setImmersive = (on: boolean) => setImmersiveRide(on && active ? active.sessionId : null)
-  useRideShortcuts({ tel, enabled: inSession && !!active, hasWorkout: !!workout, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
+  // the workout still sets the target; once it is over, a GPX + workout ride behaves like a
+  // plain GPX ride (slope effort or manual target), so the workout intensity is not offered
+  const workoutActive = !!workout && (tel.elapsed_s ?? 0) < (tel.workout_duration_s ?? 0)
+  useRideShortcuts({ tel, enabled: inSession && !!active, hasWorkout: workoutActive, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
   const ftp = profile?.ftp_w ?? 250
 
   // position within the current lap (the route loops in GPX + workout rides)
@@ -186,8 +189,7 @@ export function RidePage({
   )
 
   // the current workout step can be skipped or extended
-  const stepEditable =
-    !!workout && (tel.state === 'running' || tel.state === 'paused' || tel.state === 'ready') && (tel.elapsed_s ?? 0) < (tel.workout_duration_s ?? 0)
+  const stepEditable = workoutActive && (tel.state === 'running' || tel.state === 'paused' || tel.state === 'ready')
   const stepControls = stepEditable && (
     <div className="seg step-edit" title="Current workout step">
       <button onClick={() => act(() => api.extendStep(60))} title="Make the current step 1 min longer">
@@ -206,7 +208,7 @@ export function RidePage({
           <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
         ) : (
           <>
-            {workout && (
+            {workoutActive && (
               <Stepper label="Workout intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
             )}
             <div className="seg target-mode" title="How the trainer target is set">
@@ -220,7 +222,7 @@ export function RidePage({
             {tel.target_mode === 'manual' && tel.manual_target_w != null ? (
               <ManualTarget key={tel.session_id} server={tel.manual_target_w} onError={setError} />
             ) : (
-              <Stepper label={workout ? 'Slope effort' : 'Effort (target power)'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
+              <Stepper label={workoutActive ? 'Slope effort' : 'Effort (target power)'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
             )}
             <Stepper label="Difficulty (speed = P×)" value={tel.difficulty_pct ?? 0} step={1} signed onChange={(v) => act(() => api.adjust({ difficulty_pct: v }))} />
           </>
@@ -251,11 +253,11 @@ export function RidePage({
       {pauseButton}
       {stopButton}
       {stepControls}
-      {workout && <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />}
+      {workoutActive && <Stepper label="Intensity" value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />}
       {tel.target_mode === 'manual' && tel.manual_target_w != null ? (
         <ManualTarget key={tel.session_id} server={tel.manual_target_w} onError={setError} />
       ) : (
-        <Stepper label={workout ? 'Slope effort' : 'Effort'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
+        <Stepper label={workoutActive ? 'Slope effort' : 'Effort'} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
       )}
       <Stepper label="Difficulty" value={tel.difficulty_pct ?? 0} step={1} signed onChange={(v) => act(() => api.adjust({ difficulty_pct: v }))} />
     </>
