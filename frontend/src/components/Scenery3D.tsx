@@ -6,7 +6,7 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef } from 'react'
-import { api, type RouteDetail, type Telemetry } from '../api'
+import type { RouteDetail, Telemetry } from '../api'
 import { autoCamera, newCameraState, type Frame } from '../scenery/camera'
 import { followPosition, pointAt, routeGeo, toLngLat } from '../scenery/route3d'
 import { clearTileCache, DEM_MAX_ZOOM, DEM_URL, IMAGERY_MAX_ZOOM, IMAGERY_URL, loadTile, prefetch, tileStats, wantedTiles } from '../scenery/tiles'
@@ -104,66 +104,12 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
     const ground = (lng: number, lat: number) =>
       map.terrain ? map.terrain.getElevationForLngLatZoom(new maplibregl.LngLat(lng, lat), DEM_MAX_ZOOM) : null
 
-    // TEMPORARY: measurements of the 3D view on a real ride (data volume, prefetch, fps), sent
-    // every minute and when the view closes, to <data dir>/scenery-stats.jsonl. Second run:
-    // checks the frame-rate gains (ground height, 1.5x) on a real ride. To be removed once that
-    // ride has been analysed (ROADMAP.md, "Route scenery").
-    const gl = map.getCanvas().getContext('webgl2') ?? map.getCanvas().getContext('webgl')
-    const glInfo = gl?.getExtension('WEBGL_debug_renderer_info')
-    const report = {
-      view: Math.random().toString(36).slice(2, 10),
-      opened: performance.now(),
-      frames: 0,
-      slowFrames: 0, // frames longer than 100 ms (visible stutter)
-      s0: null as number | null,
-      start: JSON.parse(JSON.stringify(tileStats)) as typeof tileStats,
-      // which machine and resolution the view ran on
-      device: {
-        build: 'fps-v2 (ground height, 1.5x)',
-        device_pixel_ratio: window.devicePixelRatio,
-        pixel_ratio: map.getPixelRatio(),
-        gpu: gl && glInfo ? gl.getParameter(glInfo.UNMASKED_RENDERER_WEBGL) : null,
-        cpu_cores: navigator.hardwareConcurrency,
-        user_agent: navigator.userAgent,
-      },
-    }
-    const sendReport = (event: 'minute' | 'close') => {
-      const t = tileStats
-      api.sceneryStats({
-        event,
-        view: report.view,
-        route_id: route.id,
-        seconds: Math.round((performance.now() - report.opened) / 1000),
-        frames: report.frames,
-        slow_frames: report.slowFrames,
-        ...report.device,
-        position_m: shown == null ? null : Math.round(shown),
-        start_m: report.s0 == null ? null : Math.round(report.s0),
-        canvas: [map.getCanvas().clientWidth, map.getCanvas().clientHeight],
-        // counters since the view was opened
-        downloaded_bytes: t.downloadedBytes - report.start.downloadedBytes,
-        downloaded_tiles: t.downloadedTiles - report.start.downloadedTiles,
-        prefetched_bytes: t.prefetchedBytes - report.start.prefetchedBytes,
-        requests: t.requests - report.start.requests,
-        hits: t.hits - report.start.hits,
-        waits: t.waits - report.start.waits,
-        misses: t.misses - report.start.misses,
-        cached_bytes_now: t.cachedBytes,
-        failures: t.failures, // cumulative (page lifetime)
-        misses_by_layer: t.missesByLayer, // cumulative (page lifetime)
-      })
-    }
-    const reportTimer = window.setInterval(() => sendReport('minute'), 60_000)
-
     const frame = (t: number) => {
-      if (last != null && t - last > 100) report.slowFrames++
       const dt = last == null ? 0 : Math.min((t - last) / 1000, 0.25)
       last = t
       const l = live.current
-      report.frames++
       if (l.known) {
         shown = followPosition(shown, { s: l.s, v: l.v, ageS: (performance.now() - l.at) / 1000 }, dt, g.total)
-        report.s0 ??= shown
         if (Math.abs(shown - prefetchedAt) >= 25) {
           // the next kilometre of tiles, refreshed every 25 m ridden
           prefetchedAt = shown
@@ -210,12 +156,7 @@ export default function Scenery3D({ route, tel }: { route: RouteDetail; tel: Tel
       map.setVerticalFieldOfView(FOV)
       raf = requestAnimationFrame(frame)
     })
-    const onHide = () => sendReport('close') // tab closed or reloaded
-    window.addEventListener('pagehide', onHide)
     return () => {
-      window.clearInterval(reportTimer)
-      window.removeEventListener('pagehide', onHide)
-      sendReport('close')
       cancelAnimationFrame(raf)
       map.remove()
       clearTileCache() // view closed: nothing kept

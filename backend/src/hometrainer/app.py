@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime as dt
-import json
 import logging
 import os
 import threading
@@ -651,21 +650,6 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             aid = str(res.get("id", ""))
             st.storage.set_ride_intervals_id(ride_id, aid)
             return {"intervals_activity_id": aid, "already": False}
-
-    # -- TEMPORARY: 3D view measurements -------------------------------------------------
-    # Counters sent by the immersive 3D view (tile volume, prefetch hits, fps), appended to
-    # <data dir>/scenery-stats.jsonl to check the data volume on a real ride. To be removed
-    # once that ride has been analysed (ROADMAP.md, "Route scenery").
-    @app.post("/api/scenery-stats")
-    def scenery_stats(body: dict):
-        line = json.dumps(
-            {"t": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"), **body}, default=str
-        )
-        if len(line) > 10_000:
-            raise HTTPException(413, "too large")
-        with open(st.storage.data_dir / "scenery-stats.jsonl", "a", encoding="utf-8") as f:
-            f.write(line + "\n")
-        return {"ok": True}
 
     # -- live telemetry -----------------------------------------------------------------
     @app.websocket("/ws/live")
