@@ -64,7 +64,17 @@ class Storage:
         self._db = sqlite3.connect(self.data_dir / "hometrainer.db", check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.executescript(SCHEMA)
+        self._migrate()
         self._db.commit()
+
+    def _migrate(self) -> None:
+        """Columns added after the first release (CREATE TABLE IF NOT EXISTS does not add
+        them to an existing database)."""
+        cols = {r["name"] for r in self._db.execute("PRAGMA table_info(rides)")}
+        if "session_id" not in cols:
+            # the ride session a row comes from: a checkpoint of a ride already saved (crash
+            # between the save and the checkpoint removal) is then not saved twice
+            self._db.execute("ALTER TABLE rides ADD COLUMN session_id TEXT")
 
     def close(self) -> None:
         self._db.close()
@@ -146,10 +156,18 @@ class Storage:
         self._exec("DELETE FROM routes WHERE id=?", (rid,))
 
     # -- rides --------------------------------------------------------------------------
-    def add_ride(self, started_at: str, mode: str, name: str, summary: dict, fit_path: str) -> int:
+    def add_ride(
+        self,
+        started_at: str,
+        mode: str,
+        name: str,
+        summary: dict,
+        fit_path: str,
+        session_id: str | None = None,
+    ) -> int:
         cur = self._exec(
             "INSERT INTO rides(started_at, mode, name, duration_s, distance_m, avg_power_w, "
-            "fit_path, summary) VALUES(?,?,?,?,?,?,?,?)",
+            "fit_path, summary, session_id) VALUES(?,?,?,?,?,?,?,?,?)",
             (
                 started_at,
                 mode,
@@ -159,9 +177,14 @@ class Storage:
                 summary.get("avg_power_w"),
                 fit_path,
                 json.dumps(summary),
+                session_id,
             ),
         )
         return int(cur.lastrowid)
+
+    def ride_for_session(self, session_id: str) -> dict | None:
+        r = self._exec("SELECT * FROM rides WHERE session_id=?", (session_id,)).fetchone()
+        return dict(r) if r else None
 
     def list_rides(self) -> list[dict]:
         rows = self._exec("SELECT * FROM rides ORDER BY id DESC").fetchall()

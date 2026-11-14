@@ -87,6 +87,41 @@ def test_checkpoint_removed_once_the_ride_is_saved(tmp_path):
         assert not s.checkpoint.path.exists()
 
 
+def test_crash_between_save_and_checkpoint_removal_records_the_ride_once(tmp_path, monkeypatch):
+    """KNOWN_ISSUES #19: the checkpoint is removed after the FIT file and the DB row; a crash
+    in between brought the ride back as "(recovered)" next to the saved one."""
+    monkeypatch.setattr(RideCheckpoint, "discard", lambda self: None)  # "crash" before it
+    with TestClient(create_app(Storage(tmp_path))) as c:
+        c.st = c.app.state.st
+        s = _ride_with_samples(c)
+        rid = c.post("/api/session/stop").json()["saved"]["ride_id"]
+    assert s.checkpoint.path.exists()
+    monkeypatch.undo()
+
+    with TestClient(create_app(Storage(tmp_path))) as c:  # next startup
+        rides = c.get("/api/rides").json()
+    assert [r["id"] for r in rides] == [rid] and "(recovered)" not in rides[0]["name"]
+    assert not s.checkpoint.path.exists()
+
+
+def test_rides_table_from_before_session_ids_is_migrated(tmp_path):
+    import sqlite3
+
+    db = sqlite3.connect(tmp_path / "hometrainer.db")
+    db.execute(
+        "CREATE TABLE rides (id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, "
+        "mode TEXT NOT NULL, name TEXT NOT NULL, duration_s REAL, distance_m REAL, "
+        "avg_power_w REAL, fit_path TEXT, summary TEXT, intervals_activity_id TEXT)"
+    )
+    db.execute("INSERT INTO rides(started_at, mode, name) VALUES('2026-11-01', 'erg', 'Old')")
+    db.commit()
+    db.close()
+    s = Storage(tmp_path)
+    assert s.list_rides()[0]["name"] == "Old" and s.list_rides()[0]["session_id"] is None
+    rid = s.add_ride("2026-11-14", "gpx", "New", {}, "x.fit", "abc")
+    assert s.ride_for_session("abc")["id"] == rid
+
+
 def test_checkpoint_removed_when_the_ride_is_discarded(tmp_path):
     with TestClient(create_app(Storage(tmp_path))) as c:
         c.st = c.app.state.st

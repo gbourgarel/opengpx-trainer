@@ -150,7 +150,7 @@ class AppState:
         path = rec.write_fit(self.storage.rides_dir / fname)
         summary = rec.summary()
         rid = self.storage.add_ride(
-            started.isoformat(timespec="seconds"), mode, name, summary, str(path)
+            started.isoformat(timespec="seconds"), mode, name, summary, str(path), ride_key
         )
         self.last_ride_id = rid
         return {"ride_id": rid, **summary}
@@ -161,7 +161,11 @@ class AppState:
         for path in sorted(self.storage.checkpoints_dir.glob("*.jsonl")):
             try:
                 header, samples = load_checkpoint(path)
-                if samples:
+                done = self.storage.ride_for_session(header.get("session_id") or path.stem)
+                if done is not None:
+                    # saved, then the app stopped before removing the checkpoint
+                    log.info("Checkpoint %s already saved as #%s", path.name, done["id"])
+                elif samples:
                     started = (
                         dt.datetime.fromisoformat(header["started_at"])
                         if header.get("started_at")
