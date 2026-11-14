@@ -173,6 +173,12 @@ progress). Environment variables:
 * FIT activity: one lap per workout step (avg / max power, NP, HR, cadence,
   `workout_step_index`), the target power as a `target_power` developer field on records and
   laps.
+* The totals a head unit writes, on laps and session: work (kJ), calories (work / 21.3 % gross
+  efficiency, fitted on Edge 540 files), crank revolutions, max cadence / HR, average / max
+  speed, ascent / descent (GPX); on the session the FTP, IF = NP / FTP and TSS = t·NP·IF /
+  (FTP·3600)·100. Also: accumulated power on records, timer stop / start events at pauses,
+  the rider's weight, max HR and FTP (`user_profile`, `zones_target`) and the local time of
+  day.
 * Dual-sided power meter (ANT+), the same fields as a Garmin head unit: L/R balance, torque
   effectiveness and pedal smoothness (left / right), power phase and peak power phase (start
   / end angles), platform centre offset (only when the meter says it supports it), seated /

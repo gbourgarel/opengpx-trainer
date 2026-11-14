@@ -407,6 +407,66 @@ def test_fit_timer_time_never_exceeds_elapsed_time(tmp_path):
         assert lap.total_timer_time <= lap.total_elapsed_time
 
 
+def test_fit_has_the_totals_a_head_unit_writes(tmp_path):
+    """Roadmap "Complete FIT file", computable metrics: work, calories, crank revolutions,
+    maxima, speeds, climbing, IF / TSS, pauses, accumulated power, rider profile."""
+    from fit_tool.profile.messages.activity_message import ActivityMessage
+    from fit_tool.profile.messages.event_message import EventMessage
+    from fit_tool.profile.messages.lap_message import LapMessage
+    from fit_tool.profile.messages.record_message import RecordMessage
+    from fit_tool.profile.messages.session_message import SessionMessage
+    from fit_tool.profile.messages.user_profile_message import UserProfileMessage
+    from fit_tool.profile.messages.zones_target_message import ZonesTargetMessage
+
+    from hometrainer.recording import GROSS_EFFICIENCY, Athlete
+
+    t0 = 1_793_806_952.0
+    rec = Recorder()
+    for i in range(120):
+        alt = 100.0 + (i if i < 60 else 60 - 0.5 * (i - 60))  # +60 m then -30 m
+        wall = t0 + i + (20 if i >= 60 else 0)  # a 20 s pause after the first minute
+        rec.add(
+            Sample(
+                wall,
+                i + 1.0,
+                200.0,
+                90.0,
+                120.0 + i / 4,
+                8.0 + (i % 10) / 10,
+                8.0 * (i + 1),
+                altitude_m=alt,
+                step_index=i // 60,
+            )
+        )
+    athlete = Athlete(ftp_w=250, weight_kg=73, max_hr_bpm=189)
+    path = rec.write_fit(tmp_path / "r.fit", athlete)
+    msgs = [r.message for r in FitFile.from_file(str(path)).records]
+    of = lambda cls: [m for m in msgs if isinstance(m, cls)]  # noqa: E731
+    ses, laps = of(SessionMessage)[0], of(LapMessage)
+
+    assert ses.total_work == 24000  # J: 200 W x 120 s
+    assert ses.total_calories == round(24000 / GROSS_EFFICIENCY / 4184)
+    assert (ses.total_cycles, ses.max_cadence, ses.avg_cadence) == (180, 90, 90)
+    assert ses.max_heart_rate == round(120 + 119 / 4)
+    assert ses.enhanced_max_speed == pytest.approx(8.9)
+    assert ses.enhanced_avg_speed == pytest.approx(8.0, abs=0.01)
+    assert (ses.total_ascent, ses.total_descent) == (60, 30)  # 100 -> 160 -> 130.5 m
+    assert [(lap.total_ascent, lap.total_descent) for lap in laps] == [(59, 0), (1, 30)]
+    assert [lap.total_work for lap in laps] == [12000, 12000]
+    # IF = NP / FTP, TSS = t x NP x IF / (FTP x 3600) x 100
+    assert ses.threshold_power == 250 and ses.intensity_factor == pytest.approx(0.8)
+    assert ses.training_stress_score == pytest.approx(120 * 200 * 0.8 / (250 * 3600) * 100, abs=0.1)
+    timers = [(e.event_type, e.timestamp) for e in of(EventMessage) if e.event == 0]
+    assert [k for k, _ in timers] == [0, 4, 0, 4]  # start, stop (pause), start, stop
+    # stopped at the last sample before the pause, restarted one riding second before the next
+    assert timers[1][1] == (t0 + 59) * 1000 and timers[2][1] == (t0 + 79) * 1000
+    assert of(RecordMessage)[-1].accumulated_power == 24000
+    user = of(UserProfileMessage)[0]
+    assert (user.weight, user.default_max_heart_rate) == (73, 189)
+    assert of(ZonesTargetMessage)[0].functional_threshold_power == 250
+    assert of(ActivityMessage)[0].local_timestamp is not None
+
+
 def test_ride_feedback_changes_only_rpe_and_feel(tmp_path):
     path = rich_recorder().write_fit(tmp_path / "ride.fit")
     before = fit_content(path)

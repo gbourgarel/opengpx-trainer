@@ -25,7 +25,7 @@ from .ble.scan import scan_ble
 from .checkpoint import RideCheckpoint, load_checkpoint
 from .gpx.route import Route
 from .profile import BIKE_PRESETS, Profile, ProfileError
-from .recording import Recorder, write_ride_feedback
+from .recording import Athlete, Recorder, write_ride_feedback
 from .sensors import MultiHub
 from .session import RideSession, choose_power, w_per_kg
 from .storage import Storage
@@ -147,7 +147,9 @@ class AppState:
         self, rec: Recorder, started: dt.datetime, mode: str, name: str, ride_key: str
     ) -> dict:
         fname = f"{started:%Y%m%d-%H%M%S}-{mode}-{ride_key[:6]}.fit"
-        path = rec.write_fit(self.storage.rides_dir / fname)
+        p = self.profile
+        athlete = Athlete(ftp_w=p.ftp_w, weight_kg=p.rider_mass_kg, max_hr_bpm=p.max_hr_bpm)
+        path = rec.write_fit(self.storage.rides_dir / fname, athlete)
         summary = rec.summary()
         rid = self.storage.add_ride(
             started.isoformat(timespec="seconds"), mode, name, summary, str(path), ride_key

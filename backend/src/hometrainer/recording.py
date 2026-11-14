@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fit_tool.base_type import BaseType
@@ -21,6 +22,9 @@ from fit_tool.profile.messages.hrv_message import HrvMessage
 from fit_tool.profile.messages.lap_message import LapMessage
 from fit_tool.profile.messages.record_message import RecordMessage
 from fit_tool.profile.messages.session_message import SessionMessage
+from fit_tool.profile.messages.timestamp_correlation_message import TimestampCorrelationMessage
+from fit_tool.profile.messages.user_profile_message import UserProfileMessage
+from fit_tool.profile.messages.zones_target_message import ZonesTargetMessage
 from fit_tool.profile.profile_type import (
     Event,
     EventType,
@@ -221,9 +225,10 @@ class Recorder:
             else 0,
         }
 
-    def write_fit(self, path: Path) -> Path:
+    def write_fit(self, path: Path, athlete: Athlete | None = None) -> Path:
         if not self.samples:
             raise ValueError("Nothing recorded")
+        athlete = athlete or Athlete()
         first, last = self.samples[0], self.samples[-1]
         b = FitFileBuilder(auto_define=True, min_string_size=50)
 
@@ -234,6 +239,24 @@ class Recorder:
         fid.serial_number = 0x48544E52
         fid.time_created = ms(first.timestamp_s)
         b.add(fid)
+
+        # the rider's weight, max HR and FTP, as a head unit writes them (analysis tools read
+        # the FTP of the ride from here)
+        if athlete.weight_kg or athlete.max_hr_bpm:
+            up = UserProfileMessage()
+            if athlete.weight_kg:
+                up.weight = athlete.weight_kg
+            if athlete.max_hr_bpm:
+                up.default_max_heart_rate = athlete.max_hr_bpm
+                up.default_max_biking_heart_rate = athlete.max_hr_bpm
+            b.add(up)
+        if athlete.ftp_w or athlete.max_hr_bpm:
+            zt = ZonesTargetMessage()
+            if athlete.ftp_w:
+                zt.functional_threshold_power = int(round(athlete.ftp_w))
+            if athlete.max_hr_bpm:
+                zt.max_heart_rate = athlete.max_hr_bpm
+            b.add(zt)
 
         # Developer field "target_power" (W) on each record: FIT has no standard per-second
         # target, so it is declared as developer data (readable by FIT analysis tools).
@@ -260,7 +283,23 @@ class Recorder:
         write_hrv = not hrv_is_synthetic(self.samples)
         if not write_hrv:
             log.warning("R-R intervals are 60/HR (strap does not send real beats): no HRV in FIT")
+        accumulated = 0  # FIT accumulated_power: running sum of the 1 Hz powers (W)
+        prev_s: Sample | None = None
         for s in self.samples:
+            if prev_s is not None:
+                # a pause: wall time went on, riding time did not -> timer stop / start events
+                riding = s.elapsed_s - prev_s.elapsed_s
+                if (s.timestamp_s - prev_s.timestamp_s) - riding > PAUSE_GAP_S:
+                    for ts, kind in (
+                        (prev_s.timestamp_s, EventType.STOP_ALL),
+                        (s.timestamp_s - riding, EventType.START),
+                    ):
+                        tev = EventMessage()
+                        tev.timestamp = ms(ts)
+                        tev.event = Event.TIMER
+                        tev.event_type = kind
+                        b.add(tev)
+            prev_s = s
             if s.timestamp_s in changes:
                 pev = EventMessage()
                 pev.timestamp = ms(s.timestamp_s)
@@ -276,6 +315,8 @@ class Recorder:
             r.speed = s.speed_ms
             if s.power_w is not None:
                 r.power = int(round(s.power_w))
+                accumulated += r.power
+                r.accumulated_power = accumulated
             if s.cadence_rpm is not None:
                 r.cadence = int(round(s.cadence_rpm))
             if s.heart_rate_bpm is not None:
@@ -333,14 +374,39 @@ class Recorder:
             ses.normalized_power = int(summ["normalized_power_w"])
         if summ.get("avg_hr_bpm"):
             ses.avg_heart_rate = int(summ["avg_hr_bpm"])
+        cads = [s.cadence_rpm for s in self.samples if s.cadence_rpm]  # zeros excluded
+        if cads:
+            ses.avg_cadence = int(round(_mean(cads)))
+        for k, v in _totals(self.samples, None).items():
+            setattr(ses, k, v)
+        np_w = summ.get("normalized_power_w")
+        if athlete.ftp_w:
+            # Coggan: IF = NP / FTP, TSS = t x NP x IF / (FTP x 3600) x 100 (t: riding time);
+            # checked against an Edge 540 file (NP 192, FTP 266, 5408 s -> IF 0.722, TSS 78)
+            ses.threshold_power = int(round(athlete.ftp_w))
+            if np_w:
+                intensity = np_w / athlete.ftp_w
+                ses.intensity_factor = intensity
+                ses.training_stress_score = (
+                    last.elapsed_s * np_w * intensity / (athlete.ftp_w * 3600) * 100
+                )
         for k, v in pedal_summary(self.samples).items():
             setattr(ses, k, v)
         b.add(ses)
+
+        # local time of the ride (analysis tools show the time of day from it)
+        local = _fit_local_timestamp(last.timestamp_s)
+        tc = TimestampCorrelationMessage()
+        tc.timestamp = ms(last.timestamp_s)
+        tc.system_timestamp = ms(last.timestamp_s)
+        tc.local_timestamp = local
+        b.add(tc)
 
         act = ActivityMessage()
         act.timestamp = ms(last.timestamp_s)
         act.total_timer_time = last.elapsed_s
         act.num_sessions = 1
+        act.local_timestamp = local
         b.add(act)
 
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -381,6 +447,8 @@ class Recorder:
         if first.step_index is not None:
             lap.workout_step_index = first.step_index
         lap.lap_trigger = LapTrigger.SESSION_END if is_last else LapTrigger.TIME
+        for k, v in _totals(group, prev).items():
+            setattr(lap, k, v)
         for k, v in pedal_summary(group).items():
             setattr(lap, k, v)
         return lap
@@ -437,6 +505,60 @@ class RideAverages:
     @property
     def np_w(self) -> float | None:
         return (self._sum4 / self._n4) ** 0.25 if self._n4 else None
+
+
+@dataclass(frozen=True)
+class Athlete:
+    """Rider data written into the FIT file (from the profile at save time)."""
+
+    ftp_w: float | None = None
+    weight_kg: float | None = None
+    max_hr_bpm: int | None = None
+
+
+# Gross efficiency of the rider (mechanical work / metabolic energy), to turn the work into
+# calories like a Garmin Edge does. Fitted on the user's Edge 540 files (1146 kcal for
+# 1016 kJ, 1128 kcal for 1012 kJ: 21.2 % and 21.4 %); typical values are 20-25 %.
+GROSS_EFFICIENCY = 0.213
+J_PER_KCAL = 4184.0
+FIT_EPOCH_S = 631065600  # 1989-12-31T00:00:00Z, origin of FIT local timestamps
+PAUSE_GAP_S = 1.5  # wall time beyond riding time between two samples: the ride was paused
+
+
+def _totals(group: list[Sample], prev: Sample | None) -> dict:
+    """Lap / session totals computable from the 1 Hz samples (riding seconds only):
+    work, calories, crank revolutions, maxima, speeds, climbing. ``prev``: the sample just
+    before the group (its altitude is where the group's climbing starts)."""
+    powers = [s.power_w or 0.0 for s in group]
+    work_j = sum(powers)  # one sample per riding second
+    out: dict = {
+        "total_work": int(round(work_j)),
+        "total_calories": int(round(work_j / GROSS_EFFICIENCY / J_PER_KCAL)),
+        "enhanced_max_speed": max(s.speed_ms for s in group),
+    }
+    timer = group[-1].elapsed_s - (0.0 if prev is None else prev.elapsed_s)
+    dist = group[-1].distance_m - (0.0 if prev is None else prev.distance_m)
+    if timer > 0:
+        out["enhanced_avg_speed"] = dist / timer
+    cads = [s.cadence_rpm for s in group if s.cadence_rpm]
+    if cads:
+        out["max_cadence"] = int(round(max(cads)))
+        out["total_cycles"] = int(round(sum(cads) / 60.0))  # rpm x 1 s
+    hrs = [s.heart_rate_bpm for s in group if s.heart_rate_bpm]
+    if hrs:
+        out["max_heart_rate"] = int(round(max(hrs)))
+    alts = [s.altitude_m for s in ([prev] if prev else []) + group if s.altitude_m is not None]
+    if len(alts) >= 2:
+        diffs = [b - a for a, b in zip(alts, alts[1:], strict=False)]
+        out["total_ascent"] = int(round(sum(d for d in diffs if d > 0)))
+        out["total_descent"] = int(round(-sum(d for d in diffs if d < 0)))
+    return out
+
+
+def _fit_local_timestamp(unix_s: float) -> int:
+    """FIT local timestamp: seconds since the FIT epoch, in this machine's local time."""
+    offset = datetime.fromtimestamp(unix_s).astimezone().utcoffset() or timedelta(0)
+    return int(unix_s + offset.total_seconds()) - FIT_EPOCH_S
 
 
 def ride_start_s(first: Sample) -> float:
