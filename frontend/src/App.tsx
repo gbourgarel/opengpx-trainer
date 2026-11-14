@@ -99,6 +99,7 @@ export default function App() {
   // (page reload, second browser/tablet, or a ride started elsewhere).
   const sessionId = tel.session_id
   const { mode, workout_id: workoutId, route_id: routeId } = tel
+  const routeReversed = !!tel.route_reversed
   useEffect(() => {
     if (!sessionId || !mode || active?.sessionId === sessionId) return
     let cancelled = false
@@ -107,7 +108,7 @@ export default function App() {
       mode === 'erg' && workoutId != null
         ? api.workout(workoutId).then((workout) => ({ sessionId, mode, workout }) as ActiveRide)
         : mode === 'gpx' && routeId != null
-          ? Promise.all([api.route(routeId), workoutId != null ? api.workout(workoutId) : Promise.resolve(undefined)]).then(
+          ? Promise.all([api.route(routeId, routeReversed), workoutId != null ? api.workout(workoutId) : Promise.resolve(undefined)]).then(
               ([route, workout]) => ({ sessionId, mode, route, workout }) as ActiveRide,
             )
           : null
@@ -119,7 +120,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [sessionId, mode, workoutId, routeId, active?.sessionId])
+  }, [sessionId, mode, workoutId, routeId, routeReversed, active?.sessionId])
 
   // The rider skipped / extended a step (here or on another device): reload the session's
   // copy of the workout so the profile, the total time and the step list follow.
@@ -152,7 +153,7 @@ export default function App() {
 
   const startRoute = (r: RouteDetail, w: Workout | undefined, wind: WindSetting) =>
     api
-      .start({ mode: 'gpx', route_id: r.id, workout_id: w?.id, wind_kmh: wind.kmh, wind_from_deg: wind.fromDeg })
+      .start({ mode: 'gpx', route_id: r.id, reverse: !!r.reversed, workout_id: w?.id, wind_kmh: wind.kmh, wind_from_deg: wind.fromDeg })
       .then((res) => {
         setActive({ sessionId: res.session_id, mode: 'gpx', route: r, workout: w })
         setTab('ride')

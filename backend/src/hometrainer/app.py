@@ -219,6 +219,8 @@ class StartBody(BaseModel):
     # GPX rides: wind speed and the direction it blows from (deg, 0 = north); ignored in ERG
     wind_kmh: float = Field(0.0, ge=0.0, le=150.0)
     wind_from_deg: float = Field(0.0, ge=0.0, le=360.0)
+    # GPX rides: ride the route from its end to its start
+    reverse: bool = False
 
 
 class FeedbackBody(BaseModel):
@@ -492,16 +494,16 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         rid = st.storage.add_route(route.name, text, route.summary())
         return {"id": rid, **route.summary()}
 
-    def load_route(rid: int) -> Route:
+    def load_route(rid: int, reverse: bool = False) -> Route:
         gpx = st.storage.get_route_gpx(rid)
         if gpx is None:
             raise HTTPException(404, "Route not found")
-        return Route.from_gpx(gpx)
+        return Route.from_gpx(gpx, reverse=reverse)
 
     @app.get("/api/routes/{rid}")
-    def get_route(rid: int):
-        r = load_route(rid)
-        return {"id": rid, **r.summary(), **r.geometry()}
+    def get_route(rid: int, reverse: bool = False):
+        r = load_route(rid, reverse)
+        return {"id": rid, "reversed": reverse, **r.summary(), **r.geometry()}
 
     @app.delete("/api/routes/{rid}")
     def delete_route(rid: int):
@@ -521,7 +523,8 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 raise HTTPException(404, "Workout not found")
             workout = Workout.from_dict(d)
         if body.mode == "gpx":
-            route = load_route(body.route_id or -1)  # parsing a GPX: done outside the lock
+            # parsing a GPX: done outside the lock
+            route = load_route(body.route_id or -1, body.reverse)
         with st.session_lock:
             if st.hub is None:
                 raise HTTPException(409, "Connect sensors first")
@@ -535,6 +538,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 route=route,
                 workout_id=body.workout_id if workout else None,
                 route_id=body.route_id if route else None,
+                route_reversed=body.reverse and route is not None,
                 wind_kmh=body.wind_kmh,
                 wind_from_deg=body.wind_from_deg,
             )

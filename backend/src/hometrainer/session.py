@@ -163,6 +163,7 @@ class RideSession:
         name: str | None = None,
         workout_id: int | None = None,
         route_id: int | None = None,
+        route_reversed: bool = False,
         wind_kmh: float = 0.0,
         wind_from_deg: float = 0.0,
     ):
@@ -183,6 +184,7 @@ class RideSession:
         self.id = uuid.uuid4().hex
         self.workout_id = workout_id
         self.route_id = route_id
+        self.route_reversed = route_reversed  # `route` is that route ridden backwards
         self.saved: dict | None = None  # set once the ride is written to history (save once)
         self.save_started = False  # the engine launched its background save
         self.checkpoint: RideCheckpoint | None = None  # crash-safe copy, set by the app
@@ -496,6 +498,7 @@ class RideSession:
             "session_id": self.id,
             "workout_id": self.workout_id,
             "route_id": self.route_id,
+            "route_reversed": self.route_reversed,
             "mode": self.mode,
             "state": self.state,
             "name": self.name,

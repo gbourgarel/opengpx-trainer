@@ -123,7 +123,9 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
     api.workouts().then(setWorkouts).catch(() => {})
   }, [reload])
   const chosenWorkout = workouts.find((w) => w.id === workoutId)
-  const open = (id: number) => api.route(id).then(setSel).catch((e) => setError(e.message))
+  // ride the route from its end (a climb becomes its descent): chosen at start, not stored
+  const [reverse, setReverse] = useState(false)
+  const open = (id: number, rev = reverse) => api.route(id, rev).then(setSel).catch((e) => setError(e.message))
 
   return (
     <div>
@@ -188,6 +190,17 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="chk" title="Ride the route from its end to its start: a climb becomes its descent">
+                <input
+                  type="checkbox"
+                  checked={reverse}
+                  onChange={(e) => {
+                    setReverse(e.target.checked)
+                    open(sel.id, e.target.checked) // map and profile in the direction ridden
+                  }}
+                />
+                Reverse
               </label>
               <WindPicker value={wind} onChange={setWind} />
               <button

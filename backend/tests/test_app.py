@@ -147,6 +147,25 @@ def test_start_gpx_ride_with_workout(client):
     assert client.post("/api/session/start", json=bad).status_code == 404
 
 
+def test_start_gpx_ride_in_reverse(client):
+    from tests.test_gpx_workouts import make_gpx
+
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    rid = client.post("/api/routes/import", files={"file": ("r.gpx", make_gpx())}).json()["id"]
+    r = client.post("/api/session/start", json={"mode": "gpx", "route_id": rid, "reverse": True})
+    assert r.status_code == 200 and r.json()["name"] == "Test climb (reverse)"
+    tel = client.st.session.tick()
+    assert (tel["route_id"], tel["route_reversed"]) == (rid, True)
+    assert tel["grade"] < 0  # the climb, ridden down
+    client.post("/api/session/stop?save=false")
+    # the client rebuilds the ride view from route_id + route_reversed
+    fwd = client.get(f"/api/routes/{rid}").json()
+    rev = client.get(f"/api/routes/{rid}?reverse=true").json()
+    assert (fwd["reversed"], rev["reversed"]) == (False, True)
+    assert rev["altitude_m"] == fwd["altitude_m"][::-1]
+    assert (rev["ascent_m"], rev["descent_m"]) == (fwd["descent_m"], fwd["ascent_m"])
+
+
 SHORT_ZWO = """<workout_file><name>Short</name><workout>
 <SteadyState Duration="2" Power="0.5"/>
 </workout></workout_file>"""

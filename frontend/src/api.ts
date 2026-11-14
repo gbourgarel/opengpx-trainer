@@ -86,6 +86,8 @@ export interface RouteSummary {
 }
 
 export interface RouteDetail extends RouteSummary {
+  /** geometry of the route ridden from its end to its start */
+  reversed?: boolean
   latlon: [number, number][]
   profile_distance_m: number[]
   altitude_m: number[]
@@ -161,6 +163,8 @@ export interface Telemetry {
   session_id?: string
   workout_id?: number | null
   route_id?: number | null
+  /** the route is ridden from its end to its start */
+  route_reversed?: boolean
   state: 'disconnected' | 'idle' | 'ready' | 'running' | 'paused' | 'finished'
   hub?: string | null
   devices?: Record<'trainer' | 'power_meter' | 'heart_rate', DeviceStatus>
@@ -274,11 +278,11 @@ export const api = {
   importPlanned: (id: number) => req<Workout>('POST', `/api/intervals/import/${id}`),
 
   routes: () => req<RouteSummary[]>('GET', '/api/routes'),
-  route: (id: number) => req<RouteDetail>('GET', `/api/routes/${id}`),
+  route: (id: number, reverse = false) => req<RouteDetail>('GET', `/api/routes/${id}${reverse ? '?reverse=true' : ''}`),
   importRoute: (f: File) => upload<RouteSummary>('/api/routes/import', f),
   deleteRoute: (id: number) => req('DELETE', `/api/routes/${id}`),
 
-  start: (body: { mode: 'erg' | 'gpx'; workout_id?: number; route_id?: number; wind_kmh?: number; wind_from_deg?: number }) =>
+  start: (body: { mode: 'erg' | 'gpx'; workout_id?: number; route_id?: number; reverse?: boolean; wind_kmh?: number; wind_from_deg?: number }) =>
     req<{ ok: boolean; name: string; session_id: string }>('POST', '/api/session/start', body),
   workout: (id: number) => req<Workout>('GET', `/api/workouts/${id}`),
   pause: () => req('POST', '/api/session/pause'),

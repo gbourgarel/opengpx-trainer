@@ -57,6 +57,19 @@ def test_route_constant_grade():
     assert p.heading_deg == pytest.approx(0, abs=0.5)
 
 
+def test_reversed_route_is_the_descent_of_the_climb():
+    fwd = Route.from_gpx(make_gpx())
+    rev = Route.from_gpx(make_gpx(), reverse=True)
+    assert rev.name == "Test climb (reverse)"
+    assert rev.total_distance_m == pytest.approx(fwd.total_distance_m)
+    assert rev.ascent_m == pytest.approx(fwd.descent_m)
+    assert rev.descent_m == pytest.approx(fwd.ascent_m)
+    mid = fwd.total_distance_m / 2
+    assert rev.grade_at(mid) == pytest.approx(-0.05, abs=1e-3)
+    assert rev.point_at(0).lat == pytest.approx(fwd.point_at(fwd.total_distance_m).lat)
+    assert rev.point_at(mid).heading_deg % 360 == pytest.approx(180, abs=0.5)  # heading south
+
+
 def test_gain_between_counts_only_climbing():
     import numpy as np
 

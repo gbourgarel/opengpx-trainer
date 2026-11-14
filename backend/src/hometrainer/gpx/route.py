@@ -95,7 +95,9 @@ class Route:
 
     # --- construction ----------------------------------------------------------------------
     @classmethod
-    def from_gpx(cls, text: str, **kwargs) -> Route:
+    def from_gpx(cls, text: str, reverse: bool = False, **kwargs) -> Route:
+        """Route from a GPX file; ``reverse``: ridden from its end to its start (a climb
+        becomes its descent), named "<name> (reverse)"."""
         gpx = gpxpy.parse(text)
         pts = [p for t in gpx.tracks for s in t.segments for p in s.points]
         if not pts:
@@ -112,6 +114,8 @@ class Route:
             ele = np.interp(idx, idx[ok], ele[ok])
         lat = np.array([p.latitude for p in pts], float)
         lon = np.array([p.longitude for p in pts], float)
+        if reverse:
+            lat, lon, ele, name = lat[::-1], lon[::-1], ele[::-1], f"{name} (reverse)"
         return cls(name, lat, lon, ele, **kwargs)
 
     # --- queries -------------------------------------------------------------------------
