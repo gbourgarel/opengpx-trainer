@@ -8,6 +8,7 @@ import threading
 import time
 
 import pytest
+from fit_tool.data_message import DataMessage
 from fit_tool.fit_file import FitFile
 
 from hometrainer.ant import ant_hub as ah
@@ -23,7 +24,7 @@ from hometrainer.pedaling import (
     position_changes,
 )
 from hometrainer.profile import Profile
-from hometrainer.recording import Recorder, Sample, hrv_is_synthetic
+from hometrainer.recording import Recorder, Sample, hrv_is_synthetic, write_ride_feedback
 from hometrainer.session import RideSession
 from hometrainer.workouts.model import Step, Workout
 
@@ -342,7 +343,8 @@ def fit_messages(path):
     return out
 
 
-def test_fit_has_pedal_records_laps_session_events_and_hrv(tmp_path):
+def rich_recorder() -> Recorder:
+    """One minute with every metric the FIT file can hold (pedals, HRV, positions, 2 steps)."""
     rec = Recorder()
     for i in range(60):
         rec.add(
@@ -362,9 +364,47 @@ def test_fit_has_pedal_records_laps_session_events_and_hrv(tmp_path):
                 rider_position=3 if i == 30 else (1 if 30 < i < 40 else 0),
                 rr_s=real_rr(i),
                 step_index=0 if i < 30 else 1,
+                target_w=200.0 if i < 30 else 250.0,
             )
         )
-    path = rec.write_fit(tmp_path / "ride.fit")
+    return rec
+
+
+def fit_content(path) -> list:
+    """Every data message of a FIT file: (global id, field values, developer field values)."""
+    out = []
+    for r in FitFile.from_file(str(path)).records:
+        m = r.message
+        if isinstance(m, DataMessage):
+            vals = {f.field_id: f.get_values() for f in m.fields if f.is_valid()}
+            devs = {f.field_id: f.get_values() for f in m.developer_fields or [] if f.is_valid()}
+            out.append((m.global_id, vals, devs))
+    return out
+
+
+def test_ride_feedback_changes_only_rpe_and_feel(tmp_path):
+    path = rich_recorder().write_fit(tmp_path / "ride.fit")
+    before = fit_content(path)
+    write_ride_feedback(path, rpe=7, feel=75)
+    after = fit_content(path)
+    assert len(after) == len(before)
+    assert any(devs for _, _, devs in after)  # target_power developer field still there
+    for (gid, vals, devs), (gid2, vals2, devs2) in zip(before, after, strict=True):
+        assert (gid, devs) == (gid2, devs2)
+        if gid == 18:  # session: RPE stored x 10, feel 0-100 (as a Garmin Edge does)
+            assert vals2 == {**vals, 193: [70], 192: [75]}
+        else:
+            assert vals == vals2
+    write_ride_feedback(path, rpe=None, feel=None)  # cleared again
+    assert fit_content(path) == before
+    with pytest.raises(ValueError):
+        write_ride_feedback(path, rpe=11, feel=None)
+    with pytest.raises(ValueError):
+        write_ride_feedback(path, rpe=None, feel=60)
+
+
+def test_fit_has_pedal_records_laps_session_events_and_hrv(tmp_path):
+    path = rich_recorder().write_fit(tmp_path / "ride.fit")
     m = fit_messages(path)
     r0 = m["RecordMessage"][0]
     assert r0.left_right_balance == 0x80 | 51 and r0.left_torque_effectiveness == 81.5

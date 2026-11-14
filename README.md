@@ -182,6 +182,10 @@ progress). Environment variables:
   with the same pedals).
 * HRV: beat-to-beat (R-R) intervals as FIT `hrv` messages, unless they are just 60 / HR (some
   straps over ANT+, e.g. a Polar, compute the beat times from their averaged heart rate).
+* **How was it?** Once the ride is saved, a dialog asks for the perceived effort (RPE 1–10)
+  and the feel (very weak … very strong), both optional, before the intervals.icu upload
+  prompt. They are written into the FIT session like a Garmin Edge does (`workout_rpe` = RPE
+  × 10, `workout_feel` 0 / 25 / 50 / 75 / 100) and kept with the ride in the history.
 * Checkpoint: every 30 s the new samples are appended (and fsync'd) to
   `checkpoints/<session>.jsonl`; the file is deleted once the ride is saved or discarded. At
   startup, a leftover file becomes a ride named "… (recovered)".

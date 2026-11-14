@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fit_tool.base_type import BaseType
+from fit_tool.data_message import DataMessage
 from fit_tool.developer_field import DeveloperField
+from fit_tool.fit_file import FitFile
 from fit_tool.fit_file_builder import FitFileBuilder
 from fit_tool.profile.messages.activity_message import ActivityMessage
 from fit_tool.profile.messages.developer_data_id_message import DeveloperDataIdMessage
@@ -432,6 +434,47 @@ class RideAverages:
     @property
     def np_w(self) -> float | None:
         return (self._sum4 / self._n4) ** 0.25 if self._n4 else None
+
+
+# How the rider felt the ride, as a Garmin Edge records it (session fields 192 / 193, FIT SDK
+# 21.141; checked on an Edge 540 file): feel on 0-100 in five levels, RPE 1-10 stored x 10.
+FEEL_LEVELS = (0, 25, 50, 75, 100)  # very weak, weak, normal, strong, very strong
+_FEEL_FIELD, _RPE_FIELD = 192, 193
+
+
+def write_ride_feedback(path: Path, rpe: int | None, feel: int | None) -> None:
+    """Set (or clear, with None) the RPE and feel of a FIT activity written by `write_fit`.
+
+    The file is read and rebuilt message by message (developer fields kept); only the
+    session message changes. Written to a temporary file then renamed, so a reader (upload,
+    download) never sees a half-written file.
+    """
+    if rpe is not None and not 1 <= rpe <= 10:
+        raise ValueError("RPE must be 1-10")
+    if feel is not None and feel not in FEEL_LEVELS:
+        raise ValueError(f"feel must be one of {FEEL_LEVELS}")
+    ff = FitFile.from_file(str(path))
+    b = FitFileBuilder(auto_define=True, min_string_size=50)
+    for rec in ff.records:
+        m = rec.message
+        if not isinstance(m, DataMessage):
+            continue  # definitions are rebuilt by the builder
+        if isinstance(m, SessionMessage):
+            # a message read from a file only holds the fields it was written with: copy them
+            # into a fresh one, which can take the new fields
+            ses = SessionMessage()
+            for f in m.fields:
+                if f.is_valid() and f.field_id not in (_FEEL_FIELD, _RPE_FIELD):
+                    ses.get_field(f.field_id).set_values(f.get_values())
+            if rpe is not None:
+                ses.workout_rpe = rpe * 10
+            if feel is not None:
+                ses.workout_feel = feel
+            m = ses
+        b.add(m)
+    tmp = path.with_suffix(".fit.tmp")
+    b.build().to_file(str(tmp))
+    tmp.replace(path)
 
 
 def normalized_power(powers_1hz: list[float]) -> float | None:

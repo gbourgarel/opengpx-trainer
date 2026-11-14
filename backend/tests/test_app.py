@@ -235,6 +235,35 @@ def test_skip_and_extend_step_api(client):
     assert bad.status_code == 422
 
 
+def test_ride_feedback_is_written_to_fit_and_history(client):
+    from fit_tool.fit_file import FitFile
+    from fit_tool.profile.messages.session_message import SessionMessage
+
+    from hometrainer.recording import Sample
+
+    start_erg(client)
+    s = client.st.session
+    with client.st.session_lock:
+        for i in range(30):
+            s.recorder.add(Sample(1.8e9 + i, i + 1.0, 200, 90, 140, 9.0, 9.0 * i))
+    rid = client.post("/api/session/stop").json()["saved"]["ride_id"]
+
+    r = client.put(f"/api/rides/{rid}/feedback", json={"rpe": 6, "feel": 25})
+    assert r.status_code == 200 and r.json() == {"ok": True, "uploaded": False}
+    summary = client.get("/api/rides").json()[0]["summary"]
+    assert (summary["rpe"], summary["feel"]) == (6, 25)
+    path = client.st.storage.get_ride(rid)["fit_path"]
+    ses = [
+        rec.message
+        for rec in FitFile.from_file(path).records
+        if isinstance(rec.message, SessionMessage)
+    ][0]
+    assert (ses.workout_rpe, ses.workout_feel) == (60, 25)
+    assert client.put(f"/api/rides/{rid}/feedback", json={"rpe": 0}).status_code == 422
+    assert client.put(f"/api/rides/{rid}/feedback", json={"feel": 60}).status_code == 422
+    assert client.put("/api/rides/999/feedback", json={"rpe": 5}).status_code == 404
+
+
 def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):
     """Review #9: the FIT write ran on the event loop and under the session lock."""
     import threading

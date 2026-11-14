@@ -392,6 +392,53 @@ th {
   padding: 8px 12px;
   margin-bottom: 12px;
 }
+/* "How was it?" after a ride: above everything, the immersive view included */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+.dialog {
+  background: var(--panel);
+  border: 1px solid var(--grid);
+  border-radius: 12px;
+  padding: 18px 22px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dialog h3,
+.dialog p {
+  margin: 0;
+}
+.dialog-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dialog-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.dialog-label b {
+  color: var(--text, inherit);
+  margin-left: 6px;
+}
+.dialog .seg {
+  flex-wrap: wrap;
+}
+.dialog .seg.rpe button {
+  min-width: 38px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .upload-prompt .actions {
   display: flex;
   gap: 8px;

@@ -3,6 +3,7 @@ import { api, type DeviceStatus, type Profile, type RouteDetail, type Workout } 
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
 import { SimulatorPanel } from './components/SimulatorPanel'
+import { FeedbackDialog } from './components/FeedbackDialog'
 import { UploadPrompt } from './components/UploadPrompt'
 import type { WindSetting } from './wind'
 import { RidePage, type ActiveRide } from './pages/RidePage'
@@ -61,19 +62,22 @@ export default function App() {
   const riding = ['ready', 'running', 'paused'].includes(tel.state)
   const wake = useWakeLock(riding)
 
-  // Once a ride is saved, offer (never force) the upload to intervals.icu: when it finishes on
-  // its own (telemetry) or is stopped with "Stop & save". Asked once per ride in this window.
+  // Once a ride is saved (it finished on its own, telemetry, or "Stop & save"): ask "How was
+  // it?" (RPE / feel, written into the FIT file), then offer (never force) the upload to
+  // intervals.icu when a key is set. Asked once per ride in this window.
+  const [feedbackAsk, setFeedbackAsk] = useState<{ rideId: number; name?: string } | null>(null)
   const [uploadAsk, setUploadAsk] = useState<{ rideId: number; name?: string } | null>(null)
   const asked = useRef(new Set<number>())
   const canUpload = !!profile?.intervals_api_key_set
-  const offerUpload = useCallback(
-    (rideId: number, name?: string) => {
-      if (!canUpload || asked.current.has(rideId)) return
-      asked.current.add(rideId)
-      setUploadAsk({ rideId, name })
-    },
-    [canUpload],
-  )
+  const offerUpload = useCallback((rideId: number, name?: string) => {
+    if (asked.current.has(rideId)) return
+    asked.current.add(rideId)
+    setFeedbackAsk({ rideId, name })
+  }, [])
+  const feedbackDone = () => {
+    if (feedbackAsk && canUpload) setUploadAsk(feedbackAsk)
+    setFeedbackAsk(null)
+  }
   const savedRideId = tel.saved?.ride_id
   const rideName = tel.name
   useEffect(() => {
@@ -202,6 +206,7 @@ export default function App() {
       )}
       <main className={tab === 'ride' ? 'ride-main' : ''}>
         {tab === 'ride' && tel.sim && <SimulatorPanel key={tel.hub ?? ''} initial={tel.sim} />}
+        {feedbackAsk && <FeedbackDialog key={feedbackAsk.rideId} rideId={feedbackAsk.rideId} name={feedbackAsk.name} onDone={feedbackDone} />}
         {uploadAsk && <UploadPrompt key={uploadAsk.rideId} rideId={uploadAsk.rideId} name={uploadAsk.name} onClose={() => setUploadAsk(null)} />}
         {tab === 'ride' && (
           <RidePage

@@ -25,7 +25,7 @@ from .ble.scan import scan_ble
 from .checkpoint import RideCheckpoint, load_checkpoint
 from .gpx.route import Route
 from .profile import BIKE_PRESETS, Profile, ProfileError
-from .recording import Recorder
+from .recording import Recorder, write_ride_feedback
 from .sensors import MultiHub
 from .session import RideSession, choose_power, w_per_kg
 from .storage import Storage
@@ -215,6 +215,11 @@ class StartBody(BaseModel):
     # GPX rides: wind speed and the direction it blows from (deg, 0 = north); ignored in ERG
     wind_kmh: float = Field(0.0, ge=0.0, le=150.0)
     wind_from_deg: float = Field(0.0, ge=0.0, le=360.0)
+
+
+class FeedbackBody(BaseModel):
+    rpe: int | None = Field(None, ge=1, le=10)
+    feel: int | None = None  # 0, 25, 50, 75 or 100 (checked by write_ride_feedback)
 
 
 class AdjustBody(BaseModel):
@@ -628,6 +633,20 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         return FileResponse(
             r["fit_path"], media_type="application/octet-stream", filename=Path(r["fit_path"]).name
         )
+
+    @app.put("/api/rides/{ride_id}/feedback")
+    def ride_feedback(ride_id: int, body: FeedbackBody):
+        """RPE and feel of a saved ride, written into its FIT file (asked after the ride,
+        before the upload). A sync endpoint: the FIT rewrite runs in the threadpool."""
+        r = st.storage.get_ride(ride_id)
+        if not r or not r["fit_path"] or not Path(r["fit_path"]).exists():
+            raise HTTPException(404, "Ride not found")
+        try:
+            write_ride_feedback(Path(r["fit_path"]), body.rpe, body.feel)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        st.storage.set_ride_feedback(ride_id, body.rpe, body.feel)
+        return {"ok": True, "uploaded": bool(r["intervals_activity_id"])}
 
     @app.post("/api/rides/{ride_id}/upload")
     async def ride_upload(ride_id: int):

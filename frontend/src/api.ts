@@ -259,6 +259,9 @@ export const api = {
   getProfile: () => req<Profile>('GET', '/api/profile'),
   putProfile: (p: Partial<Profile>) => req<Profile>('PUT', '/api/profile', p),
   bikePresets: () => req<BikePreset[]>('GET', '/api/bike-presets'),
+  /** RPE 1-10 and feel (0, 25, 50, 75, 100) of a saved ride, written into its FIT file */
+  rideFeedback: (rideId: number, body: { rpe: number | null; feel: number | null }) =>
+    req<{ ok: boolean; uploaded: boolean }>('PUT', `/api/rides/${rideId}/feedback`, body),
 
   connect: (kind: 'devices' | 'simulator') => req<{ hub: string; warnings?: string[] }>('POST', '/api/devices/connect', { kind }),
   scan: (seconds = 6) => req<ScanResult>('POST', `/api/devices/scan?seconds=${seconds}`),
