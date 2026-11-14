@@ -3,7 +3,7 @@
 Modes
 -----
 * ``erg``: target power from a structured workout x intensity %. Virtual speed on flat road.
-* ``gpx``: pseudo-ERG; target power from the grade->power curve on the look-ahead grade x effort %
+* ``gpx``: Slope ERG; target power from the grade->power curve on the look-ahead grade x effort %
   (``target_mode="slope"``), or set directly by the rider in watts (``target_mode="manual"``).
   Virtual speed comes from the dynamic model fed with
   ``measured power x (1 + profile.speed_power_scale_pct / 100)`` (in every mode).

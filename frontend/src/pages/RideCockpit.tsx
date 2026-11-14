@@ -161,7 +161,7 @@ function SessionCard({ c }: { c: RideCtx }) {
         <span className="ck-label">Session</span>
         <b>{c.workout.name}</b>
         {/* the step countdown and next target are shown in big type next to the dial */}
-        <span className="ck-step">{done ? (t.mode === 'gpx' ? 'done · slope target until end of lap' : 'done') : null}</span>
+        <span className="ck-step">{done ? (t.mode === 'gpx' ? 'done · Slope ERG until end of lap' : 'done') : null}</span>
       </div>
       <WorkoutProfile steps={c.workout.steps} ftp={c.ftp} scale={(t.intensity_pct ?? 100) / 100} elapsed={t.elapsed_s} height={64} />
       <small className="muted">

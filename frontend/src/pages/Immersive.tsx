@@ -56,7 +56,7 @@ export function Immersive(p: ImmersiveProps) {
       <div className="im-top">
         <h2>{tel.name}</h2>
         <span className={`badge state-${tel.state}`}>{tel.state}</span>
-        <span className="badge">{workout ? 'GPX + workout' : 'GPX · pseudo-ERG'}</span>
+        <span className="badge">{workout ? 'GPX + workout' : 'GPX · Slope ERG'}</span>
         <span className="im-sp" />
         {workout && (
           <button className={p.sound ? '' : 'muted'} onClick={() => p.setSound(!p.sound)}>

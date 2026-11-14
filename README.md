@@ -6,15 +6,16 @@ Bluetooth LE (FTMS), with power meter and heart-rate sensors on either protocol.
 * **ERG workouts**: planned workouts fetched from intervals.icu (or imported `.zwo` / `.erg` / `.mrc`),
   with a live intensity % adjustment. The current step can be skipped or extended by 1 min, and
   3-2-1 beeps announce each step change (a rising tone when the target goes up).
-* **GPX routes** (pseudo-ERG): the trainer target power follows a configurable *grade → %FTP* curve
-  on the look-ahead grade, or a target set by hand. Virtual speed and position on the trace come
+* **GPX routes** (**Slope ERG**): the trainer target power follows a configurable *grade → %FTP*
+  curve on the look-ahead grade, held by the trainer in ERG, so you never shift (unlike a classic
+  simulation mode, where the grade sets the resistance); or a target set by hand. Virtual speed and position on the trace come
   from a dynamic physics model fed with the measured power (see the *speed-model power scale*
   below), with an optional
   **wind** (speed and direction, set when starting the route). Climb rate (VAM) and elevation
   gain are shown.
 * **Workout on a route**: a GPX ride can follow a workout. The workout sets the target, the route
   gives speed and position, and the route loops while the workout lasts; its free-ride steps
-  follow the slope. The ride controls name what sets the target (*Workout* or *Slope*, or
+  are in Slope ERG. The ride controls name what sets the target (*Workout* or *Slope ERG*, or
   *Manual*: watts set by hand, which override the workout while its steps keep running) and
   show only the value that acts now (intensity, effort or watts), also under the power dial.
   Once the workout is over, the ride carries on as a plain GPX ride until the end of the
@@ -132,7 +133,7 @@ progress). Environment variables:
   | Key            | Action                                                              |
   |----------------|---------------------------------------------------------------------|
   | Space          | pause / resume                                                      |
-  | ↑ / ↓ (+ / −)  | the value of what sets the target now: workout intensity ±1 %; effort ±2 % when the slope sets it (also in a workout's free-ride steps); target ±5 W in manual mode |
+  | ↑ / ↓ (+ / −)  | the value of what sets the target now: workout intensity ±1 %; effort ±2 % in Slope ERG (also in a workout's free-ride steps); target ±5 W in manual mode |
   | M              | sound on / off                                                      |
   | V / Esc        | immersive 3D view on / off (GPX rides)                              |
   | F              | browser full screen (immersive view)                                |

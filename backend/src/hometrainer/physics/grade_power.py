@@ -1,4 +1,4 @@
-"""Grade -> target power curve used by GPX mode (pseudo-ERG).
+"""Grade -> target power curve used by GPX mode (Slope ERG).
 
 The trainer is driven in ERG mode; the target power is a piecewise-linear function of the
 (look-ahead averaged) grade, expressed as a fraction of FTP, then scaled by a live "effort"

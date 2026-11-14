@@ -181,7 +181,7 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
               <label className="workout-pick" title="Follow a workout on this route: the workout sets the target, the route gives speed and position">
                 <span className="muted">Workout</span>
                 <select value={workoutId ?? ''} onChange={(e) => setWorkoutId(e.target.value === '' ? null : Number(e.target.value))}>
-                  <option value="">none (slope target)</option>
+                  <option value="">none (Slope ERG)</option>
                   {workouts.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name} · {fmtTime(w.duration_s)}

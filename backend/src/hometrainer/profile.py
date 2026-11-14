@@ -149,7 +149,7 @@ class Profile:
     trainer_ble_name: str | None = None
     power_meter_ble_name: str | None = None
     heart_rate_ble_name: str | None = None
-    # GPX pseudo-ERG grade -> power curve
+    # Slope ERG (GPX) grade -> power curve
     grade_curve: list[tuple[float, float]] = field(default_factory=lambda: list(DEFAULT_CURVE))
     grade_curve_min_frac: float = 0.30
     grade_curve_max_frac: float = 1.05

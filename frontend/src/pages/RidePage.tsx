@@ -115,7 +115,7 @@ export function RidePage({
     return (
       <div className="card empty">
         <h2>No ride in progress</h2>
-        <p>Pick a workout (ERG mode) or a GPX route (slope mode) to start.</p>
+        <p>Pick a workout (ERG mode) or a GPX route (Slope ERG) to start.</p>
         {tel.state !== 'disconnected' && (
           <div className="row">
             <Metric label="Power" value={tel.power_w} unit="W" sub={tel.power_source} />
@@ -135,7 +135,7 @@ export function RidePage({
   const lap = tel.lap ?? 1
   // under the power dial: where the target comes from (GPX rides; in ERG it is the workout)
   const sourceLabel = tel.mode === 'gpx' ? SOURCE_LABEL[source] : undefined
-  const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : 'GPX · pseudo-ERG'
+  const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : 'GPX · Slope ERG'
 
   const pauseButton =
     tel.state === 'running' ? (
@@ -217,7 +217,7 @@ export function RidePage({
   const effort = (label: string) => (
     <Stepper label={label} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
   )
-  const nextStepsTitle = 'Scales the targets of the workout steps (this free-ride step follows the slope)'
+  const nextStepsTitle = 'Scales the targets of the workout steps (this free-ride step is in Slope ERG)'
   const sourceControls = (compact: boolean) =>
     source === 'manual' && tel.manual_target_w != null ? (
       <ManualTarget key={tel.session_id} server={tel.manual_target_w} onError={setError} />
@@ -225,7 +225,7 @@ export function RidePage({
       intensity('Intensity')
     ) : source === 'free-ride' ? (
       <>
-        {effort(compact ? 'Free-ride step · effort' : 'Free-ride step → slope · effort')}
+        {effort(compact ? 'Free-ride step · effort' : 'Free-ride step → Slope ERG · effort')}
         {intensity(compact ? 'Intensity' : 'Intensity (next steps)', nextStepsTitle)}
       </>
     ) : (
@@ -241,9 +241,9 @@ export function RidePage({
             <button
               className={source !== 'manual' ? 'on' : ''}
               onClick={() => act(() => api.adjust({ target_mode: 'slope' }))}
-              title={workoutActive ? 'The workout sets the target (the slope in its free-ride steps)' : 'The slope of the route sets the target'}
+              title={workoutActive ? 'The workout sets the target (Slope ERG in its free-ride steps)' : 'Slope ERG: the slope of the route sets the target, held by the trainer in ERG (no shifting)'}
             >
-              {workoutActive ? 'Workout' : 'Slope'}
+              {workoutActive ? 'Workout' : 'Slope ERG'}
             </button>
             <button className={source === 'manual' ? 'on' : ''} onClick={() => act(() => api.adjust({ target_mode: 'manual' }))} title="Set the target in watts">
               Manual

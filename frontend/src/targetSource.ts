@@ -28,8 +28,8 @@ export function targetSource(o: {
 /** Where the target comes from, in a few words (under the power dial). */
 export const SOURCE_LABEL: Record<TargetSource, string> = {
   workout: 'from the workout',
-  'free-ride': 'free-ride step: from the slope',
-  slope: 'from the slope',
+  'free-ride': 'free-ride step: Slope ERG',
+  slope: 'Slope ERG',
   manual: 'set by hand',
 }
 

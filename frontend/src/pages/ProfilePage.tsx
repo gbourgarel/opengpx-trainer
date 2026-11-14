@@ -141,7 +141,7 @@ export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => voi
       </div>
 
       <div className="card">
-        <h3>GPX mode — grade → target power</h3>
+        <h3>Slope ERG — grade → target power</h3>
         <p className="muted">Target = FTP × f(look-ahead grade) × effort, clamped and rate-limited (piecewise linear, flat beyond the end points).</p>
         <table className="curve">
           <thead>
