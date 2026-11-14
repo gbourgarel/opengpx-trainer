@@ -252,7 +252,7 @@ class Recorder:
         ev = EventMessage()
         ev.event = Event.TIMER
         ev.event_type = EventType.START
-        ev.timestamp = ms(first.timestamp_s)
+        ev.timestamp = ms(ride_start_s(first))
         b.add(ev)
 
         changes = dict(position_changes(self.samples))  # timestamp -> FIT rider position
@@ -312,11 +312,13 @@ class Recorder:
             prev = group[-1]
 
         summ = self.summary()
-        elapsed = last.timestamp_s - first.timestamp_s
+        start = ride_start_s(first)
+        # never below the timer time (FIT: timer <= elapsed), whatever the clocks' rounding
+        elapsed = max(last.timestamp_s - start, last.elapsed_s)
 
         ses = SessionMessage()
         ses.timestamp = ms(last.timestamp_s)
-        ses.start_time = ms(first.timestamp_s)
+        ses.start_time = ms(start)
         ses.total_elapsed_time = elapsed
         ses.total_timer_time = last.elapsed_s
         ses.total_distance = last.distance_m
@@ -350,7 +352,8 @@ class Recorder:
         """Lap for one workout step: averages over its 1 Hz samples (riding time only, like
         the session), the average target as the ``target_power`` developer field."""
         first, last = group[0], group[-1]
-        start_ts = first.timestamp_s if prev is None else prev.timestamp_s
+        start_ts = ride_start_s(first) if prev is None else prev.timestamp_s
+        timer = last.elapsed_s - (0.0 if prev is None else prev.elapsed_s)
         powers = [s.power_w or 0.0 for s in group]
         hrs = [s.heart_rate_bpm for s in group if s.heart_rate_bpm]
         cads = [s.cadence_rpm for s in group if s.cadence_rpm]  # zeros excluded (coasting)
@@ -362,8 +365,8 @@ class Recorder:
         lap.event_type = EventType.STOP
         lap.timestamp = ms(last.timestamp_s)
         lap.start_time = ms(start_ts)
-        lap.total_elapsed_time = last.timestamp_s - start_ts
-        lap.total_timer_time = last.elapsed_s - (0.0 if prev is None else prev.elapsed_s)
+        lap.total_elapsed_time = max(last.timestamp_s - start_ts, timer)
+        lap.total_timer_time = timer
         lap.total_distance = last.distance_m - (0.0 if prev is None else prev.distance_m)
         lap.avg_power = int(round(_mean(powers)))
         lap.max_power = int(round(max(powers)))
@@ -434,6 +437,14 @@ class RideAverages:
     @property
     def np_w(self) -> float | None:
         return (self._sum4 / self._n4) ** 0.25 if self._n4 else None
+
+
+def ride_start_s(first: Sample) -> float:
+    """When the riding time started. The recorder keeps the last tick of each second, so the
+    first sample comes up to ~1 s after the ride started: its `elapsed_s` already counts
+    that time. Session and first lap start here, so their elapsed time is never below their
+    timer time (KNOWN_ISSUES #13)."""
+    return first.timestamp_s - first.elapsed_s
 
 
 # How the rider felt the ride, as a Garmin Edge records it (session fields 192 / 193, FIT SDK

@@ -382,6 +382,31 @@ def fit_content(path) -> list:
     return out
 
 
+def test_fit_timer_time_never_exceeds_elapsed_time(tmp_path):
+    """KNOWN_ISSUES #13: the first sample comes ~1 s after the ride started (last tick of
+    its second) but already counts that riding time; a real file had a session timer of
+    4935.087 s for 4934.925 s elapsed (invalid FIT)."""
+    from fit_tool.profile.messages.lap_message import LapMessage
+    from fit_tool.profile.messages.session_message import SessionMessage
+
+    t0 = 1_793_806_952.0
+    rec = Recorder()
+    for i in range(120):
+        # riding time 0.75 s ahead of the wall clock offset; a 20 s pause after 60 s
+        wall = t0 + i + (20 if i >= 60 else 0)
+        rec.add(Sample(wall, i + 0.75, 200.0, 85.0, 140.0, 8.0, 8.0 * i, step_index=i // 60))
+    path = rec.write_fit(tmp_path / "ride.fit")
+    msgs = [r.message for r in FitFile.from_file(str(path)).records]
+    ses = next(m for m in msgs if isinstance(m, SessionMessage))
+    laps = [m for m in msgs if isinstance(m, LapMessage)]
+    assert ses.total_timer_time == pytest.approx(119.75)
+    assert ses.total_elapsed_time == pytest.approx(139.75)  # from the real start, pause included
+    assert ses.start_time == (t0 - 1) * 1000  # FIT times are whole seconds: 0.75 s earlier
+    assert len(laps) == 2
+    for lap in [*laps, ses]:
+        assert lap.total_timer_time <= lap.total_elapsed_time
+
+
 def test_ride_feedback_changes_only_rpe_and_feel(tmp_path):
     path = rich_recorder().write_fit(tmp_path / "ride.fit")
     before = fit_content(path)
