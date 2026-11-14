@@ -1,3 +1,4 @@
+import threading
 import time
 
 import pytest
@@ -304,6 +305,78 @@ def test_power_channel_ignores_trainer_own_broadcast():
     h._on_power(pm_page + [0x80, 0x39, 0x30, 11, 5])  # a real power meter
     assert h.devices["power_meter"].device_number == 0x3039
     assert h.readings().power_meter_connected
+
+
+class FakeChannel:
+    """Records what the hub does with the power-meter channel (no ANT stick)."""
+
+    def __init__(self):
+        self.calls = []
+
+    def close(self):
+        self.calls.append("close")
+
+    def open(self):
+        self.calls.append("open")
+
+    def set_id(self, num, dtype, ttype):
+        self.calls.append(("set_id", num, dtype))
+
+
+def _late_trainer_hub(monkeypatch):
+    from hometrainer.ant.ant_hub import AntHub
+
+    h = AntHub()
+    h._running = True
+    ch = FakeChannel()
+    monkeypatch.setattr(h, "PM_WAIT_FOR_TRAINER_S", 0.0)  # the trainer is "late"
+    monkeypatch.setattr(h, "PM_REOPEN_CLOSE_WAIT_S", 0.0)
+    monkeypatch.setattr(h, "_open_channel", lambda *a, **k: ch)
+    monkeypatch.setattr(
+        h, "_set_exclusion", lambda c, dtype, exclude: c.calls.append(("exclude", exclude))
+    )
+    t = threading.Thread(target=h._open_power_meter, daemon=True)
+    t.start()
+    return h, ch, t
+
+
+TRAINER_EXT = [0x80, 40688 & 0xFF, 40688 >> 8, 17, 5]
+PM_PAGE = [0x10, 1, 0xFF, 90, 0, 0, 200, 0]
+
+
+def test_power_meter_search_reopened_without_the_late_trainer(monkeypatch):
+    """KNOWN_ISSUES #6: the trainer not seen within 15 s, the search paired with the
+    trainer's own power broadcast and never searched again."""
+    h, ch, t = _late_trainer_hub(monkeypatch)
+    h._on_power(PM_PAGE + [0x80, 40688 & 0xFF, 40688 >> 8, 11, 5])  # trainer's broadcast
+    h._on_fec([0x19, 1, 90, 0, 0, 200, 0x30, 0x30] + TRAINER_EXT)  # the trainer shows up
+    t.join(timeout=3)
+    assert not t.is_alive()
+    assert ch.calls == ["close", ("set_id", 0, 11), ("exclude", [40688]), "open"]
+
+
+def test_power_meter_search_kept_when_a_real_meter_paired(monkeypatch):
+    h, ch, t = _late_trainer_hub(monkeypatch)
+    h._on_power(PM_PAGE + [0x80, 0x39, 0x30, 11, 5])  # a real power meter
+    h._on_fec([0x19, 1, 90, 0, 0, 200, 0x30, 0x30] + TRAINER_EXT)
+    t.join(timeout=3)
+    assert not t.is_alive() and ch.calls == []
+
+
+@pytest.mark.parametrize(
+    "trainer,pm,verdict",
+    [
+        (None, None, "wait"),
+        (None, 5, "wait"),
+        (7, None, "reopen"),
+        (7, 7, "reopen"),
+        (7, 5, "keep"),
+    ],
+)
+def test_pm_search_verdict(trainer, pm, verdict):
+    from hometrainer.ant.ant_hub import AntHub
+
+    assert AntHub.pm_search_verdict(trainer, pm) == verdict
 
 
 def test_concurrent_connect_is_rejected():

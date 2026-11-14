@@ -7,8 +7,10 @@ otherwise with the first device found (wildcard).
 Most smart trainers also broadcast a standard ANT+ *power* profile (type 11) with the same device
 number as their FE-C channel. A wildcard power-meter search would then pair with the trainer
 itself instead of the rider's power meter. The power-meter channel is therefore opened only once
-the trainer's device number is known, with that number on an ANT exclusion list. When a power-
-meter device number is configured, the channel pairs with that device only.
+the trainer's device number is known, with that number on an ANT exclusion list. If the trainer
+is not seen within 15 s, the search opens without the list, and is closed and reopened with it
+once the trainer appears, unless a real power meter was paired meanwhile. When a power-meter
+device number is configured, the channel pairs with that device only.
 
 Dual-sided power meters also send pedal metrics: L/R balance (page 16), torque effectiveness and
 pedal smoothness (page 19) and, once enabled by the display, Cycling Dynamics (pages 0xE0-0xE2:
@@ -123,6 +125,7 @@ class AntHub(SensorHub):
         self._pm_torque = pf.CrankTorquePower()
         self._pm_torque_seen_at = float("-inf")
         self._pm_ch = None
+        self._pm_channel_num: int | None = None  # device the power-meter channel last heard
         self._pm_seen_at = float("-inf")
         self._dynamics = pf.CyclingDynamicsEnabler()
         self._rr = pf.RRIntervals()
@@ -208,8 +211,6 @@ class AntHub(SensorHub):
         exclude: list[int] = (),
         device_number: int | None = None,
     ):
-        from openant.base.message import Message
-
         with self._channel_lock:
             ch = self._node.new_channel(self._channel_cls.Type.BIDIRECTIONAL_RECEIVE, 0x00, 0x01)
         ch.on_broadcast_data = on_data
@@ -219,22 +220,69 @@ class AntHub(SensorHub):
         # device number 0 = wildcard; transmission type 0 = wildcard
         ch.set_id(device_number or 0, device_type, 0)
         if exclude and not device_number:
-            # ANT inclusion/exclusion list: never pair with these device numbers
-            for i, num in enumerate(exclude[:4]):
-                ch._ant.write_message(
-                    Message(
-                        Message.ID.ADD_CHANNEL_ID,
-                        [ch.id, num & 0xFF, (num >> 8) & 0xFF, device_type, 0, i],
-                    )
-                )
-                ch.wait_for_response(Message.ID.ADD_CHANNEL_ID)
-            ch._ant.write_message(Message(Message.ID.CONFIG_LIST, [ch.id, min(len(exclude), 4), 1]))
-            ch.wait_for_response(Message.ID.CONFIG_LIST)
+            self._set_exclusion(ch, device_type, exclude)
         ch.enable_extended_messages(1)
         ch.set_period(period)
         ch.set_rf_freq(pf.RF_FREQ)
         ch.open()
         return ch
+
+    @staticmethod
+    def _set_exclusion(ch, device_type: int, exclude: list[int]) -> None:
+        """ANT inclusion/exclusion list (channel closed): never pair with these devices."""
+        from openant.base.message import Message
+
+        for i, num in enumerate(exclude[:4]):
+            ch._ant.write_message(
+                Message(
+                    Message.ID.ADD_CHANNEL_ID,
+                    [ch.id, num & 0xFF, (num >> 8) & 0xFF, device_type, 0, i],
+                )
+            )
+            ch.wait_for_response(Message.ID.ADD_CHANNEL_ID)
+        ch._ant.write_message(Message(Message.ID.CONFIG_LIST, [ch.id, min(len(exclude), 4), 1]))
+        ch.wait_for_response(Message.ID.CONFIG_LIST)
+
+    PM_REOPEN_CLOSE_WAIT_S = 0.5  # channel closed event: within a channel period (~0.25 s)
+
+    @staticmethod
+    def pm_search_verdict(trainer_num: int | None, pm_num: int | None) -> str:
+        """For a power-meter search opened without the trainer excluded (the trainer was not
+        seen in time): "wait" (trainer still unknown), "keep" (paired with a real meter) or
+        "reopen" (paired with the trainer's own power broadcast, or nothing yet: search
+        again with the trainer excluded). KNOWN_ISSUES #6."""
+        if trainer_num is None:
+            return "wait"
+        if pm_num is not None and pm_num != trainer_num:
+            return "keep"
+        return "reopen"
+
+    def _exclude_late_trainer(self) -> None:
+        """The trainer showed up after the power-meter search opened without exclusion: close
+        that search and reopen it with the trainer excluded, unless a real meter is paired."""
+        while self._running:
+            verdict = self.pm_search_verdict(
+                self.devices["trainer"].device_number, self._pm_channel_num
+            )
+            if verdict == "keep":
+                return
+            if verdict == "reopen":
+                break
+            time.sleep(0.5)
+        if not self._running or self._pm_ch is None:
+            return
+        trainer_num = self.devices["trainer"].device_number
+        ch = self._pm_ch
+        try:
+            ch.close()
+            time.sleep(self.PM_REOPEN_CLOSE_WAIT_S)
+            ch.set_id(0, pf.PWR_DEVICE_TYPE, 0)
+            self._set_exclusion(ch, pf.PWR_DEVICE_TYPE, [trainer_num])
+            self._pm_channel_num = None
+            ch.open()
+            log.info("Power-meter search reopened, excluding trainer %s", trainer_num)
+        except Exception:
+            log.exception("Could not reopen the power-meter search")
 
     def _open_power_meter(self) -> None:
         """Open the power-meter channel: the configured device, or a wildcard search excluding
@@ -266,6 +314,9 @@ class AntHub(SensorHub):
             log.info("Power-meter search opened (excluding trainer %s)", trainer_num)
         except Exception:
             log.exception("Could not open power-meter channel")
+            return
+        if trainer_num is None and self.use_trainer:
+            self._exclude_late_trainer()
 
     # -- scan (while connected) ----------------------------------------------------------
     def scan(self, duration_s: float = 6.0) -> list[dict]:
@@ -360,6 +411,8 @@ class AntHub(SensorHub):
     def _on_power(self, data) -> None:
         self._log_raw("power", data)
         num = self._device_number(data)
+        if num is not None:
+            self._pm_channel_num = num  # what the power-meter channel paired with
         if num is not None and num == self.devices["trainer"].device_number:
             return  # the trainer's own power broadcast, not an independent power meter
         if not self._accept("power_meter", num):
