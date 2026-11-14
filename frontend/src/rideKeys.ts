@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type Telemetry } from './api'
-import { keyField, type KeyField, type TargetSource } from './targetSource'
+import { FIELD_STEP, keyField, type KeyField, type TargetSource } from './targetSource'
 
 /** Keyboard shortcuts of the ride screen.
  *
@@ -36,11 +36,67 @@ export function wakesRideControls(e: KeyboardEvent): boolean {
   return !ignoredKey(e) && (isSpace(e) || isUpKey(e.key) || isDownKey(e.key))
 }
 
+/** A value sent to the backend, preferred over the telemetry for `PENDING_MS`. */
+export interface Pending {
+  field: KeyField
+  value: number
+  at: number
+}
+
+/** The value a press starts from: the one just sent if recent (the telemetry, up to 250 ms
+ * old, may not show it yet), else the telemetry's. */
+export function nudgeBase(pending: Pending | null, field: KeyField, now: number, telValue: number): number {
+  return pending && pending.field === field && now - pending.at < PENDING_MS ? pending.value : telValue
+}
+
+/** One step up or down, to the next multiple of the step (a typed 203 W goes to 205 / 200,
+ * not 208 / 198), within the field's bounds. */
+export function nudgedValue(base: number, field: KeyField, up: boolean): number {
+  const { step, lo, hi } = FIELD_STEP[field]
+  const next = up ? Math.floor(base / step + 1e-9) * step + step : Math.ceil(base / step - 1e-9) * step - step
+  return Math.max(lo, Math.min(hi, next))
+}
+
+/** Step the value of a target source (↑ / ↓ keys and the +/− buttons share it): rapid
+ * presses add up even before the telemetry catches up, and the requests are sent one at a
+ * time, in order. `shown` is the value to display (the pending one while it is recent). */
+export function useNudge(tel: Telemetry, onError: (msg: string) => void) {
+  const latest = useRef({ tel, onError })
+  useEffect(() => {
+    latest.current = { tel, onError }
+  })
+  const [pending, setPending] = useState<Pending | null>(null)
+  const pendingRef = useRef<Pending | null>(null)
+  const queue = useRef<Promise<void>>(Promise.resolve())
+
+  const telValue = (t: Telemetry, field: KeyField) => t[field] ?? (field === 'manual_target_w' ? (t.target_w ?? 0) : 100)
+
+  const nudge = useCallback((field: KeyField, up: boolean) => {
+    const { tel: t, onError: fail } = latest.current
+    const now = performance.now()
+    const value = nudgedValue(nudgeBase(pendingRef.current, field, now, telValue(t, field)), field, up)
+    pendingRef.current = { field, value, at: now }
+    setPending(pendingRef.current)
+    // one request at a time, in order: concurrent ones could land out of order
+    queue.current = queue.current.then(() =>
+      api.adjust({ [field]: value }).then(
+        () => undefined,
+        (err: Error) => fail(err.message),
+      ),
+    )
+  }, [])
+
+  const shown = (field: KeyField) => nudgeBase(pending, field, performance.now(), telValue(tel, field))
+  return { nudge, shown }
+}
+
 export function useRideShortcuts(opts: {
   tel: Telemetry
   enabled: boolean
   /** what sets the target now: ↑ / ↓ change its value */
   source: TargetSource
+  /** from `useNudge`, shared with the +/− buttons */
+  nudge: (field: KeyField, up: boolean) => void
   sound: boolean
   setSound: (on: boolean) => void
   onError: (msg: string) => void
@@ -53,13 +109,10 @@ export function useRideShortcuts(opts: {
   useEffect(() => {
     latest.current = opts // the key handler reads the latest telemetry / callbacks
   })
-  // last value sent per field: rapid presses add up even before the telemetry catches up
-  const pending = useRef<{ field: KeyField; value: number; at: number } | null>(null)
-  const queue = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const { tel, enabled, source, sound, setSound, onError, canImmersive, immersive, setImmersive } = latest.current
+      const { tel, enabled, source, nudge, sound, setSound, onError, canImmersive, immersive, setImmersive } = latest.current
       if (!enabled || ignoredKey(e)) return
       const fail = (err: Error) => onError(err.message)
 
@@ -87,17 +140,7 @@ export function useRideShortcuts(opts: {
       const down = isDownKey(e.key)
       if (!up && !down) return
       e.preventDefault()
-      const { field, step, lo, hi } = keyField(source)
-      const fallback = field === 'manual_target_w' ? (tel.target_w ?? 0) : 100
-      const p = pending.current
-      const now = performance.now()
-      const base = p && p.field === field && now - p.at < PENDING_MS ? p.value : (tel[field] ?? fallback)
-      // to the next multiple of the step (a typed 203 W goes to 205 / 200, not 208 / 198)
-      const next = up ? Math.floor(base / step + 1e-9) * step + step : Math.ceil(base / step - 1e-9) * step - step
-      const value = Math.max(lo, Math.min(hi, next))
-      pending.current = { field, value, at: now }
-      // one request at a time, in order: concurrent ones could land out of order
-      queue.current = queue.current.then(() => api.adjust({ [field]: value }).then(() => undefined, fail))
+      nudge(keyField(source), up)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

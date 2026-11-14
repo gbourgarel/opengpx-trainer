@@ -35,11 +35,18 @@ export const SOURCE_LABEL: Record<TargetSource, string> = {
 
 export type KeyField = 'intensity_pct' | 'effort_pct' | 'manual_target_w'
 
+/** Step and bounds of each value changed by ↑ / ↓ and the +/− buttons. */
+export const FIELD_STEP: Record<KeyField, { step: number; lo: number; hi: number }> = {
+  intensity_pct: { step: 1, lo: 10, hi: 200 },
+  effort_pct: { step: 2, lo: 10, hi: 200 },
+  manual_target_w: { step: 5, lo: 0, hi: 2000 },
+}
+
 /** The value ↑ / ↓ change: the one of the current target source. */
-export function keyField(source: TargetSource): { field: KeyField; step: number; lo: number; hi: number } {
-  if (source === 'workout') return { field: 'intensity_pct', step: 1, lo: 10, hi: 200 }
-  if (source === 'manual') return { field: 'manual_target_w', step: 5, lo: 0, hi: 2000 }
-  return { field: 'effort_pct', step: 2, lo: 10, hi: 200 }
+export function keyField(source: TargetSource): KeyField {
+  if (source === 'workout') return 'intensity_pct'
+  if (source === 'manual') return 'manual_target_w'
+  return 'effort_pct'
 }
 
 const KEY_HELP: Record<KeyField, string> = { intensity_pct: 'intensity', effort_pct: 'effort', manual_target_w: 'target ±5 W' }
@@ -47,7 +54,7 @@ const KEY_HELP: Record<KeyField, string> = { intensity_pct: 'intensity', effort_
 export function shortcutsHelp(source: TargetSource, opts: { sound: boolean; immersive: boolean }): string {
   return [
     'Space pause/resume',
-    `↑↓ ${KEY_HELP[keyField(source).field]}`,
+    `↑↓ ${KEY_HELP[keyField(source)]}`,
     ...(opts.sound ? ['M sound'] : []),
     ...(opts.immersive ? ['V 3D view'] : []),
   ].join(' · ')

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ManualTarget } from '../components/ManualTarget'
-import { useRideShortcuts } from '../rideKeys'
+import { useNudge, useRideShortcuts } from '../rideKeys'
 import { shortcutsHelp, SOURCE_LABEL, targetSource } from '../targetSource'
 import { useStepCues } from '../stepCues'
 import type { WakeLockStatus } from '../wakeLock'
@@ -46,16 +46,17 @@ export function Metric({
   )
 }
 
-function Stepper({ label, value, step, onChange, unit = '%', title }: { label: string; value: number; step: number; onChange: (v: number) => void; unit?: string; title?: string }) {
+/** − value + ; `onStep` is `useNudge`'s (rapid clicks add up, requests sent in order). */
+function Stepper({ label, value, onStep, unit = '%', title }: { label: string; value: number; onStep: (up: boolean) => void; unit?: string; title?: string }) {
   return (
     <div className="stepper" title={title}>
       <span className="label">{label}</span>
-      <button onClick={() => onChange(value - step)}>−</button>
+      <button onClick={() => onStep(false)}>−</button>
       <span className="val">
         {Math.round(value)}
         {unit}
       </span>
-      <button onClick={() => onChange(value + step)}>+</button>
+      <button onClick={() => onStep(true)}>+</button>
     </div>
   )
 }
@@ -98,7 +99,8 @@ export function RidePage({
     workoutActive,
     step: tel.step_index != null ? workout?.steps[tel.step_index] : undefined,
   })
-  useRideShortcuts({ tel, enabled: inSession && !!active, source, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
+  const { nudge, shown } = useNudge(tel, setError) // ↑ / ↓ keys and +/− buttons
+  useRideShortcuts({ tel, enabled: inSession && !!active, source, nudge, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
   const ftp = profile?.ftp_w ?? 250
 
   // position within the current lap (the route loops in GPX + workout rides)
@@ -212,10 +214,10 @@ export function RidePage({
   // the value of the current target source (see targetSource.ts); in a free-ride step the
   // workout intensity stays offered, for the steps that follow
   const intensity = (label: string, title?: string) => (
-    <Stepper label={label} title={title} value={tel.intensity_pct ?? 100} step={1} onChange={(v) => act(() => api.adjust({ intensity_pct: v }))} />
+    <Stepper label={label} title={title} value={shown('intensity_pct')} onStep={(up) => nudge('intensity_pct', up)} />
   )
   const effort = (label: string) => (
-    <Stepper label={label} value={tel.effort_pct ?? 100} step={2} onChange={(v) => act(() => api.adjust({ effort_pct: v }))} />
+    <Stepper label={label} value={shown('effort_pct')} onStep={(up) => nudge('effort_pct', up)} />
   )
   const nextStepsTitle = 'Scales the targets of the workout steps (this free-ride step is in Slope ERG)'
   const sourceControls = (compact: boolean) =>
