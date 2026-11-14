@@ -17,6 +17,25 @@ import { keyField, type KeyField, type TargetSource } from './targetSource'
 // how long a sent value is preferred over the telemetry (which may not reflect it yet)
 const PENDING_MS = 1500
 
+/** A key press the ride shortcuts ignore: modifier held, or typing in a field. */
+function ignoredKey(e: KeyboardEvent): boolean {
+  if (e.ctrlKey || e.metaKey || e.altKey) return true
+  const el = e.target as HTMLElement | null
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+}
+
+const isUpKey = (key: string) => key === 'ArrowUp' || key === '+' || key === '='
+const isDownKey = (key: string) => key === 'ArrowDown' || key === '-' || key === '_'
+const isSpace = (e: { key: string; code: string }) => e.key === ' ' || e.code === 'Space'
+
+/** Ride keys whose effect is shown in the controls panel (Space: pause / resume button;
+ * ↑ / ↓: the target source's value). The immersive view shows its auto-hidden controls when
+ * one is pressed, so the change is visible. Not V / Esc / F / M (top bar), nor the simulator's
+ * keys. */
+export function wakesRideControls(e: KeyboardEvent): boolean {
+  return !ignoredKey(e) && (isSpace(e) || isUpKey(e.key) || isDownKey(e.key))
+}
+
 export function useRideShortcuts(opts: {
   tel: Telemetry
   enabled: boolean
@@ -41,9 +60,7 @@ export function useRideShortcuts(opts: {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const { tel, enabled, source, sound, setSound, onError, canImmersive, immersive, setImmersive } = latest.current
-      if (!enabled || e.ctrlKey || e.metaKey || e.altKey) return
-      const el = e.target as HTMLElement | null
-      if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
+      if (!enabled || ignoredKey(e)) return
       const fail = (err: Error) => onError(err.message)
 
       if ((e.key === 'v' || e.key === 'V') && canImmersive && setImmersive) {
@@ -55,7 +72,7 @@ export function useRideShortcuts(opts: {
         return
       }
 
-      if (e.key === ' ' || e.code === 'Space') {
+      if (isSpace(e)) {
         e.preventDefault() // no page scroll, no click on the focused button
         if (e.repeat) return
         if (tel.state === 'running') api.pause().catch(fail)
@@ -66,8 +83,8 @@ export function useRideShortcuts(opts: {
         setSound(!sound)
         return
       }
-      const up = e.key === 'ArrowUp' || e.key === '+' || e.key === '='
-      const down = e.key === 'ArrowDown' || e.key === '-' || e.key === '_'
+      const up = isUpKey(e.key)
+      const down = isDownKey(e.key)
       if (!up && !down) return
       e.preventDefault()
       const { field, step, lo, hi } = keyField(source)

@@ -12,6 +12,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { fmtTime, wkg, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ElevationProfile, LocalProfile, WorkoutProfile } from '../components/charts'
+import { wakesRideControls } from '../rideKeys'
 import { WindBadge } from '../components/Wind'
 import { ATTRIBUTION } from '../scenery/tiles'
 import { targetZone, type TargetZone } from '../targetZone'
@@ -292,7 +293,8 @@ function MiniMap({ latlon, doneIdx, at }: { latlon: [number, number][]; doneIdx:
 
 // ---------------------------------------------------------------------------------------
 
-/** True while the mouse moved (or the screen was touched) in the last `ms` milliseconds. */
+/** True while the mouse moved, the screen was touched or a ride key acting on the controls
+ * (`wakesRideControls`) was pressed in the last `ms` milliseconds. */
 function useAutoHide(ms: number): boolean {
   const [shown, setShown] = useState(true)
   useEffect(() => {
@@ -302,12 +304,17 @@ function useAutoHide(ms: number): boolean {
       window.clearTimeout(timer)
       timer = window.setTimeout(() => setShown(false), ms)
     }
+    const onKey = (e: KeyboardEvent) => {
+      if (wakesRideControls(e)) wake()
+    }
     window.addEventListener('mousemove', wake)
     window.addEventListener('pointerdown', wake)
+    window.addEventListener('keydown', onKey)
     return () => {
       window.clearTimeout(timer)
       window.removeEventListener('mousemove', wake)
       window.removeEventListener('pointerdown', wake)
+      window.removeEventListener('keydown', onKey)
     }
   }, [ms])
   return shown

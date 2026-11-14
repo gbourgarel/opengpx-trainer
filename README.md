@@ -158,7 +158,8 @@ progress). Environment variables:
   of the workout (top left); speed, time, HR, cadence, average / NP (top right); the road
   ahead (bottom left); the whole route and a small fixed map (bottom right). The controls
   (pause, stop, step, effort or manual target) sit at the top centre and hide after 3 s without
-  moving the mouse. The view closes by itself when the ride ends.
+  moving the mouse; pressing Space or ↑ / ↓ shows them again, so the change can be seen. The
+  view closes by itself when the ride ends.
 
 * When a ride ends (end of the workout or route, or *Stop & save*) the trainer goes back to
   free ride, the FIT file is written in the background, and the upload to intervals.icu is
