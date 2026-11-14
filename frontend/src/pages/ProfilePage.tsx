@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type DeviceStatus, type Profile } from '../api'
+import { api, type BikePreset, type DeviceStatus, type Profile } from '../api'
 import { DevicesCard, type DeviceRole } from '../components/DevicesCard'
 
 type NumKey = Exclude<{ [K in keyof Profile]-?: Profile[K] extends number | null ? K : never }[keyof Profile], undefined>
@@ -42,9 +42,11 @@ function steadySpeed(p: Profile, watts: number, grade: number) {
 export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => void; devices?: Record<DeviceRole, DeviceStatus> }) {
   const [p, setP] = useState<Profile | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [presets, setPresets] = useState<BikePreset[]>([])
   const set: Setter = (k, v) => setP((prev) => (prev ? { ...prev, [k]: v } : prev))
   useEffect(() => {
     api.getProfile().then(setP)
+    api.bikePresets().then(setPresets).catch(() => {})
   }, [])
   if (!p) return <p className="muted">Loading…</p>
 
@@ -61,6 +63,16 @@ export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => voi
 
   const curve = p.grade_curve
   const setCurve = (c: [number, number][]) => set('grade_curve', c)
+  const preset = presets.find((x) => x.id === p.bike_preset)
+  // a preset brings its values (for the speed preview); custom starts from the current ones
+  const choosePreset = (id: string) =>
+    setP((prev) => {
+      if (!prev) return prev
+      const x = presets.find((y) => y.id === id)
+      if (!x) return { ...prev, bike_preset: id }
+      const { cda_m2, crr, drivetrain_efficiency, wheel_inertia_kg_m2, wheel_diameter_m } = x
+      return { ...prev, bike_preset: id, cda_m2, crr, drivetrain_efficiency, wheel_inertia_kg_m2, wheel_diameter_m }
+    })
 
   return (
     <div className="profile">
@@ -81,22 +93,48 @@ export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => voi
           changes); m<sub>eff</sub> = m + I/r²; ρ from route altitude, temperature & humidity; P = measured power × (1 + power scale).
         </p>
         <div className="fields">
-          <Num set={set} p={p} k="cda_m2" label="CdA (m²)" step={0.005} help="hoods ≈ 0.32–0.40 · drops ≈ 0.28 · TT ≈ 0.22" />
-          <Num set={set} p={p} k="crr" label="Crr" step={0.0005} help="good road tyres ≈ 0.003–0.005" />
-          <Num set={set} p={p} k="drivetrain_efficiency" label="Drivetrain efficiency" step={0.001} help="clean chain ≈ 0.97–0.98" />
-          <Num set={set} p={p} k="wheel_inertia_kg_m2" label="Wheel inertia, both (kg·m²)" step={0.01} />
-          <Num set={set} p={p} k="wheel_diameter_m" label="Wheel diameter (m)" step={0.001} />
-          <Num set={set} p={p} k="max_speed_kmh" label="Descent braking cap (km/h)" />
-          <Num set={set} p={p} k="temperature_c" label="Air temperature (°C)" step={0.5} />
-          <Num set={set} p={p} k="relative_humidity" label="Relative humidity (%)" scale={100} />
-          <Num
-            set={set}
-            p={p}
-            k="speed_power_scale_pct"
-            label="Speed-model power scale (%)"
-            help="speed only: trainer target & recorded power unchanged · applies from the next ride"
-          />
+          <label className="field wide">
+            <span>Bike & position</span>
+            <select value={p.bike_preset} onChange={(e) => choosePreset(e.target.value)}>
+              {presets.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.label}
+                </option>
+              ))}
+              <option value="custom">Custom (set the values)</option>
+            </select>
+            {preset && (
+              <small>
+                CdA {preset.cda_m2} m² · Crr {preset.crr} · drivetrain {preset.drivetrain_efficiency} · wheels {preset.wheel_inertia_kg_m2} kg·m², Ø{' '}
+                {preset.wheel_diameter_m} m
+              </small>
+            )}
+          </label>
         </div>
+        {p.bike_preset === 'custom' && (
+          <div className="fields">
+            <Num set={set} p={p} k="cda_m2" label="CdA (m²)" step={0.005} help="hoods ≈ 0.30–0.40 · drops ≈ 0.27–0.35 · TT ≈ 0.22–0.32" />
+            <Num set={set} p={p} k="crr" label="Crr" step={0.0005} help="good road tyres on real roads ≈ 0.004–0.005" />
+            <Num set={set} p={p} k="drivetrain_efficiency" label="Drivetrain efficiency" step={0.001} help="clean chain ≈ 0.97–0.98" />
+            <Num set={set} p={p} k="wheel_inertia_kg_m2" label="Wheel inertia, both (kg·m²)" step={0.01} />
+            <Num set={set} p={p} k="wheel_diameter_m" label="Wheel diameter (m)" step={0.001} />
+          </div>
+        )}
+        <details className="advanced">
+          <summary>Advanced</summary>
+          <div className="fields">
+            <Num set={set} p={p} k="max_speed_kmh" label="Descent braking cap (km/h)" />
+            <Num set={set} p={p} k="temperature_c" label="Air temperature (°C)" step={0.5} />
+            <Num set={set} p={p} k="relative_humidity" label="Relative humidity (%)" scale={100} />
+            <Num
+              set={set}
+              p={p}
+              k="speed_power_scale_pct"
+              label="Speed-model power scale (%)"
+              help="speed only: trainer target & recorded power unchanged · applies from the next ride"
+            />
+          </div>
+        </details>
         <div className="preview">
           {[
             [200, 0],

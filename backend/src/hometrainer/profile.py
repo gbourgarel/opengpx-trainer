@@ -17,6 +17,48 @@ _TRANSPORT_FIELDS = {f"{r}_transport" for r in _ROLES}
 _BLE_TEXT_FIELDS = {f"{r}_ble_id" for r in _ROLES} | {f"{r}_ble_name" for r in _ROLES}
 
 
+@dataclass(frozen=True)
+class BikePreset:
+    """Speed-model values of a typical bike and riding position (bike weight not included)."""
+
+    label: str
+    cda_m2: float
+    crr: float  # on real asphalt, not on a test drum (~1.2-1.5x lower)
+    drivetrain_efficiency: float
+    wheel_inertia_kg_m2: float  # both wheels
+    wheel_diameter_m: float
+
+
+# Orders of magnitude, not measurements of a given rider: CdA from the usual ranges (hoods
+# 0.30-0.40, drops 0.27-0.35, recreational TT 0.26-0.32), Crr of good tyres on real roads.
+# Sources and resulting speeds: README, "Speed model".
+BIKE_PRESETS: dict[str, BikePreset] = {
+    "road_hoods": BikePreset("Road bike, hoods", 0.32, 0.0045, 0.976, 0.14, 0.670),
+    "road_drops": BikePreset("Road bike, drops", 0.29, 0.0045, 0.976, 0.14, 0.670),
+    "tt": BikePreset("Time trial / triathlon", 0.28, 0.0040, 0.977, 0.16, 0.670),
+    "gravel": BikePreset("Gravel (40 mm tyres)", 0.35, 0.0060, 0.970, 0.18, 0.700),
+    "mtb": BikePreset('Mountain bike 29"', 0.45, 0.0090, 0.960, 0.25, 0.740),
+    "city": BikePreset("City bike", 0.55, 0.0080, 0.950, 0.20, 0.690),
+}
+CUSTOM_PRESET = "custom"
+# the profile fields a preset sets
+PRESET_FIELDS = (
+    "cda_m2",
+    "crr",
+    "drivetrain_efficiency",
+    "wheel_inertia_kg_m2",
+    "wheel_diameter_m",
+)
+
+
+def matching_preset(values: dict) -> str:
+    """The preset whose values all equal these, else "custom"."""
+    for key, preset in BIKE_PRESETS.items():
+        if all(values.get(f) == getattr(preset, f) for f in PRESET_FIELDS):
+            return key
+    return CUSTOM_PRESET
+
+
 class ProfileError(ValueError):
     def __init__(self, errors: dict[str, str]):
         self.errors = errors
@@ -88,6 +130,10 @@ def _validate_field(name: str, value):
         if value not in POWER_SOURCES:
             raise ValueError(f"must be one of {', '.join(POWER_SOURCES)}")
         return value
+    if name == "bike_preset":
+        if value != CUSTOM_PRESET and value not in BIKE_PRESETS:
+            raise ValueError(f"must be one of {', '.join([*BIKE_PRESETS, CUSTOM_PRESET])}")
+        return value
     if name == "power_match":
         if not isinstance(value, bool):
             raise ValueError("must be true or false")
@@ -116,9 +162,11 @@ class Profile:
     bike_mass_kg: float = 8.5
     ftp_w: float = 250.0
     max_hr_bpm: int | None = None
-    # aero / rolling / drivetrain
+    # aero / rolling / drivetrain: set by the bike preset (BIKE_PRESETS), or by hand with
+    # "custom"; the values are stored either way so a ride can be reproduced
+    bike_preset: str = "road_hoods"
     cda_m2: float = 0.32
-    crr: float = 0.004
+    crr: float = 0.0045
     drivetrain_efficiency: float = 0.976
     wheel_inertia_kg_m2: float = 0.14
     wheel_diameter_m: float = 0.67  # 700x25c ~ 0.67 m
@@ -169,6 +217,9 @@ class Profile:
         """
         names = {f.name for f in fields(cls)}
         clean = {k: v for k, v in d.items() if k in names}
+        if "bike_preset" not in clean and any(f in clean for f in PRESET_FIELDS):
+            # stored before presets existed: keep its values, under the preset they match
+            clean["bike_preset"] = matching_preset({**asdict(cls()), **clean})
         errors: dict[str, str] = {}
         defaults = cls()
         out: dict = {}
@@ -179,6 +230,10 @@ class Profile:
                 errors[name] = str(e)
                 out[name] = getattr(defaults, name)
         p = cls(**out)
+        preset = BIKE_PRESETS.get(p.bike_preset)
+        if preset is not None:  # a preset's values win over the ones sent with it
+            for f in PRESET_FIELDS:
+                setattr(p, f, getattr(preset, f))
         if p.grade_curve_min_frac > p.grade_curve_max_frac:
             errors["grade_curve_min_frac"] = "floor must not exceed ceiling"
             p.grade_curve_min_frac = defaults.grade_curve_min_frac

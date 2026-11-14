@@ -223,6 +223,29 @@ All parameters (CdA, Crr, η, wheel inertia, temperature, humidity, braking cap,
 points, look-ahead, target ramp rate) can be edited on the Profile page, which also previews
 steady-state speeds.
 
+**Bike & position presets.** The Profile offers typical bikes and positions instead of the
+five bike parameters; *Custom* shows the fields (starting from the preset's values) to set
+exact ones. The bike weight stays a separate field. Values (speeds: steady state, 73 kg rider
++ 10 kg bike, no wind, ρ = 1.2):
+
+| Preset                 | CdA (m²) | Crr    | η     | I wheels (kg·m²) | Ø (m) | 200 W flat | 250 W flat | 250 W at 5 % |
+|------------------------|----------|--------|-------|------------------|-------|------------|------------|--------------|
+| Road bike, hoods       | 0.32     | 0.0045 | 0.976 | 0.14             | 0.670 | 33.9 km/h  | 36.9 km/h  | 17.9 km/h    |
+| Road bike, drops       | 0.29     | 0.0045 | 0.976 | 0.14             | 0.670 | 35.0 km/h  | 38.0 km/h  | 18.0 km/h    |
+| Time trial / triathlon | 0.28     | 0.0040 | 0.977 | 0.16             | 0.670 | 35.7 km/h  | 38.7 km/h  | 18.2 km/h    |
+| Gravel (40 mm tyres)   | 0.35     | 0.0060 | 0.970 | 0.18             | 0.700 | 32.2 km/h  | 35.1 km/h  | 17.3 km/h    |
+| Mountain bike 29"      | 0.45     | 0.0090 | 0.960 | 0.25             | 0.740 | 28.5 km/h  | 31.2 km/h  | 16.2 km/h    |
+| City bike              | 0.55     | 0.0080 | 0.950 | 0.20             | 0.690 | 27.1 km/h  | 29.6 km/h  | 15.9 km/h    |
+
+These are **orders of magnitude, not measurements**. CdA: the usual ranges are hoods
+0.30–0.40, drops 0.27–0.35, time trial 0.22–0.26 for elite amateurs and 0.26–0.32 for
+recreational riders (the preset takes a recreational value); methods in Debraux et al.,
+*Aerodynamic drag in cycling: methods of assessment*, Sports Biomechanics 10(3), 2011. Crr:
+real-road values, higher than drum measurements (bicyclerollingresistance.com), which rank
+tyres well but read lower than real asphalt. The speed-model power scale is the knob to adjust
+the result to how a ride feels. A profile saved before presets existed opens as *Custom*, with
+its values unchanged.
+
 ## ANT+
 
 One ANT node, three slave channels with wildcard pairing (the first device found):

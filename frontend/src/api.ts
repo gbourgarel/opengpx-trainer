@@ -7,6 +7,8 @@ export interface Profile {
   bike_mass_kg: number
   ftp_w: number
   max_hr_bpm: number | null
+  /** a `BikePreset` id, which sets the five fields below, or 'custom' */
+  bike_preset: string
   cda_m2: number
   crr: number
   drivetrain_efficiency: number
@@ -40,6 +42,17 @@ export interface Profile {
   intervals_api_key: string
   intervals_api_key_set?: boolean
   devices_note?: string
+}
+
+/** Speed-model values of a typical bike and position (`GET /api/bike-presets`). */
+export interface BikePreset {
+  id: string
+  label: string
+  cda_m2: number
+  crr: number
+  drivetrain_efficiency: number
+  wheel_inertia_kg_m2: number
+  wheel_diameter_m: number
 }
 
 export interface Step {
@@ -245,6 +258,7 @@ const upload = <T,>(url: string, file: File) => {
 export const api = {
   getProfile: () => req<Profile>('GET', '/api/profile'),
   putProfile: (p: Partial<Profile>) => req<Profile>('PUT', '/api/profile', p),
+  bikePresets: () => req<BikePreset[]>('GET', '/api/bike-presets'),
 
   connect: (kind: 'devices' | 'simulator') => req<{ hub: string; warnings?: string[] }>('POST', '/api/devices/connect', { kind }),
   scan: (seconds = 6) => req<ScanResult>('POST', `/api/devices/scan?seconds=${seconds}`),

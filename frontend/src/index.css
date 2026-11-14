@@ -528,6 +528,25 @@ label.inline input {
 .field.check input {
   width: auto;
 }
+.fields + .fields {
+  margin-top: 12px;
+}
+/* bike preset: its values on one line next to the choice */
+.field.wide {
+  grid-column: 1 / -1;
+}
+.field.wide select {
+  max-width: 320px;
+}
+details.advanced {
+  margin-top: 12px;
+}
+details.advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
 .preview {
   display: flex;
   gap: 16px;

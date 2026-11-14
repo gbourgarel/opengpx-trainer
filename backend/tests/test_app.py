@@ -35,6 +35,7 @@ def start_erg(c) -> None:
         ("power_match", "yes"),
         ("grade_curve", [[0, 0.7]]),
         ("trainer_device_number", 70000),
+        ("bike_preset", "bmx"),
     ],
 )
 def test_invalid_profile_is_rejected_and_not_saved(client, field, value):
@@ -65,6 +66,46 @@ def test_bad_stored_profile_falls_back_to_defaults(tmp_path):
     )
     p = s.load_profile()
     assert p.ftp_w == Profile().ftp_w and p.rider_mass_kg == 72
+
+
+def test_default_profile_is_its_preset():
+    from hometrainer.profile import BIKE_PRESETS, PRESET_FIELDS, Profile
+
+    p = Profile()
+    preset = BIKE_PRESETS[p.bike_preset]
+    assert all(getattr(p, f) == getattr(preset, f) for f in PRESET_FIELDS)
+
+
+def test_bike_preset_sets_its_values_and_custom_keeps_them(client):
+    presets = {p["id"]: p for p in client.get("/api/bike-presets").json()}
+    assert {"road_hoods", "road_drops", "tt", "gravel", "mtb", "city"} == set(presets)
+    # a preset wins over values sent with it
+    r = client.put("/api/profile", json={"bike_preset": "mtb", "cda_m2": 0.2, "crr": 0.002})
+    assert r.status_code == 200
+    got = r.json()
+    assert got["bike_preset"] == "mtb"
+    assert (got["cda_m2"], got["crr"], got["wheel_diameter_m"]) == (0.45, 0.009, 0.74)
+    # custom: the values are the rider's
+    r = client.put("/api/profile", json={"bike_preset": "custom", "cda_m2": 0.3})
+    assert (r.json()["bike_preset"], r.json()["cda_m2"], r.json()["crr"]) == ("custom", 0.3, 0.009)
+    assert client.st.profile.model_params().cda_m2 == 0.3
+
+
+@pytest.mark.parametrize(
+    "stored,preset,cda",
+    [
+        ({"cda_m2": 0.30, "crr": 0.004}, "custom", 0.30),  # rider's own values: kept
+        ({"cda_m2": 0.29, "crr": 0.0045}, "road_drops", 0.29),  # same as a preset
+        ({"rider_mass_kg": 70}, "road_hoods", 0.32),  # no speed-model field: default preset
+    ],
+)
+def test_profile_stored_before_presets(tmp_path, stored, preset, cda):
+    import json
+
+    s = Storage(tmp_path)
+    s._exec("INSERT INTO settings(key, value) VALUES('profile', ?)", (json.dumps(stored),))
+    p = s.load_profile()
+    assert (p.bike_preset, p.cda_m2) == (preset, cda)
 
 
 def test_reconnect_rebinds_existing_session_to_new_hub(client):

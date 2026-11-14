@@ -24,7 +24,7 @@ from .ant.simulator import SimulatedHub
 from .ble.scan import scan_ble
 from .checkpoint import RideCheckpoint, load_checkpoint
 from .gpx.route import Route
-from .profile import Profile, ProfileError
+from .profile import BIKE_PRESETS, Profile, ProfileError
 from .recording import Recorder
 from .sensors import MultiHub
 from .session import RideSession, choose_power, w_per_kg
@@ -303,6 +303,10 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     @app.get("/api/profile")
     def get_profile():
         return st.profile.to_dict(redact_secrets=True)
+
+    @app.get("/api/bike-presets")
+    def get_bike_presets():
+        return [{"id": key, **asdict(p)} for key, p in BIKE_PRESETS.items()]
 
     @app.put("/api/profile")
     def put_profile(body: dict):
