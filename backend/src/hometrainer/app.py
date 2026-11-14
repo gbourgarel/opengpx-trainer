@@ -138,18 +138,25 @@ class AppState:
             if not rec.samples:
                 return None
             started = s.started_at or dt.datetime.now(dt.UTC)
-            s.saved = self._store_ride(rec, started, s.mode, s.name, s.id)
+            wname = s.workout.name if s.workout is not None else None
+            s.saved = self._store_ride(rec, started, s.mode, s.name, s.id, wname)
             if s.checkpoint is not None:
                 s.checkpoint.discard()
             return s.saved
 
     def _store_ride(
-        self, rec: Recorder, started: dt.datetime, mode: str, name: str, ride_key: str
+        self,
+        rec: Recorder,
+        started: dt.datetime,
+        mode: str,
+        name: str,
+        ride_key: str,
+        workout_name: str | None = None,
     ) -> dict:
         fname = f"{started:%Y%m%d-%H%M%S}-{mode}-{ride_key[:6]}.fit"
         p = self.profile
         athlete = Athlete(ftp_w=p.ftp_w, weight_kg=p.rider_mass_kg, max_hr_bpm=p.max_hr_bpm)
-        path = rec.write_fit(self.storage.rides_dir / fname, athlete)
+        path = rec.write_fit(self.storage.rides_dir / fname, athlete, workout_name or name)
         summary = rec.summary()
         rid = self.storage.add_ride(
             started.isoformat(timespec="seconds"), mode, name, summary, str(path), ride_key

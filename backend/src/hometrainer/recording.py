@@ -24,16 +24,21 @@ from fit_tool.profile.messages.record_message import RecordMessage
 from fit_tool.profile.messages.session_message import SessionMessage
 from fit_tool.profile.messages.timestamp_correlation_message import TimestampCorrelationMessage
 from fit_tool.profile.messages.user_profile_message import UserProfileMessage
+from fit_tool.profile.messages.workout_message import WorkoutMessage
+from fit_tool.profile.messages.workout_step_message import WorkoutStepMessage
 from fit_tool.profile.messages.zones_target_message import ZonesTargetMessage
 from fit_tool.profile.profile_type import (
     Event,
     EventType,
     FileType,
+    Intensity,
     LapTrigger,
     Manufacturer,
     RiderPositionType,
     Sport,
     SubSport,
+    WorkoutStepDuration,
+    WorkoutStepTarget,
 )
 
 from .pedaling import pedal_summary, position_changes
@@ -225,10 +230,13 @@ class Recorder:
             else 0,
         }
 
-    def write_fit(self, path: Path, athlete: Athlete | None = None) -> Path:
+    def write_fit(
+        self, path: Path, athlete: Athlete | None = None, workout_name: str | None = None
+    ) -> Path:
         if not self.samples:
             raise ValueError("Nothing recorded")
         athlete = athlete or Athlete()
+        laps = split_laps(self.samples)
         first, last = self.samples[0], self.samples[-1]
         b = FitFileBuilder(auto_define=True, min_string_size=50)
 
@@ -257,6 +265,8 @@ class Recorder:
             if athlete.max_hr_bpm:
                 zt.max_heart_rate = athlete.max_hr_bpm
             b.add(zt)
+        for m in _workout_messages(laps, workout_name):
+            b.add(m)
 
         # Developer field "target_power" (W) on each record: FIT has no standard per-second
         # target, so it is declared as developer data (readable by FIT analysis tools).
@@ -346,10 +356,14 @@ class Recorder:
         ev.timestamp = ms(last.timestamp_s)
         b.add(ev)
 
-        laps = split_laps(self.samples)
+        # workout_step_index of a lap: its step in the workout embedded above (as ridden)
+        step_of_lap = {lap: n for n, lap in enumerate(workout_laps(laps))}
         prev: Sample | None = None  # last sample of the previous lap: where this one starts
         for i, group in enumerate(laps):
-            b.add(self._lap_message(i, group, prev, is_last=i == len(laps) - 1))
+            lap = self._lap_message(i, group, prev, is_last=i == len(laps) - 1)
+            if i in step_of_lap:
+                lap.workout_step_index = step_of_lap[i]
+            b.add(lap)
             prev = group[-1]
 
         summ = self.summary()
@@ -444,8 +458,6 @@ class Recorder:
             lap.max_heart_rate = int(round(max(hrs)))
         if cads:
             lap.avg_cadence = int(round(_mean(cads)))
-        if first.step_index is not None:
-            lap.workout_step_index = first.step_index
         lap.lap_trigger = LapTrigger.SESSION_END if is_last else LapTrigger.TIME
         for k, v in _totals(group, prev).items():
             setattr(lap, k, v)
@@ -552,6 +564,45 @@ def _totals(group: list[Sample], prev: Sample | None) -> dict:
         diffs = [b - a for a, b in zip(alts, alts[1:], strict=False)]
         out["total_ascent"] = int(round(sum(d for d in diffs if d > 0)))
         out["total_descent"] = int(round(-sum(d for d in diffs if d < 0)))
+    return out
+
+
+def workout_laps(laps: list[list[Sample]]) -> list[int]:
+    """Indexes (in ``laps``) of the laps ridden on a workout step, in order: the workout as
+    ridden (a skipped step is absent, an extended one longer)."""
+    return [i for i, group in enumerate(laps) if group[0].step_index is not None]
+
+
+def _workout_messages(laps: list[list[Sample]], name: str | None) -> list:
+    """The workout embedded in the activity, as a Garmin head unit does: intervals.icu
+    extracts it and shows the targets on the activity chart (it ignores the ``target_power``
+    developer field). One step per workout lap with its ridden duration; target = the range
+    of the targets held on it, in watts (FIT custom power targets: watts + 1000)."""
+    idx = workout_laps(laps)
+    if not idx:
+        return []
+    wkt = WorkoutMessage()
+    wkt.sport = Sport.CYCLING
+    wkt.sub_sport = SubSport.VIRTUAL_ACTIVITY
+    wkt.workout_name = (name or "Workout")[:40]
+    wkt.num_valid_steps = len(idx)
+    out: list = [wkt]
+    for n, i in enumerate(idx):
+        group, prev = laps[i], (laps[i - 1][-1] if i > 0 else None)
+        step = WorkoutStepMessage()
+        step.message_index = n
+        step.duration_type = WorkoutStepDuration.TIME
+        step.duration_time = group[-1].elapsed_s - (0.0 if prev is None else prev.elapsed_s)
+        step.intensity = Intensity.ACTIVE
+        targets = [s.target_w for s in group if s.target_w is not None]
+        if targets:
+            step.target_type = WorkoutStepTarget.POWER
+            step.target_value = 0  # 0: the custom range below, not a power zone
+            step.custom_target_power_low = int(round(min(targets))) + 1000
+            step.custom_target_power_high = int(round(max(targets))) + 1000
+        else:
+            step.target_type = WorkoutStepTarget.OPEN  # free-ride step
+        out.append(step)
     return out
 
 

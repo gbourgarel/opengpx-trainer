@@ -173,6 +173,10 @@ progress). Environment variables:
 * FIT activity: one lap per workout step (avg / max power, NP, HR, cadence,
   `workout_step_index`), the target power as a `target_power` developer field on records and
   laps.
+* The workout **as ridden** embedded in the activity (`workout` + one `workout_step` per
+  workout lap: ridden duration, so skips / extensions are reflected; power target = range of
+  the targets held, in watts; free-ride steps without target), like a Garmin head unit:
+  intervals.icu extracts it to show the targets (it ignores the developer field).
 * The totals a head unit writes, on laps and session: work (kJ), calories (work / 21.3 % gross
   efficiency, fitted on Edge 540 files), crank revolutions, max cadence / HR, average / max
   speed, ascent / descent (GPX); on the session the FTP, IF = NP / FTP and TSS = t·NP·IF /

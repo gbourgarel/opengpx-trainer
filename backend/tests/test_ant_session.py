@@ -210,6 +210,53 @@ def test_fit_has_one_lap_per_workout_step(tmp_path):
     assert [target_of(lap) for lap in laps] == [150, 290, None]
 
 
+def test_fit_embeds_the_workout_as_ridden(tmp_path):
+    """intervals.icu shows targets from the workout embedded in the activity (as a Garmin
+    head unit writes it), not from the target_power developer field. A skipped step is
+    absent, a ramp gives a range, a free-ride step has no target."""
+    from fit_tool.fit_file import FitFile
+    from fit_tool.profile.messages.lap_message import LapMessage
+    from fit_tool.profile.messages.workout_message import WorkoutMessage
+    from fit_tool.profile.messages.workout_step_message import WorkoutStepMessage
+
+    rec = Recorder()
+    t = 1_793_806_952.0
+    # step 0 steady 150 W (60 s), step 1 skipped, step 2 ramp 200 -> 259 W (60 s),
+    # step 3 free ride (30 s), then the rest of the route (no step)
+    plan = (
+        [(0, 150.0)] * 60
+        + [(2, 200.0 + k) for k in range(60)]
+        + [(3, None)] * 30
+        + [(None, None)] * 10
+    )
+    for i, (step, target) in enumerate(plan):
+        rec.add(
+            Sample(t + i, i + 1.0, 180.0, 90, 140, 9.0, 9.0 * i, target_w=target, step_index=step)
+        )
+    msgs = [
+        r.message
+        for r in FitFile.from_file(
+            str(rec.write_fit(tmp_path / "w.fit", None, "Sweet spot"))
+        ).records
+    ]
+    wkt = next(m for m in msgs if isinstance(m, WorkoutMessage))
+    steps = [m for m in msgs if isinstance(m, WorkoutStepMessage)]
+    assert (wkt.workout_name, wkt.num_valid_steps) == ("Sweet spot", 3)
+    assert [s.duration_time for s in steps] == [60, 60, 30]
+    assert [
+        (s.target_type, s.custom_target_power_low, s.custom_target_power_high) for s in steps[:2]
+    ] == [
+        (4, 1150, 1150),  # 4 = power; watts + 1000
+        (4, 1200, 1259),
+    ]
+    assert steps[2].target_type == 2  # open (free ride)
+    laps = [m for m in msgs if isinstance(m, LapMessage)]
+    assert [lap.workout_step_index for lap in laps] == [0, 1, 2, None]
+    # the embedded workout comes before the records, as on an Edge
+    first_record = next(i for i, m in enumerate(msgs) if type(m).__name__ == "RecordMessage")
+    assert msgs.index(wkt) < first_record
+
+
 def test_session_records_the_workout_step_of_each_sample(monkeypatch):
     from hometrainer import session as session_mod
     from hometrainer.recording import split_laps

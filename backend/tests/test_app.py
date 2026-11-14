@@ -293,7 +293,7 @@ def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):
     real_write = Recorder.write_fit
     lock_free = []
 
-    def slow_write(self, path, athlete=None):
+    def slow_write(self, path, athlete=None, workout_name=None):
         def probe():
             got = client.st.session_lock.acquire(timeout=1)
             lock_free.append(got)
@@ -304,7 +304,7 @@ def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):
         th.start()
         th.join()
         time.sleep(0.5)  # meanwhile the engine must keep ticking
-        return real_write(self, path, athlete)
+        return real_write(self, path, athlete, workout_name)
 
     monkeypatch.setattr(Recorder, "write_fit", slow_write)
     assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
