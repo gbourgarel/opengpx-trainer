@@ -185,13 +185,18 @@ def test_weather_endpoint_and_ride_air(client, monkeypatch):
 
     monkeypatch.setattr(app_mod, "current_weather", down)
     assert client.get(f"/api/routes/{rid}/weather").status_code == 502
-    # the ride uses that air, the profile keeps its own
+    # the ride uses the air given at start (the profile has none)
     assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
     body = {"mode": "gpx", "route_id": rid, "temperature_c": 12.5, "relative_humidity": 0.8}
     assert client.post("/api/session/start", json=body).status_code == 200
     s = client.st.session
-    assert (s.profile.temperature_c, s.profile.relative_humidity) == (12.5, 0.8)
-    assert client.st.profile.temperature_c == 20.0
+    assert (s.temperature_c, s.relative_humidity) == (12.5, 0.8)
+    assert s.bike.params.temperature_c == 12.5
+    assert "temperature_c" not in client.get("/api/profile").json()
+    client.post("/api/session/stop?save=false")
+    # not given: standard air (and always in ERG)
+    client.post("/api/session/start", json={"mode": "gpx", "route_id": rid})
+    assert (client.st.session.temperature_c, client.st.session.relative_humidity) == (15.0, 0.5)
     client.post("/api/session/stop?save=false")
     # colder air is denser: a slower estimate
     warm = client.get(f"/api/routes/{rid}/estimate?temperature_c=30").json()["duration_s"]

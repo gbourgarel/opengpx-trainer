@@ -250,6 +250,7 @@ def test_live_estimate_from_the_start_is_the_route_estimate():
     def state(pos, v, **kw):
         base = dict(route=r, profile=p, position_m=pos, speed_ms=v, elapsed_s=0.0)
         base.update(target_w=start_w, wind_kmh=0, wind_from_deg=0, effort_pct=100)
+        base.update(temperature_c=15.0, relative_humidity=0.5)  # standard air, as the estimate
         base.update(manual_w=None, workout=None)
         return RideState(**{**base, **kw})
 

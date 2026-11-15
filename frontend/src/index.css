@@ -235,6 +235,13 @@ main {
   align-items: center;
   margin-top: 10px;
 }
+/* route start: workout, reverse, wind, air, weather, ride: wraps instead of squeezing */
+.route-actions {
+  flex-wrap: wrap;
+}
+.route-actions button {
+  white-space: nowrap;
+}
 .workout-pick {
   display: inline-flex;
   align-items: center;

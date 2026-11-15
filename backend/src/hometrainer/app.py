@@ -10,7 +10,7 @@ import logging
 import os
 import threading
 import time
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
 
@@ -26,7 +26,13 @@ from .ble.scan import scan_ble
 from .checkpoint import RideCheckpoint, load_checkpoint
 from .gpx.route import Route
 from .physics.estimate import Estimate, estimate_route, estimate_workout_on_route
-from .profile import BIKE_PRESETS, Profile, ProfileError
+from .profile import (
+    BIKE_PRESETS,
+    STANDARD_HUMIDITY,
+    STANDARD_TEMPERATURE_C,
+    Profile,
+    ProfileError,
+)
 from .recording import MAX_CARBS_G, MAX_WATER_ML, Athlete, Recorder, write_ride_feedback
 from .sensors import MultiHub
 from .session import RideSession, choose_power, w_per_kg
@@ -87,14 +93,14 @@ class AppState:
         relative_humidity: float | None = None,
     ) -> Estimate | None:
         """Estimated time of a route (or distance covered during a workout on it), memoised
-        for the current profile (air: the profile's, or the given one). None when the route
+        for the current profile (air: the given one, else standard air). None when the route
         (or workout) does not exist."""
         p = self.profile
-        if temperature_c is not None:
-            p = replace(p, temperature_c=temperature_c)
-        if relative_humidity is not None:
-            p = replace(p, relative_humidity=relative_humidity)
-        key = (rid, reverse, wind_kmh, wind_from_deg, workout_id, json.dumps(p.to_dict()))
+        air = (
+            STANDARD_TEMPERATURE_C if temperature_c is None else temperature_c,
+            STANDARD_HUMIDITY if relative_humidity is None else relative_humidity,
+        )
+        key = (rid, reverse, wind_kmh, wind_from_deg, workout_id, air, json.dumps(p.to_dict()))
         with self._estimates_lock:
             if key in self._estimates:
                 return self._estimates[key]
@@ -103,13 +109,13 @@ class AppState:
             return None
         route = Route.from_gpx(gpx, reverse=reverse)
         if workout_id is None:
-            est = estimate_route(route, p, 100.0, wind_kmh, wind_from_deg)
+            est = estimate_route(route, p, 100.0, wind_kmh, wind_from_deg, air)
         else:
             d = self.storage.get_workout(workout_id)
             if d is None:
                 return None
             w = Workout.from_dict(d)
-            est = estimate_workout_on_route(route, p, w, 100.0, 100.0, wind_kmh, wind_from_deg)
+            est = estimate_workout_on_route(route, p, w, 100.0, 100.0, wind_kmh, wind_from_deg, air)
         with self._estimates_lock:
             if len(self._estimates) > 500:
                 self._estimates.clear()
@@ -281,7 +287,8 @@ class StartBody(BaseModel):
     wind_from_deg: float = Field(0.0, ge=0.0, le=360.0)
     # GPX rides: ride the route from its end to its start
     reverse: bool = False
-    # air for this ride only (e.g. today's weather), instead of the profile's values
+    # GPX rides: air of the ride (conditions chosen at start, e.g. today's weather); not
+    # given, and ERG rides: standard air (15 degC, 50 %)
     temperature_c: float | None = Field(None, ge=-30.0, le=50.0)
     relative_humidity: float | None = Field(None, ge=0.0, le=1.0)
 
@@ -658,14 +665,10 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 raise HTTPException(409, "Connect sensors first")
             if st.session is not None and st.session.state in ("running", "paused"):
                 raise HTTPException(409, "A session is already in progress")
-            profile = st.profile
-            if body.temperature_c is not None:
-                profile = replace(profile, temperature_c=body.temperature_c)
-            if body.relative_humidity is not None:
-                profile = replace(profile, relative_humidity=body.relative_humidity)
+            gpx = route is not None  # the conditions of the ride: GPX only (ERG: standard air)
             st.session = RideSession(
                 st.hub,
-                profile,
+                st.profile,
                 body.mode,
                 workout=workout,
                 route=route,
@@ -674,6 +677,8 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 route_reversed=body.reverse and route is not None,
                 wind_kmh=body.wind_kmh,
                 wind_from_deg=body.wind_from_deg,
+                temperature_c=body.temperature_c if gpx else None,
+                relative_humidity=body.relative_humidity if gpx else None,
             )
             st.session.checkpoint = RideCheckpoint(
                 st.storage.checkpoints_dir / f"{st.session.id}.jsonl"

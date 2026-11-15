@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { WindPicker } from '../components/Wind'
-import { loadWind, saveWind, type WindSetting } from '../wind'
+import { loadAir, loadWind, saveAir, saveWind, type WindSetting } from '../wind'
 import { api, fmtTime, type PlannedWorkout, type Profile, type Ride, type RideAir, type RouteDetail, type RouteEstimate, type RouteSummary, type Workout } from '../api'
 import { ElevationProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
@@ -115,7 +115,7 @@ export function RoutesPage({
   onStart,
 }: {
   canStart: boolean
-  onStart: (r: RouteDetail, w: Workout | undefined, wind: WindSetting, air: RideAir | null) => void
+  onStart: (r: RouteDetail, w: Workout | undefined, wind: WindSetting, air: RideAir) => void
 }) {
   const [list, setList] = useState<RouteSummary[]>([])
   const [wind, setWind] = useState<WindSetting>(loadWind) // last wind used, per browser
@@ -131,8 +131,9 @@ export function RoutesPage({
   const chosenWorkout = workouts.find((w) => w.id === workoutId)
   // ride the route from its end (a climb becomes its descent): chosen at start, not stored
   const [reverse, setReverse] = useState(false)
-  // "Weather now": wind filled in, air (temperature, humidity) for this ride; null = profile's
-  const [air, setAir] = useState<RideAir | null>(null)
+  // conditions of the ride: wind and air (temperature, humidity), remembered per browser;
+  // "Weather now" fills them in
+  const [air, setAir] = useState<RideAir>(loadAir)
   const [weather, setWeather] = useState<{ busy: boolean; note?: string }>({ busy: false })
   const fetchWeather = (id: number) => {
     setWeather({ busy: true })
@@ -217,7 +218,7 @@ export function RoutesPage({
             </div>
             <RouteMap latlon={sel.latlon} height={300} />
             <ElevationProfile distance={sel.profile_distance_m} altitude={sel.altitude_m} grade={sel.grade} height={120} />
-            <div className="row-end">
+            <div className="row-end route-actions">
               <button
                 className="ghost"
                 onClick={() =>
@@ -253,6 +254,27 @@ export function RoutesPage({
                 Reverse
               </label>
               <WindPicker value={wind} onChange={setWind} />
+              <span className="air-pick" title="Air of the ride: temperature and humidity set its density (aerodynamic drag). Remembered for the next ride.">
+                <span className="muted">Air</span>
+                <input
+                  type="number"
+                  step={0.5}
+                  min={-30}
+                  max={50}
+                  value={air.temperature_c}
+                  onChange={(e) => setAir({ ...air, temperature_c: Math.max(-30, Math.min(50, Number(e.target.value) || 0)) })}
+                />
+                <span className="muted">°C</span>
+                <input
+                  type="number"
+                  step={5}
+                  min={0}
+                  max={100}
+                  value={Math.round(air.relative_humidity * 100)}
+                  onChange={(e) => setAir({ ...air, relative_humidity: Math.max(0, Math.min(100, Number(e.target.value) || 0)) / 100 })}
+                />
+                <span className="muted">%</span>
+              </span>
               <button
                 className="ghost"
                 disabled={weather.busy}
@@ -261,37 +283,13 @@ export function RoutesPage({
               >
                 {weather.busy ? 'Weather…' : 'Weather now'}
               </button>
-              {air && (
-                <span className="air-pick" title="Air of this ride (density): the profile's values are unchanged">
-                  <input
-                    type="number"
-                    step={0.5}
-                    min={-30}
-                    max={50}
-                    value={air.temperature_c}
-                    onChange={(e) => setAir({ ...air, temperature_c: Math.max(-30, Math.min(50, Number(e.target.value) || 0)) })}
-                  />
-                  <span className="muted">°C</span>
-                  <input
-                    type="number"
-                    step={5}
-                    min={0}
-                    max={100}
-                    value={Math.round(air.relative_humidity * 100)}
-                    onChange={(e) => setAir({ ...air, relative_humidity: Math.max(0, Math.min(100, Number(e.target.value) || 0)) / 100 })}
-                  />
-                  <span className="muted">%</span>
-                  <button className="ghost" title="Use the profile's temperature and humidity" onClick={() => setAir(null)}>
-                    ×
-                  </button>
-                </span>
-              )}
               <button
                 className="primary"
                 disabled={!canStart}
                 title={canStart ? '' : 'Connect sensors first'}
                 onClick={() => {
                   saveWind(wind)
+                  saveAir(air)
                   onStart(sel, chosenWorkout, wind, air)
                 }}
               >

@@ -178,7 +178,7 @@ export default function App() {
       })
       .catch((e) => setError(e.message))
 
-  const startRoute = (r: RouteDetail, w: Workout | undefined, wind: WindSetting, air: RideAir | null) =>
+  const startRoute = (r: RouteDetail, w: Workout | undefined, wind: WindSetting, air: RideAir) =>
     api
       .start({
         mode: 'gpx',
@@ -187,7 +187,7 @@ export default function App() {
         workout_id: w?.id,
         wind_kmh: wind.kmh,
         wind_from_deg: wind.fromDeg,
-        ...(air ?? {}), // today's air for this ride, else the profile's
+        ...air, // the ride's air (conditions chosen with the wind)
       })
       .then((res) => {
         setActive({ sessionId: res.session_id, mode: 'gpx', route: r, workout: w })

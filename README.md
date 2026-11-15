@@ -10,14 +10,15 @@ Bluetooth LE (FTMS), with power meter and heart-rate sensors on either protocol.
   curve on the look-ahead grade, held by the trainer in ERG, so you never shift (unlike a classic
   simulation mode, where the grade sets the resistance); or a target set by hand. Virtual speed and position on the trace come
   from a dynamic physics model fed with the measured power (see the *speed-model power scale*
-  below), with an optional
-  **wind** (speed and direction, set when starting the route). Climb rate (VAM) and elevation
-  gain are shown. **Weather now** (next to the wind) fills in the current wind, temperature
-  and humidity from Open-Meteo (free, no key): points every ~10 km along the route (3 to 10),
+  below), with the **conditions of the ride** set when starting the route: **wind** (speed and
+  direction) and **air** (temperature, humidity: the air density), remembered per browser for
+  the next ride. ERG rides (no route) use standard air, 15 °C / 50 %. Climb rate (VAM) and
+  elevation gain are shown. **Weather now** (next to them) fills in the current wind,
+  temperature and humidity from Open-Meteo (free, no key): points every ~10 km along the route (3 to 10),
   averaged into one weather for the ride (wind as a vector mean), the 10 m wind brought down to
   rider height with a log profile (`u(1 m) = u(10 m)·ln(1/z0)/ln(10/z0)`, z0 = 0.03 m open
-  country: × 0.60). All editable before starting; the air applies to this ride (and its time
-  estimate) only, the Profile keeps its values. A route can be ridden **in reverse** (*Reverse*, next to the wind when
+  country: × 0.60), all editable before starting; the route's time estimate follows them. A
+  route can be ridden **in reverse** (*Reverse*, next to the wind when
   starting it): a climb becomes its descent; the map and profile follow the direction chosen.
 * **Workout on a route**: a GPX ride can follow a workout. The workout sets the target, the route
   gives speed and position, and the route loops while the workout lasts; its free-ride steps
@@ -251,14 +252,15 @@ relative to the direction of travel `v_w` (headwind, negative = tailwind) and `v
   taken independent of yaw). The heading is smoothed (unit vectors, σ = 25 m) so GPS zig-zags
   do not make the wind flicker. ERG rides (flat virtual road, no heading) have no wind.
 
-All parameters (CdA, Crr, η, wheel inertia, temperature, humidity, braking cap, curve
-points, look-ahead, target ramp rate) can be edited on the Profile page, which also previews
+The rider and bike parameters (CdA, Crr, η, wheel inertia, braking cap, curve points,
+look-ahead, target ramp rate) are edited on the Profile page, which also previews
 steady-state speeds. Edits apply once saved: the page shows "Unsaved changes" until then, and
 leaving the tab asks Save / Discard / Stay (closing the page, the browser's own question).
 
 **Estimated time of a route.** The routes list and the route detail show the time to ride it
-(Slope ERG at 100 % effort, the rider holding the targets), updated with the wind, the
-direction and, with a workout, the distance covered during it (the route loops). Same
+(Slope ERG at 100 % effort, the rider holding the targets; in the list: no wind, standard
+air), updated in the detail with the wind, the air, the direction and, with a workout, the
+distance covered during it (the route loops). Same
 equation of motion as the ride (`VirtualBike.accel`), integrated along the distance in 10 m
 steps with an energy balance, `v_out² = v_in² + 2·a(v_mid)·L` (`L`: road length of the step),
 so momentum carries over grade changes; the target goes through the same ramp limiter.

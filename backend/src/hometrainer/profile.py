@@ -17,6 +17,12 @@ _TRANSPORT_FIELDS = {f"{r}_transport" for r in _ROLES}
 _BLE_TEXT_FIELDS = {f"{r}_ble_id" for r in _ROLES} | {f"{r}_ble_name" for r in _ROLES}
 
 
+# Air of a ride without chosen conditions (ERG rides, the routes list's estimates): ISA sea-level
+# temperature, mid humidity. GPX rides take the conditions chosen at start.
+STANDARD_TEMPERATURE_C = 15.0
+STANDARD_HUMIDITY = 0.5
+
+
 @dataclass(frozen=True)
 class BikePreset:
     """Speed-model values of a typical bike and riding position (bike weight not included)."""
@@ -79,8 +85,6 @@ _BOUNDS: dict[str, tuple[float, float]] = {
     "wheel_diameter_m": (0.3, 1.0),
     "max_speed_kmh": (10, 150),
     "speed_power_scale_pct": (-90, 200),
-    "temperature_c": (-30, 50),
-    "relative_humidity": (0.0, 1.0),
     "grade_curve_min_frac": (0.0, 2.0),
     "grade_curve_max_frac": (0.1, 3.0),
     "grade_lookahead_m": (0, 1000),
@@ -177,10 +181,8 @@ class Profile:
     # the speed model is fed with measured power x (1 + x / 100); the trainer target and the
     # recorded power are unchanged (e.g. to compensate a power meter reading low)
     speed_power_scale_pct: float = 0.0
-    # environment
-    temperature_c: float = 20.0
-    relative_humidity: float = 0.5
-    # (wind is chosen per GPX ride, with its direction: see RideSession)
+    # (the ride's conditions, wind and air, are chosen per GPX ride: see RideSession; a
+    # profile stored with temperature / humidity, as before 2026-11-15, has them ignored)
     # power source for speed model / recording: auto = power meter if present, else trainer
     power_source: PowerSource = "auto"
     # in ERG modes, correct the trainer target so the power meter reads the requested power
@@ -253,7 +255,13 @@ class Profile:
             d["intervals_api_key"] = ""
         return d
 
-    def model_params(self) -> ModelParams:
+    def model_params(
+        self,
+        temperature_c: float = STANDARD_TEMPERATURE_C,
+        relative_humidity: float = STANDARD_HUMIDITY,
+    ) -> ModelParams:
+        """Speed-model parameters for a ride in this air (standard air by default: ERG rides,
+        route list estimates)."""
         return ModelParams(
             rider_mass_kg=self.rider_mass_kg,
             bike_mass_kg=self.bike_mass_kg,
@@ -263,8 +271,8 @@ class Profile:
             wheel_inertia_kg_m2=self.wheel_inertia_kg_m2,
             wheel_radius_m=self.wheel_diameter_m / 2,
             max_speed_ms=self.max_speed_kmh / 3.6,
-            temperature_c=self.temperature_c,
-            relative_humidity=self.relative_humidity,
+            temperature_c=temperature_c,
+            relative_humidity=relative_humidity,
         )
 
     def grade_power_curve(self) -> GradePowerCurve:

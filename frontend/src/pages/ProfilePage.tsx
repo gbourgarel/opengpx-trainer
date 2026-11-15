@@ -128,7 +128,7 @@ export function ProfilePage({
         <h3>Speed model</h3>
         <p className="muted">
           η·P = m·g·v·(Crr·cosθ + sinθ) + ½·ρ·CdA·(v+v<sub>w</sub>)²·v + m<sub>eff</sub>·a·v, integrated in time (momentum carried across grade
-          changes); m<sub>eff</sub> = m + I/r²; ρ from route altitude, temperature & humidity; P = measured power × (1 + power scale).
+          changes); m<sub>eff</sub> = m + I/r²; ρ from route altitude and the ride's air (set with the wind when starting a route; 15 °C / 50 % in ERG); P = measured power × (1 + power scale).
         </p>
         <div className="fields">
           <label className="field wide">
@@ -162,8 +162,6 @@ export function ProfilePage({
           <summary>Advanced</summary>
           <div className="fields">
             <Num set={set} p={p} k="max_speed_kmh" label="Descent braking cap (km/h)" />
-            <Num set={set} p={p} k="temperature_c" label="Air temperature (°C)" step={0.5} />
-            <Num set={set} p={p} k="relative_humidity" label="Relative humidity (%)" scale={100} />
             <Num
               set={set}
               p={p}

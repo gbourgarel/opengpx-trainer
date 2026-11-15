@@ -19,8 +19,6 @@ export interface Profile {
   max_speed_kmh: number
   /** the speed model is fed with measured power × (1 + x / 100) */
   speed_power_scale_pct: number
-  temperature_c: number
-  relative_humidity: number
   power_source: PowerSource
   power_match: boolean
   trainer_device_number: number | null
@@ -296,13 +294,11 @@ export const api = {
   getProfile: () => req<Profile>('GET', '/api/profile'),
   putProfile: (p: Partial<Profile>) => req<Profile>('PUT', '/api/profile', p),
   bikePresets: () => req<BikePreset[]>('GET', '/api/bike-presets'),
-  routeEstimate: (id: number, o: { reverse: boolean; windKmh: number; windFromDeg: number; workoutId: number | null; air: RideAir | null }) => {
+  routeEstimate: (id: number, o: { reverse: boolean; windKmh: number; windFromDeg: number; workoutId: number | null; air: RideAir }) => {
     const q = new URLSearchParams({ reverse: String(o.reverse), wind_kmh: String(o.windKmh), wind_from_deg: String(o.windFromDeg) })
     if (o.workoutId != null) q.set('workout_id', String(o.workoutId))
-    if (o.air) {
-      q.set('temperature_c', String(o.air.temperature_c))
-      q.set('relative_humidity', String(o.air.relative_humidity))
-    }
+    q.set('temperature_c', String(o.air.temperature_c))
+    q.set('relative_humidity', String(o.air.relative_humidity))
     return req<RouteEstimate>('GET', `/api/routes/${id}/estimate?${q}`)
   },
   routeWeather: (id: number) => req<RouteWeather>('GET', `/api/routes/${id}/weather`),

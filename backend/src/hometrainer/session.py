@@ -36,7 +36,7 @@ from .gpx.route import Route
 from .physics.estimate import Remaining, RideState, estimate_remaining
 from .physics.grade_power import RateLimiter
 from .physics.model import VirtualBike, flat_road, no_wind
-from .profile import Profile
+from .profile import STANDARD_HUMIDITY, STANDARD_TEMPERATURE_C, Profile
 from .recording import Recorder, RideAverages, Sample, pedal_fields
 from .workouts.model import Step, Workout, WorkoutPosition
 
@@ -197,6 +197,8 @@ class RideSession:
         route_reversed: bool = False,
         wind_kmh: float = 0.0,
         wind_from_deg: float = 0.0,
+        temperature_c: float | None = None,
+        relative_humidity: float | None = None,
     ):
         if mode == "erg" and workout is None:
             raise ValueError("ERG mode needs a workout")
@@ -248,7 +250,13 @@ class RideSession:
                     return route.wind_components(d % lap_m, wind_ms, wind_from)
         else:
             grade_fn = flat_road
-        self.bike = VirtualBike(profile.model_params(), grade_fn, wind_fn)
+        # Air of the ride (density): the conditions chosen at start, else standard air
+        self.temperature_c = STANDARD_TEMPERATURE_C if temperature_c is None else temperature_c
+        self.relative_humidity = (
+            STANDARD_HUMIDITY if relative_humidity is None else relative_humidity
+        )
+        params = profile.model_params(self.temperature_c, self.relative_humidity)
+        self.bike = VirtualBike(params, grade_fn, wind_fn)
         self._lap = 0  # completed laps of the route
         self._workout_end_lap: int | None = None  # lap index when the workout ended
         self.recorder = Recorder()
@@ -414,6 +422,8 @@ class RideSession:
             target_w=self.limiter.value if self.limiter.value is not None else 0.0,
             wind_kmh=self.wind_kmh,
             wind_from_deg=self.wind_from_deg,
+            temperature_c=self.temperature_c,
+            relative_humidity=self.relative_humidity,
             effort_pct=self.effort_pct,
             manual_w=self.manual_target_w if manual else None,
             workout=copy.deepcopy(workout),  # the rider may skip / extend steps meanwhile

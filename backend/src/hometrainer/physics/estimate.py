@@ -27,7 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..gpx.route import Route
-from ..profile import Profile
+from ..profile import STANDARD_HUMIDITY, STANDARD_TEMPERATURE_C, Profile
 from ..workouts.model import Workout
 from .grade_power import RateLimiter
 from .model import VirtualBike
@@ -58,11 +58,13 @@ def _ride(
     start_m: float = 0.0,
     start_speed_ms: float = 0.0,
     start_target_w: float | None = None,
+    air: tuple[float, float] = (STANDARD_TEMPERATURE_C, STANDARD_HUMIDITY),
 ) -> Estimate:
     """Ride from ``start_m`` (position on a lap) at ``start_speed_ms`` to the end of that
     lap (``duration_s`` None), or, looping, for ``duration_s``. ``target`` gets the time since
-    the start of the estimate. ``start_target_w``: the ramp limiter's current value."""
-    bike = VirtualBike(profile.model_params())  # only its acceleration is used
+    the start of the estimate. ``start_target_w``: the ramp limiter's current value. ``air``:
+    (temperature degC, relative humidity 0-1) of the ride."""
+    bike = VirtualBike(profile.model_params(*air))  # only its acceleration is used
     vmax = bike.params.max_speed_ms
     scale = 1.0 + profile.speed_power_scale_pct / 100.0
     wind_ms = wind_kmh / 3.6
@@ -124,6 +126,7 @@ def estimate_route(
     effort_pct: float = 100.0,
     wind_kmh: float = 0.0,
     wind_from_deg: float = 0.0,
+    air: tuple[float, float] = (STANDARD_TEMPERATURE_C, STANDARD_HUMIDITY),
 ) -> Estimate:
     """Time to ride the whole route in Slope ERG at ``effort_pct``."""
     curve = profile.grade_power_curve()
@@ -132,7 +135,7 @@ def estimate_route(
         g = route.mean_grade(pos, curve.lookahead_m)
         return curve.target_watts(g, profile.ftp_w, effort_pct / 100.0), True
 
-    return _ride(route, profile, slope, wind_kmh, wind_from_deg)
+    return _ride(route, profile, slope, wind_kmh, wind_from_deg, air=air)
 
 
 def estimate_workout_on_route(
@@ -143,6 +146,7 @@ def estimate_workout_on_route(
     intensity_pct: float = 100.0,
     wind_kmh: float = 0.0,
     wind_from_deg: float = 0.0,
+    air: tuple[float, float] = (STANDARD_TEMPERATURE_C, STANDARD_HUMIDITY),
 ) -> Estimate:
     """Distance covered during a workout ridden on the route (it loops while the workout
     lasts): the workout's targets on its steps, the slope curve in its free-ride steps."""
@@ -155,7 +159,7 @@ def estimate_workout_on_route(
         g = route.mean_grade(pos, curve.lookahead_m)
         return curve.target_watts(g, profile.ftp_w, effort_pct / 100.0), True
 
-    return _ride(route, profile, target, wind_kmh, wind_from_deg, workout.duration_s)
+    return _ride(route, profile, target, wind_kmh, wind_from_deg, workout.duration_s, air=air)
 
 
 @dataclass(frozen=True)
@@ -164,13 +168,15 @@ class RideState:
     off the engine loop, on its own copy)."""
 
     route: Route
-    profile: Profile  # the ride's (its own air, e.g. today's weather)
+    profile: Profile
     position_m: float  # on the current lap
     speed_ms: float
     elapsed_s: float  # riding time
     target_w: float  # the ramp limiter's current value
     wind_kmh: float
     wind_from_deg: float
+    temperature_c: float  # air of the ride
+    relative_humidity: float
     effort_pct: float
     manual_w: float | None  # set when the target is set by hand
     workout: Workout | None  # None, or over: ride to the end of the lap
@@ -203,7 +209,12 @@ def estimate_remaining(s: RideState) -> Remaining:
                 return w * s.intensity_pct / 100.0, False
         return slope(pos)
 
-    common = dict(start_m=s.position_m, start_speed_ms=s.speed_ms, start_target_w=s.target_w)
+    common = dict(
+        start_m=s.position_m,
+        start_speed_ms=s.speed_ms,
+        start_target_w=s.target_w,
+        air=(s.temperature_c, s.relative_humidity),
+    )
     if s.workout is not None:
         left = max(0.0, s.workout.duration_s - s.elapsed_s)
         est = _ride(s.route, s.profile, target, s.wind_kmh, s.wind_from_deg, left, **common)
