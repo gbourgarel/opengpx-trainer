@@ -259,12 +259,14 @@ class Recorder:
                 up.default_max_heart_rate = athlete.max_hr_bpm
                 up.default_max_biking_heart_rate = athlete.max_hr_bpm
             b.add(up)
-        if athlete.ftp_w or athlete.max_hr_bpm:
+        if athlete.ftp_w or athlete.max_hr_bpm or athlete.threshold_hr_bpm:
             zt = ZonesTargetMessage()
             if athlete.ftp_w:
                 zt.functional_threshold_power = int(round(athlete.ftp_w))
             if athlete.max_hr_bpm:
                 zt.max_heart_rate = athlete.max_hr_bpm
+            if athlete.threshold_hr_bpm:
+                zt.threshold_heart_rate = athlete.threshold_hr_bpm
             b.add(zt)
         for m in _workout_messages(laps, workout_name):
             b.add(m)
@@ -527,6 +529,7 @@ class Athlete:
     ftp_w: float | None = None
     weight_kg: float | None = None
     max_hr_bpm: int | None = None
+    threshold_hr_bpm: int | None = None
 
 
 # Gross efficiency of the rider (mechanical work / metabolic energy), to turn the work into

@@ -438,7 +438,7 @@ def test_fit_has_the_totals_a_head_unit_writes(tmp_path):
                 step_index=i // 60,
             )
         )
-    athlete = Athlete(ftp_w=250, weight_kg=73, max_hr_bpm=189)
+    athlete = Athlete(ftp_w=250, weight_kg=73, max_hr_bpm=189, threshold_hr_bpm=165)
     path = rec.write_fit(tmp_path / "r.fit", athlete)
     msgs = [r.message for r in FitFile.from_file(str(path)).records]
     of = lambda cls: [m for m in msgs if isinstance(m, cls)]  # noqa: E731
@@ -463,7 +463,8 @@ def test_fit_has_the_totals_a_head_unit_writes(tmp_path):
     assert of(RecordMessage)[-1].accumulated_power == 24000
     user = of(UserProfileMessage)[0]
     assert (user.weight, user.default_max_heart_rate) == (73, 189)
-    assert of(ZonesTargetMessage)[0].functional_threshold_power == 250
+    zt = of(ZonesTargetMessage)[0]
+    assert (zt.functional_threshold_power, zt.threshold_heart_rate) == (250, 165)
     assert of(ActivityMessage)[0].local_timestamp is not None
 
 

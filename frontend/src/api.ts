@@ -7,6 +7,8 @@ export interface Profile {
   bike_mass_kg: number
   ftp_w: number
   max_hr_bpm: number | null
+  /** lactate threshold heart rate: heart-rate zones (zones.ts) */
+  threshold_hr_bpm: number | null
   /** a `BikePreset` id, which sets the five fields below, or 'custom' */
   bike_preset: string
   cda_m2: number

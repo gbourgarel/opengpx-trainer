@@ -120,6 +120,7 @@ export function ProfilePage({
           <Num set={set} p={p} k="bike_mass_kg" label="Bike weight (kg)" step={0.1} />
           <Num set={set} p={p} k="ftp_w" label="FTP (W)" />
           <Num set={set} p={p} k="max_hr_bpm" label="Max HR (bpm)" />
+          <Num set={set} p={p} k="threshold_hr_bpm" label="Threshold HR (bpm)" help="lactate threshold (LTHR): colours the heart rate by zone" />
         </div>
       </div>
 

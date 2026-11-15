@@ -1,17 +1,11 @@
 import { useMemo } from 'react'
 import { stepWatts, type Step } from '../api'
+import { powerZoneOfFraction } from '../zones'
 
 // ---------------------------------------------------------------------------------------
-// Workout profile (SVG): one polygon per step, coloured by intensity zone, progress cursor.
-const zoneColor = (frac: number | null) => {
-  if (frac == null) return 'var(--muted)'
-  if (frac < 0.55) return 'var(--z1)'
-  if (frac < 0.75) return 'var(--z2)'
-  if (frac < 0.9) return 'var(--z3)'
-  if (frac < 1.05) return 'var(--z4)'
-  if (frac < 1.2) return 'var(--z5)'
-  return 'var(--z6)'
-}
+// Workout profile (SVG): one polygon per step, coloured by its Coggan power zone, progress
+// cursor.
+const zoneColor = (frac: number | null) => (frac == null ? 'var(--muted)' : powerZoneOfFraction(frac).color)
 
 export function WorkoutProfile({
   steps,

@@ -71,6 +71,7 @@ _BOUNDS: dict[str, tuple[float, float]] = {
     "bike_mass_kg": (1, 50),
     "ftp_w": (30, 1000),
     "max_hr_bpm": (80, 250),
+    "threshold_hr_bpm": (60, 240),
     "cda_m2": (0.1, 1.0),
     "crr": (0.0005, 0.03),
     "drivetrain_efficiency": (0.8, 1.0),
@@ -85,9 +86,9 @@ _BOUNDS: dict[str, tuple[float, float]] = {
     "grade_lookahead_m": (0, 1000),
     "target_ramp_w_per_s": (1, 500),
 }
-_OPTIONAL = {"max_hr_bpm"}
+_OPTIONAL = {"max_hr_bpm", "threshold_hr_bpm"}
 _DEVICE_NUMBERS = {"trainer_device_number", "power_meter_device_number", "heart_rate_device_number"}
-_INTS = {"max_hr_bpm"} | _DEVICE_NUMBERS
+_INTS = {"max_hr_bpm", "threshold_hr_bpm"} | _DEVICE_NUMBERS
 
 
 def _number(value) -> float:
@@ -162,6 +163,8 @@ class Profile:
     bike_mass_kg: float = 8.5
     ftp_w: float = 250.0
     max_hr_bpm: int | None = None
+    # lactate threshold heart rate: heart-rate zones (Friel, % of it) on the ride screen
+    threshold_hr_bpm: int | None = None
     # aero / rolling / drivetrain: set by the bike preset (BIKE_PRESETS), or by hand with
     # "custom"; the values are stored either way so a ride can be reproduced
     bike_preset: str = "road_hoods"

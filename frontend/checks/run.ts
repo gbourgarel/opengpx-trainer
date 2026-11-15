@@ -5,9 +5,10 @@ import { checks as profile } from './profile.check.ts'
 import { checks as route3d } from './route3d.check.ts'
 import { checks as stepCues } from './stepCues.check.ts'
 import { checks as tiles } from './tiles.check.ts'
+import { checks as zones } from './zones.check.ts'
 
 type Check = Record<string, () => void | Promise<void>>
-const groups: Record<string, Check> = { nudge, profile, route3d, stepCues, tiles }
+const groups: Record<string, Check> = { nudge, profile, route3d, stepCues, tiles, zones }
 
 let failed = 0
 for (const [group, checks] of Object.entries(groups)) {

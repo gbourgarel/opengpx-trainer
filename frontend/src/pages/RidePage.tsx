@@ -25,6 +25,7 @@ export function Metric({
   sub,
   className = '',
   title,
+  valueColor,
 }: {
   label: string
   value: string | number | null | undefined
@@ -33,11 +34,13 @@ export function Metric({
   sub?: string
   className?: string
   title?: string
+  /** e.g. the heart rate in the colour of its zone */
+  valueColor?: string
 }) {
   return (
     <div className={`metric ${big ? 'big' : ''} ${className}`} title={title}>
       <div className="label">{label}</div>
-      <div className="value">
+      <div className="value" style={valueColor ? { color: valueColor } : undefined}>
         {value ?? '—'}
         {unit && <span className="unit">{unit}</span>}
       </div>
@@ -102,6 +105,7 @@ export function RidePage({
   const { nudge, shown } = useNudge(tel, setError) // ↑ / ↓ keys and +/− buttons
   useRideShortcuts({ tel, enabled: inSession && !!active, source, nudge, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
   const ftp = profile?.ftp_w ?? 250
+  const lthr = profile?.threshold_hr_bpm ?? null // heart-rate zones
 
   // position within the current lap (the route loops in GPX + workout rides)
   const routePos = tel.route_position_m ?? tel.distance_m
@@ -287,13 +291,14 @@ export function RidePage({
   // Cockpit layout (RideCockpit): fits the window on desktop screens; the immersive view covers it
   return (
     <>
-      <RideCockpit c={{ tel, route, workout, ftp, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls, sourceLabel }} />
+      <RideCockpit c={{ tel, route, workout, ftp, lthr, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls, sourceLabel }} />
       {immersive && route && (
         <Immersive
           tel={tel}
           route={route}
           workout={workout}
           ftp={ftp}
+          lthr={lthr}
           routePos={routePos}
           remainingDist={remainingDist}
           doneIdx={doneIdx}

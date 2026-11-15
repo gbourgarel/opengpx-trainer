@@ -127,6 +127,10 @@ progress). Environment variables:
   beeps (Web Audio, enabled by the first click or key press, remembered in the browser).
 * GPX: the wind badge in the map corner shows where the wind blows; hover it for the head /
   tail / cross components on the current heading.
+* Zones: the training zone of the 3 s power (Coggan, % of FTP: Z1 < 55, Z2 < 75, Z3 < 90,
+  Z4 < 105, Z5 < 120, Z6 < 150, Z7) is shown in its colour after the W/kg; the heart rate is
+  coloured by its zone when the threshold heart rate is set in the Profile (Friel, % of LTHR:
+  Z1 < 81, Z2 < 90, Z3 < 94, Z4 < 100, Z5 ≥ 100); workout profiles use the same 7 colours.
 * A sensor that sent data during the ride and goes silent for 5 s (trainer, power meter, heart
   rate) raises a red banner, also over the immersive view, until it comes back: "no data
   since …", and for the power meter whether the trainer's power is used instead (power source

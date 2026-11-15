@@ -10,6 +10,7 @@ import { ElevationProfile, LocalProfile, WorkoutProfile } from '../components/ch
 import { RouteMap } from '../components/RouteMap'
 import { WindBadge } from '../components/Wind'
 import { targetZone, type TargetZone } from '../targetZone'
+import { hrZone, powerZone } from '../zones'
 import { Metric } from './RidePage'
 import './ride-cockpit.css'
 
@@ -18,6 +19,8 @@ export interface RideCtx {
   route?: RouteDetail
   workout?: Workout
   ftp: number
+  /** threshold heart rate: the HR in the colour of its zone */
+  lthr: number | null
   routePos?: number
   doneIdx: number
   follow: boolean
@@ -36,15 +39,16 @@ const ZONE_LABEL: Record<TargetZone, string> = { on: 'On target', high: 'Slightl
 // ---------------------------------------------------------------------------------------
 // small stat tiles
 
-type Stat = { key: string; label: string; value: string | number | null | undefined; unit?: string; sub?: string }
+type Stat = { key: string; label: string; value: string | number | null | undefined; unit?: string; sub?: string; color?: string; title?: string }
 
 function stats(c: RideCtx): Stat[] {
   const t = c.tel
+  const hz = hrZone(t.heart_rate_bpm, c.lthr)
   return [
     { key: 'time', label: 'Time', value: fmtTime(t.elapsed_s) },
     { key: 'speed', label: 'Speed', value: t.speed_kmh?.toFixed(1), unit: 'km/h', sub: t.avg_speed_kmh != null ? `avg ${t.avg_speed_kmh.toFixed(1)}` : undefined },
     { key: 'cad', label: 'Cadence', value: t.cadence_rpm, unit: 'rpm' },
-    { key: 'hr', label: 'HR', value: t.heart_rate_bpm, unit: 'bpm' },
+    { key: 'hr', label: hz ? `HR · Z${hz.n}` : 'HR', value: t.heart_rate_bpm, unit: 'bpm', color: hz?.color, title: hz ? `Heart-rate zone ${hz.n}: ${hz.name} (% of threshold HR)` : undefined },
     // unit in the label: "437 / 437" plus a unit does not fit a narrow tile
     { key: 'avg', label: 'Avg / NP (W)', value: t.avg_power_w != null ? `${t.avg_power_w} / ${t.np_w ?? '—'}` : null },
     { key: 'dist', label: 'Distance', value: ((t.distance_m ?? 0) / 1000).toFixed(2), unit: 'km' },
@@ -54,7 +58,7 @@ function stats(c: RideCtx): Stat[] {
 const pick = (all: Stat[], keys: string[]) => keys.map((k) => all.find((s) => s.key === k)).filter((s): s is Stat => !!s)
 
 function Tile({ s }: { s: Stat }) {
-  return <Metric label={s.label} value={s.value} unit={s.unit} sub={s.sub} className="ck-tile" />
+  return <Metric label={s.label} value={s.value} unit={s.unit} sub={s.sub} className="ck-tile" valueColor={s.color} title={s.title} />
 }
 
 function BigStat({ label, value, unit, sub }: { label: string; value: string | number | null | undefined; unit?: string; sub?: ReactNode }) {
@@ -81,6 +85,7 @@ function Dial({ c }: { c: RideCtx }) {
   const target = c.showGauge ? t.target_w! : null
   const p3 = t.power_avg3_w ?? t.power_w ?? 0
   const shown = t.power_avg3_w != null ? Math.round(t.power_avg3_w) : t.power_w
+  const pz = shown ? powerZone(shown, c.ftp) : null // training zone of the 3 s power (Coggan)
   const lo = target ? target * (1 - range) : 0
   const hi = target ? target * (1 + range) : Math.max(400, c.ftp * 1.5)
   const cx = 160
@@ -124,6 +129,11 @@ function Dial({ c }: { c: RideCtx }) {
       </text>
       <text x={cx} y={cy + 8} className="ck-unit">
         W (3 s) · {wkg(shown, t.rider_mass_kg)} W/kg
+        {pz && (
+          <tspan fill={pz.color} className="ck-pzone">
+            <title>{`Power zone ${pz.n}: ${pz.name} (Coggan, % of FTP)`}</title> · Z{pz.n}
+          </tspan>
+        )}
       </text>
       <text x={cx} y={cy + 44} className="ck-target">
         {target ? `target ${target} W` : 'free ride'}

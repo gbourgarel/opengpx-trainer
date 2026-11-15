@@ -16,6 +16,7 @@ import { wakesRideControls } from '../rideKeys'
 import { WindBadge } from '../components/Wind'
 import { ATTRIBUTION } from '../scenery/tiles'
 import { targetZone, type TargetZone } from '../targetZone'
+import { hrZone, powerZone } from '../zones'
 import './immersive.css'
 
 // MapLibre is only downloaded when the immersive mode is opened
@@ -29,6 +30,8 @@ export interface ImmersiveProps {
   route: RouteDetail
   workout?: Workout
   ftp: number
+  /** threshold heart rate: the HR in the colour of its zone */
+  lthr: number | null
   routePos?: number
   remainingDist: number | null
   doneIdx: number
@@ -77,7 +80,7 @@ export function Immersive(p: ImmersiveProps) {
       {tel.state === 'paused' && <div className="im-hint">Paused</div>}
 
       <PowerBlock {...p} />
-      <Tiles tel={tel} />
+      <Tiles tel={tel} lthr={p.lthr} />
       <div className="im-ahead im-glass">
         {p.routePos != null && (
           <LocalProfile
@@ -105,6 +108,13 @@ function PowerBlock({ tel, workout, ftp, sourceLabel }: ImmersiveProps) {
   const p3 = tel.power_avg3_w ?? tel.power_w ?? 0
   const shown = tel.power_avg3_w != null ? Math.round(tel.power_avg3_w) : tel.power_w
   const zone = target ? targetZone(p3, target) : null
+  const pz = shown ? powerZone(shown, ftp) : null // training zone of the 3 s power (Coggan)
+  const pzone = pz && (
+    <span style={{ color: pz.color }} title={`Power zone ${pz.n}: ${pz.name} (Coggan, % of FTP)`}>
+      {' '}
+      · Z{pz.n}
+    </span>
+  )
   const inWorkout = !!workout && (tel.elapsed_s ?? 0) < (tel.workout_duration_s ?? 0)
   return (
     <div className="im-power im-glass">
@@ -118,9 +128,13 @@ function PowerBlock({ tel, workout, ftp, sourceLabel }: ImmersiveProps) {
           <>
             target <b>{target} W</b>
             {sourceLabel && <span className="im-source"> {sourceLabel}</span>} · {wkg(shown, tel.rider_mass_kg)} W/kg
+            {pzone}
           </>
         ) : (
-          <>free ride · {wkg(shown, tel.rider_mass_kg)} W/kg</>
+          <>
+            free ride · {wkg(shown, tel.rider_mass_kg)} W/kg
+            {pzone}
+          </>
         )}
       </div>
       {target && zone && (
@@ -196,7 +210,8 @@ function ZoneBar({ power, target }: { power: number; target: number }) {
   )
 }
 
-function Tiles({ tel }: { tel: Telemetry }) {
+function Tiles({ tel, lthr }: { tel: Telemetry; lthr: number | null }) {
+  const hz = hrZone(tel.heart_rate_bpm, lthr)
   return (
     <div className="im-tiles">
       <div className="im-tile im-glass big">
@@ -212,8 +227,8 @@ function Tiles({ tel }: { tel: Telemetry }) {
         <b>{fmtTime(tel.elapsed_s)}</b>
       </div>
       <div className="im-tile im-glass hr">
-        <span className="im-label">HR</span>
-        <b>
+        <span className="im-label">{hz ? `HR · Z${hz.n}` : 'HR'}</span>
+        <b style={hz ? { color: hz.color } : undefined}>
           {tel.heart_rate_bpm ?? '—'}
           <span className="im-unit">bpm</span>
         </b>

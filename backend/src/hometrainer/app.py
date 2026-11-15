@@ -193,7 +193,12 @@ class AppState:
     ) -> dict:
         fname = f"{started:%Y%m%d-%H%M%S}-{mode}-{ride_key[:6]}.fit"
         p = self.profile
-        athlete = Athlete(ftp_w=p.ftp_w, weight_kg=p.rider_mass_kg, max_hr_bpm=p.max_hr_bpm)
+        athlete = Athlete(
+            ftp_w=p.ftp_w,
+            weight_kg=p.rider_mass_kg,
+            max_hr_bpm=p.max_hr_bpm,
+            threshold_hr_bpm=p.threshold_hr_bpm,
+        )
         path = rec.write_fit(self.storage.rides_dir / fname, athlete, workout_name or name)
         summary = rec.summary()
         rid = self.storage.add_ride(
