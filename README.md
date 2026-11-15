@@ -236,7 +236,8 @@ relative to the direction of travel `v_w` (headwind, negative = tailwind) and `v
 
 All parameters (CdA, Crr, η, wheel inertia, temperature, humidity, braking cap, curve
 points, look-ahead, target ramp rate) can be edited on the Profile page, which also previews
-steady-state speeds.
+steady-state speeds. Edits apply once saved: the page shows "Unsaved changes" until then, and
+leaving the tab asks Save / Discard / Stay (closing the page, the browser's own question).
 
 **Bike & position presets.** The Profile offers typical bikes and positions instead of the
 five bike parameters; *Custom* shows the fields (starting from the preset's values) to set

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type DeviceStatus, type Profile, type RouteDetail, type Workout } from './api'
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
+import type { ProfileGuard } from './profileDiff'
 import { SimulatorPanel } from './components/SimulatorPanel'
 import { FeedbackDialog } from './components/FeedbackDialog'
 import { UploadPrompt } from './components/UploadPrompt'
@@ -47,6 +48,29 @@ function Dot({ status, label }: { status?: DeviceStatus; label: string }) {
 export default function App() {
   const { tel, connected } = useLive()
   const [tab, setTab] = useState<Tab>('ride')
+  // leaving the Profile tab with unsaved edits: ask Save / Discard / Stay first
+  const profileGuard = useRef<ProfileGuard | null>(null)
+  const setProfileGuard = useCallback((g: ProfileGuard | null) => {
+    profileGuard.current = g
+  }, [])
+  const [leaveTo, setLeaveTo] = useState<Tab | null>(null)
+  const [leaveBusy, setLeaveBusy] = useState(false)
+  const goTab = (k: Tab) => {
+    if (tab === 'profile' && k !== 'profile' && profileGuard.current?.dirty) setLeaveTo(k)
+    else setTab(k)
+  }
+  const leave = (k: Tab) => {
+    setLeaveTo(null)
+    setTab(k)
+  }
+  const saveAndLeave = (k: Tab) => {
+    const g = profileGuard.current
+    if (!g) return leave(k)
+    setLeaveBusy(true)
+    g.save()
+      .then((ok) => (ok ? leave(k) : setLeaveTo(null))) // failed: stay, the error is shown
+      .finally(() => setLeaveBusy(false))
+  }
   const [profile, setProfile] = useState<Profile | null>(null)
   const [active, setActive] = useState<ActiveRide | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -166,7 +190,7 @@ export default function App() {
         <h1>Home Trainer</h1>
         <nav>
           {TABS.map(([k, label]) => (
-            <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+            <button key={k} className={tab === k ? 'active' : ''} onClick={() => goTab(k)}>
               {label}
             </button>
           ))}
@@ -224,7 +248,26 @@ export default function App() {
         {tab === 'workouts' && <WorkoutsPage profile={profile} canStart={!!hub} onStart={startWorkout} />}
         {tab === 'routes' && <RoutesPage canStart={!!hub} onStart={startRoute} />}
         {tab === 'history' && <HistoryPage />}
-        {tab === 'profile' && <ProfilePage onSaved={setProfile} devices={dev} />}
+        {tab === 'profile' && <ProfilePage onSaved={setProfile} devices={dev} onGuard={setProfileGuard} />}
+        {leaveTo && (
+          <div className="dialog-backdrop">
+            <div className="dialog" role="dialog" aria-label="Unsaved profile changes">
+              <h3>Unsaved profile changes</h3>
+              <p className="muted">They are not used until they are saved (FTP, weight, bike, devices…).</p>
+              <div className="dialog-actions">
+                <button disabled={leaveBusy} onClick={() => setLeaveTo(null)}>
+                  Stay
+                </button>
+                <button disabled={leaveBusy} onClick={() => leave(leaveTo)}>
+                  Discard
+                </button>
+                <button className="primary" disabled={leaveBusy} onClick={() => saveAndLeave(leaveTo)}>
+                  {leaveBusy ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

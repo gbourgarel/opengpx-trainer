@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { profileChanged, type ProfileGuard } from '../profileDiff'
 import { api, type BikePreset, type DeviceStatus, type Profile } from '../api'
 import { DevicesCard, type DeviceRole } from '../components/DevicesCard'
 
@@ -39,27 +40,63 @@ function steadySpeed(p: Profile, watts: number, grade: number) {
   return Math.min(lo * 3.6, p.max_speed_kmh)
 }
 
-export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => void; devices?: Record<DeviceRole, DeviceStatus> }) {
+export function ProfilePage({
+  onSaved,
+  devices,
+  onGuard,
+}: {
+  onSaved: (p: Profile) => void
+  devices?: Record<DeviceRole, DeviceStatus>
+  /** told the unsaved state while the page is shown, null when it goes away (App asks
+   * Save / Discard / Stay before leaving the tab) */
+  onGuard?: (g: ProfileGuard | null) => void
+}) {
   const [p, setP] = useState<Profile | null>(null)
+  const [saved, setSaved] = useState<Profile | null>(null) // last loaded / saved
   const [msg, setMsg] = useState<string | null>(null)
   const [presets, setPresets] = useState<BikePreset[]>([])
   const set: Setter = (k, v) => setP((prev) => (prev ? { ...prev, [k]: v } : prev))
   useEffect(() => {
-    api.getProfile().then(setP)
+    api.getProfile().then((np) => {
+      setP(np)
+      setSaved(np)
+    })
     api.bikePresets().then(setPresets).catch(() => {})
   }, [])
-  if (!p) return <p className="muted">Loading…</p>
+  const dirty = !!p && !!saved && profileChanged(p, saved)
 
-  const save = () =>
-    api
-      .putProfile(p)
-      .then((np) => {
-        setP(np)
-        onSaved(np)
-        setMsg(np.devices_note ? `Saved. ${np.devices_note}` : 'Saved')
-        setTimeout(() => setMsg(null), np.devices_note ? 6000 : 2000)
-      })
-      .catch((e) => setMsg(e.message))
+  const save = (): Promise<boolean> =>
+    p
+      ? api
+          .putProfile(p)
+          .then((np) => {
+            setP(np)
+            setSaved(np)
+            onSaved(np)
+            setMsg(np.devices_note ? `Saved. ${np.devices_note}` : 'Saved')
+            setTimeout(() => setMsg(null), np.devices_note ? 6000 : 2000)
+            return true
+          })
+          .catch((e: Error) => {
+            setMsg(e.message)
+            return false
+          })
+      : Promise.resolve(true)
+
+  // the app reads this before switching tabs; cleared when the page goes away
+  useEffect(() => {
+    onGuard?.({ dirty, save })
+  })
+  useEffect(() => () => onGuard?.(null), [onGuard])
+  // closing or reloading the page with unsaved edits: the browser asks (its own wording)
+  useEffect(() => {
+    if (!dirty) return
+    const ask = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', ask)
+    return () => window.removeEventListener('beforeunload', ask)
+  }, [dirty])
+
+  if (!p) return <p className="muted">Loading…</p>
 
   const curve = p.grade_curve
   const setCurve = (c: [number, number][]) => set('grade_curve', c)
@@ -236,9 +273,10 @@ export function ProfilePage({ onSaved, devices }: { onSaved: (p: Profile) => voi
       </div>
 
       <div className="toolbar sticky">
-        <button className="primary" onClick={save}>
+        <button className={`primary ${dirty ? 'unsaved' : ''}`} onClick={() => void save()}>
           Save profile
         </button>
+        {dirty && <span className="unsaved-note">Unsaved changes</span>}
         {msg && <span className="hint">{msg}</span>}
       </div>
     </div>

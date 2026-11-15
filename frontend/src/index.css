@@ -575,6 +575,14 @@ label.inline input {
 .field.check input {
   width: auto;
 }
+/* Profile: edits not saved yet */
+button.primary.unsaved {
+  box-shadow: 0 0 0 2px var(--warn, #f5a524);
+}
+.unsaved-note {
+  color: var(--warn, #f5a524);
+  font-size: 13px;
+}
 .fields + .fields {
   margin-top: 12px;
 }
