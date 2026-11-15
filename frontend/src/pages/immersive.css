@@ -77,6 +77,17 @@
   font-size: 16px;
   font-weight: 600;
   text-shadow: 0 1px 3px #000;
+  /* a long route / workout name is cut with "…" (full name in the tooltip), never pushes
+     the badges and buttons onto two lines */
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.im-top .badge,
+.im-top button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .im-top button {
   background: rgba(31, 36, 48, 0.85);
@@ -248,9 +259,16 @@
 .im-foot {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
   font-size: 11px;
   color: var(--muted);
   margin-top: 3px;
+}
+.im-foot-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* tiles, top right */

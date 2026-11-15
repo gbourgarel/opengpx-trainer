@@ -165,7 +165,7 @@ export function RidePage({
     <>
       <div className="ride-head">
         <div>
-          <h2>{tel.name}</h2>
+          <h2 title={tel.name}>{tel.name}</h2>
           <span className={`badge state-${tel.state}`}>{tel.state}</span>
           <span className="badge">{modeLabel}</span>
           {lap > 1 && <span className="badge">lap {lap}</span>}
@@ -267,7 +267,8 @@ export function RidePage({
               <div style={{ width: `${(split.aero / totalSplit) * 100}%` }} className="aero" />
             </div>
             <small>
-              gravity {split.gravity.toFixed(0)} W · rolling {split.rolling.toFixed(0)} W · aero {split.aero.toFixed(0)} W · ρ {tel.air_density?.toFixed(3)} kg/m³
+              <span className="nw">gravity {split.gravity.toFixed(0)} W</span> · <span className="nw">rolling {split.rolling.toFixed(0)} W</span> ·{' '}
+              <span className="nw">aero {split.aero.toFixed(0)} W</span> · <span className="nw">ρ {tel.air_density?.toFixed(3)} kg/m³</span>
             </small>
           </div>
         )}

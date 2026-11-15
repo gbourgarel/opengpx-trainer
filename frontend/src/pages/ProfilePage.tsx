@@ -151,8 +151,8 @@ export function ProfilePage({
         </div>
         {p.bike_preset === 'custom' && (
           <div className="fields">
-            <Num set={set} p={p} k="cda_m2" label="CdA (m²)" step={0.005} help="hoods ≈ 0.30–0.40 · drops ≈ 0.27–0.35 · TT ≈ 0.22–0.32" />
-            <Num set={set} p={p} k="crr" label="Crr" step={0.0005} help="good road tyres on real roads ≈ 0.004–0.005" />
+            <Num set={set} p={p} k="cda_m2" label="CdA (m²)" step={0.005} help={'hoods ≈ 0.30–⁠0.40 · drops ≈ 0.27–⁠0.35 · TT ≈ 0.22–⁠0.32'} />
+            <Num set={set} p={p} k="crr" label="Crr" step={0.0005} help={'good road tyres on real roads ≈ 0.004–⁠0.005'} />
             <Num set={set} p={p} k="drivetrain_efficiency" label="Drivetrain efficiency" step={0.001} help="clean chain ≈ 0.97–0.98" />
             <Num set={set} p={p} k="wheel_inertia_kg_m2" label="Wheel inertia, both (kg·m²)" step={0.01} />
             <Num set={set} p={p} k="wheel_diameter_m" label="Wheel diameter (m)" step={0.001} />

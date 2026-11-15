@@ -222,6 +222,9 @@ main {
   bottom: 0;
   background: var(--bg);
   padding: 10px 0;
+  /* no gap under the bar: the page would show through below it */
+  margin-bottom: 0;
+  border-top: 1px solid var(--grid);
 }
 .row {
   display: flex;
@@ -362,9 +365,31 @@ th {
   gap: 10px;
   flex-wrap: wrap;
 }
+/* title + badges on one line: a long name is cut with "…" (full name in the tooltip)
+   instead of pushing the pause / stop buttons onto another line */
+.ride-head > div:first-child {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
 .ride-head h2 {
-  display: inline;
-  margin-right: 10px;
+  margin: 0 10px 0 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ride-head .badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.ride-head .controls {
+  flex-shrink: 0;
+}
+/* keeps a value and its unit (or a short phrase) on one line */
+.nw {
+  white-space: nowrap;
 }
 .controls {
   display: flex;

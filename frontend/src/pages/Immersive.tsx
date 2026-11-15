@@ -58,7 +58,7 @@ export function Immersive(p: ImmersiveProps) {
       </Suspense>
 
       <div className="im-top">
-        <h2>{tel.name}</h2>
+        <h2 title={tel.name}>{tel.name}</h2>
         <span className={`badge state-${tel.state}`}>{tel.state}</span>
         <span className="badge">{workout ? 'GPX + workout' : 'GPX · Slope ERG'}</span>
         <span className="im-sp" />
@@ -128,12 +128,12 @@ function PowerBlock({ tel, workout, ftp, sourceLabel }: ImmersiveProps) {
         {target ? (
           <>
             target <b>{target} W</b>
-            {sourceLabel && <span className="im-source"> {sourceLabel}</span>} · {wkg(shown, tel.rider_mass_kg)} W/kg
+            {sourceLabel && <span className="im-source"> {sourceLabel}</span>} · <span className="nw">{wkg(shown, tel.rider_mass_kg)} W/kg</span>
             {pzone}
           </>
         ) : (
           <>
-            free ride · {wkg(shown, tel.rider_mass_kg)} W/kg
+            free ride · <span className="nw">{wkg(shown, tel.rider_mass_kg)} W/kg</span>
             {pzone}
           </>
         )}
@@ -173,8 +173,10 @@ function PowerBlock({ tel, workout, ftp, sourceLabel }: ImmersiveProps) {
             <WorkoutProfile steps={workout.steps} ftp={ftp} scale={(tel.intensity_pct ?? 100) / 100} elapsed={tel.elapsed_s} height={30} />
           </div>
           <div className="im-foot">
-            <span>{workout.name}</span>
-            <span>
+            <span className="im-foot-name" title={workout.name}>
+              {workout.name}
+            </span>
+            <span className="nw">
               {fmtTime(tel.elapsed_s)} / {fmtTime(workout.duration_s)}
               {tel.remaining_workout_distance_m != null && (
                 <span title={DIST_LEFT_TITLE}> · ≈ {(tel.remaining_workout_distance_m / 1000).toFixed(1)} km</span>

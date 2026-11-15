@@ -203,7 +203,14 @@ export function RoutesPage({
             <div className="card-head">
               <h3>{sel.name}</h3>
               <span className="muted">
-                {(sel.distance_m / 1000).toFixed(2)} km · +{sel.ascent_m.toFixed(0)} / −{sel.descent_m.toFixed(0)} m · {sel.min_altitude_m.toFixed(0)}–{sel.max_altitude_m.toFixed(0)} m
+                <span className="nw">{(sel.distance_m / 1000).toFixed(2)} km</span> ·{' '}
+                <span className="nw">
+                  +{sel.ascent_m.toFixed(0)} / −{sel.descent_m.toFixed(0)} m
+                </span>{' '}
+                ·{' '}
+                <span className="nw">
+                  {sel.min_altitude_m.toFixed(0)}–{sel.max_altitude_m.toFixed(0)} m
+                </span>
               </span>
               {estimate && (
                 <span
@@ -338,27 +345,31 @@ export function HistoryPage() {
               <td>
                 {r.avg_power_w?.toFixed(0)} / {r.summary.normalized_power_w?.toFixed(0) ?? '—'} W
               </td>
-              <td className="row-end">
-                <a className="button ghost" href={`/api/rides/${r.id}/fit`}>
-                  .fit
-                </a>
-                {r.intervals_activity_id ? (
-                  <span className="muted">uploaded</span>
-                ) : (
-                  <button
-                    onClick={() =>
-                      api
-                        .uploadRide(r.id)
-                        .then(() => {
-                          setMsg('Uploaded to intervals.icu')
-                          reload()
-                        })
-                        .catch((e) => setMsg(e.message))
-                    }
-                  >
-                    Upload
-                  </button>
-                )}
+              <td>
+                {/* flex inside the cell, not on it: a flex td leaves the table layout and
+                    loses the row border */}
+                <div className="row-end">
+                  <a className="button ghost" href={`/api/rides/${r.id}/fit`}>
+                    .fit
+                  </a>
+                  {r.intervals_activity_id ? (
+                    <span className="muted">uploaded</span>
+                  ) : (
+                    <button
+                      onClick={() =>
+                        api
+                          .uploadRide(r.id)
+                          .then(() => {
+                            setMsg('Uploaded to intervals.icu')
+                            reload()
+                          })
+                          .catch((e) => setMsg(e.message))
+                      }
+                    >
+                      Upload
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
