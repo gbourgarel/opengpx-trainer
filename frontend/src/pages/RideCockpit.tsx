@@ -264,7 +264,8 @@ export function RideCockpit({ c }: { c: RideCtx }) {
   return (
     <div className="ride ride-fit cockpit">
       {c.head}
-      <div className="ck-main">
+      {/* ERG: no route cards, the session and the dial take the whole width */}
+      <div className={`ck-main ${c.route ? '' : 'ck-solo'}`}>
         <div className="ck-left">
           <SessionCard c={c} />
           <div className="card ck-dial-card">
@@ -287,11 +288,13 @@ export function RideCockpit({ c }: { c: RideCtx }) {
             </div>
           </div>
         </div>
-        <div className="ck-side">
-          <AheadCard c={c} />
-          <RouteProgressCard c={c} />
-          <MapCard c={c} />
-        </div>
+        {c.route && (
+          <div className="ck-side">
+            <AheadCard c={c} />
+            <RouteProgressCard c={c} />
+            <MapCard c={c} />
+          </div>
+        )}
       </div>
       <div className="ck-bottom">{c.controls}</div>
     </div>
