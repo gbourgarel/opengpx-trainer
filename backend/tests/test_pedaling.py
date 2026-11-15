@@ -470,18 +470,25 @@ def test_fit_has_the_totals_a_head_unit_writes(tmp_path):
 def test_ride_feedback_changes_only_rpe_and_feel(tmp_path):
     path = rich_recorder().write_fit(tmp_path / "ride.fit")
     before = fit_content(path)
-    write_ride_feedback(path, rpe=7, feel=75)
+    write_ride_feedback(path, rpe=7, feel=75, carbs_g=50, water_ml=375)
     after = fit_content(path)
     assert len(after) == len(before)
     assert any(devs for _, _, devs in after)  # target_power developer field still there
     for (gid, vals, devs), (gid2, vals2, devs2) in zip(before, after, strict=True):
         assert (gid, devs) == (gid2, devs2)
-        if gid == 18:  # session: RPE stored x 10, feel 0-100 (as a Garmin Edge does)
-            assert vals2 == {**vals, 193: [70], 192: [75]}
+        if gid == 18:
+            # as an Edge 540 writes them: RPE x 10, feel 0-100, carbs as kcal (50 g -> 200,
+            # undocumented field 177), water in ml (undocumented field 179)
+            assert vals2 == {**vals, 193: [70], 192: [75], 177: [200], 179: [375]}
         else:
             assert vals == vals2
+    write_ride_feedback(path, rpe=3, feel=None, carbs_g=60, water_ml=None)  # changed again
+    ses = next(vals for gid, vals, _ in fit_content(path) if gid == 18)
+    assert (ses[193], ses.get(192), ses[177], ses.get(179)) == ([30], None, [240], None)
     write_ride_feedback(path, rpe=None, feel=None)  # cleared again
     assert fit_content(path) == before
+    with pytest.raises(ValueError):
+        write_ride_feedback(path, rpe=None, feel=None, carbs_g=-1)
     with pytest.raises(ValueError):
         write_ride_feedback(path, rpe=11, feel=None)
     with pytest.raises(ValueError):

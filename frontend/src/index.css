@@ -434,6 +434,18 @@ th {
 .dialog .seg.rpe button {
   min-width: 38px;
 }
+.dialog-row.fuel {
+  flex-direction: row;
+  gap: 16px;
+}
+.dialog-row.fuel label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dialog-row.fuel input {
+  width: 140px;
+}
 .dialog-actions {
   display: flex;
   justify-content: flex-end;

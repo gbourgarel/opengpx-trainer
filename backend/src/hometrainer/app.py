@@ -25,7 +25,7 @@ from .ble.scan import scan_ble
 from .checkpoint import RideCheckpoint, load_checkpoint
 from .gpx.route import Route
 from .profile import BIKE_PRESETS, Profile, ProfileError
-from .recording import Athlete, Recorder, write_ride_feedback
+from .recording import MAX_CARBS_G, MAX_WATER_ML, Athlete, Recorder, write_ride_feedback
 from .sensors import MultiHub
 from .session import RideSession, choose_power, w_per_kg
 from .storage import Storage
@@ -235,6 +235,8 @@ class StartBody(BaseModel):
 class FeedbackBody(BaseModel):
     rpe: int | None = Field(None, ge=1, le=10)
     feel: int | None = None  # 0, 25, 50, 75 or 100 (checked by write_ride_feedback)
+    carbs_g: int | None = Field(None, ge=0, le=MAX_CARBS_G)  # carbohydrates eaten
+    water_ml: int | None = Field(None, ge=0, le=MAX_WATER_ML)  # water drunk
 
 
 class AdjustBody(BaseModel):
@@ -659,10 +661,12 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         if not r or not r["fit_path"] or not Path(r["fit_path"]).exists():
             raise HTTPException(404, "Ride not found")
         try:
-            write_ride_feedback(Path(r["fit_path"]), body.rpe, body.feel)
+            write_ride_feedback(
+                Path(r["fit_path"]), body.rpe, body.feel, body.carbs_g, body.water_ml
+            )
         except ValueError as e:
             raise HTTPException(422, str(e)) from e
-        st.storage.set_ride_feedback(ride_id, body.rpe, body.feel)
+        st.storage.set_ride_feedback(ride_id, body.rpe, body.feel, body.carbs_g, body.water_ml)
         return {"ok": True, "uploaded": bool(r["intervals_activity_id"])}
 
     @app.post("/api/rides/{ride_id}/upload")

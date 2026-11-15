@@ -11,6 +11,7 @@ from pathlib import Path
 from fit_tool.base_type import BaseType
 from fit_tool.data_message import DataMessage
 from fit_tool.developer_field import DeveloperField
+from fit_tool.field import Field
 from fit_tool.fit_file import FitFile
 from fit_tool.fit_file_builder import FitFileBuilder
 from fit_tool.profile.messages.activity_message import ActivityMessage
@@ -624,10 +625,32 @@ def ride_start_s(first: Sample) -> float:
 # 21.141; checked on an Edge 540 file): feel on 0-100 in five levels, RPE 1-10 stored x 10.
 FEEL_LEVELS = (0, 25, 50, 75, 100)  # very weak, weak, normal, strong, very strong
 _FEEL_FIELD, _RPE_FIELD = 192, 193
+# What was eaten and drunk, as the Edge 540 writes it (undocumented session fields, uint16):
+# 177 = energy eaten in kcal (50 g of carbohydrates entered -> 200), 179 = water in ml
+# (375 entered -> 375). Checked on the user's original file from Garmin Connect (2026-11-15;
+# the intervals.icu copy is stripped of these fields). intervals.icu reads 177 as
+# carbohydrates ingested (kcal / 4); 179 through a custom field ("Fluids in").
+_CALORIES_EATEN_FIELD, _WATER_FIELD = 177, 179
+KCAL_PER_G_CARBS = 4.0
+MAX_CARBS_G, MAX_WATER_ML = 1000, 10000
 
 
-def write_ride_feedback(path: Path, rpe: int | None, feel: int | None) -> None:
-    """Set (or clear, with None) the RPE and feel of a FIT activity written by `write_fit`.
+def _uint16_field(field_id: int, name: str, value: int) -> Field:
+    """A session field the FIT profile does not document (fit_tool does not know it)."""
+    f = Field(field_id=field_id, name=name, base_type=BaseType.UINT16, size=2)
+    f.set_value(0, value)
+    return f
+
+
+def write_ride_feedback(
+    path: Path,
+    rpe: int | None,
+    feel: int | None,
+    carbs_g: int | None = None,
+    water_ml: int | None = None,
+) -> None:
+    """Set (or clear, with None) what the rider tells after a ride, in a FIT activity
+    written by `write_fit`: RPE, feel, carbohydrates eaten and water drunk.
 
     The file is read and rebuilt message by message (developer fields kept); only the
     session message changes. Written to a temporary file then renamed, so a reader (upload,
@@ -637,6 +660,11 @@ def write_ride_feedback(path: Path, rpe: int | None, feel: int | None) -> None:
         raise ValueError("RPE must be 1-10")
     if feel is not None and feel not in FEEL_LEVELS:
         raise ValueError(f"feel must be one of {FEEL_LEVELS}")
+    if carbs_g is not None and not 0 <= carbs_g <= MAX_CARBS_G:
+        raise ValueError(f"carbohydrates must be 0-{MAX_CARBS_G} g")
+    if water_ml is not None and not 0 <= water_ml <= MAX_WATER_ML:
+        raise ValueError(f"water must be 0-{MAX_WATER_ML} ml")
+    ours = (_FEEL_FIELD, _RPE_FIELD, _CALORIES_EATEN_FIELD, _WATER_FIELD)
     ff = FitFile.from_file(str(path))
     b = FitFileBuilder(auto_define=True, min_string_size=50)
     for rec in ff.records:
@@ -648,12 +676,18 @@ def write_ride_feedback(path: Path, rpe: int | None, feel: int | None) -> None:
             # into a fresh one, which can take the new fields
             ses = SessionMessage()
             for f in m.fields:
-                if f.is_valid() and f.field_id not in (_FEEL_FIELD, _RPE_FIELD):
-                    ses.get_field(f.field_id).set_values(f.get_values())
+                target = ses.get_field(f.field_id)
+                if f.is_valid() and f.field_id not in ours and target is not None:
+                    target.set_values(f.get_values())
             if rpe is not None:
                 ses.workout_rpe = rpe * 10
             if feel is not None:
                 ses.workout_feel = feel
+            if carbs_g is not None:  # stored as energy, like the Edge: 4 kcal per gram
+                kcal = int(round(carbs_g * KCAL_PER_G_CARBS))
+                ses.fields.append(_uint16_field(_CALORIES_EATEN_FIELD, "calories_eaten", kcal))
+            if water_ml is not None:
+                ses.fields.append(_uint16_field(_WATER_FIELD, "fluid_consumed", water_ml))
             m = ses
         b.add(m)
     tmp = path.with_suffix(".fit.tmp")

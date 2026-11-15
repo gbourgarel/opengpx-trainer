@@ -24,19 +24,25 @@ const FEELS: [number, string][] = [
   [100, 'Very strong'],
 ]
 
-/** After a ride is saved: "How was it?" (RPE and feel, both optional), written into the FIT
- * file before it may be uploaded. Skip leaves the file as it is. */
+/** After a ride is saved: "How was it?" (RPE, feel, carbohydrates and water, all optional),
+ * written into the FIT file before it may be uploaded. Skip leaves the file as it is. */
 export function FeedbackDialog({ rideId, name, onDone }: { rideId: number; name?: string; onDone: () => void }) {
   const [rpe, setRpe] = useState<number | null>(null)
   const [feel, setFeel] = useState<number | null>(null)
+  const [carbs, setCarbs] = useState('') // g, as typed
+  const [water, setWater] = useState('') // ml, as typed
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const amount = (s: string) => (s.trim() === '' ? null : Math.round(Number(s)))
 
   const save = () => {
-    if (rpe == null && feel == null) return onDone()
+    const carbs_g = amount(carbs)
+    const water_ml = amount(water)
+    if (rpe == null && feel == null && carbs_g == null && water_ml == null) return onDone()
+    if ([carbs_g, water_ml].some((v) => v != null && !(v >= 0))) return setError('amounts must be numbers ≥ 0')
     setBusy(true)
     api
-      .rideFeedback(rideId, { rpe, feel })
+      .rideFeedback(rideId, { rpe, feel, carbs_g, water_ml })
       .then(onDone)
       .catch((e: Error) => {
         setError(e.message)
@@ -74,6 +80,17 @@ export function FeedbackDialog({ rideId, name, onDone }: { rideId: number; name?
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="dialog-row fuel">
+          <label>
+            <span className="dialog-label">Carbohydrates eaten (g)</span>
+            <input type="number" min={0} step={5} inputMode="numeric" value={carbs} onChange={(e) => setCarbs(e.target.value)} />
+          </label>
+          <label>
+            <span className="dialog-label">Water drunk (ml)</span>
+            <input type="number" min={0} step={50} inputMode="numeric" value={water} onChange={(e) => setWater(e.target.value)} />
+          </label>
         </div>
 
         {error && <p className="error-inline">Not saved: {error}</p>}

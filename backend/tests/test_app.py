@@ -267,10 +267,11 @@ def test_ride_feedback_is_written_to_fit_and_history(client):
             s.recorder.add(Sample(1.8e9 + i, i + 1.0, 200, 90, 140, 9.0, 9.0 * i))
     rid = client.post("/api/session/stop").json()["saved"]["ride_id"]
 
-    r = client.put(f"/api/rides/{rid}/feedback", json={"rpe": 6, "feel": 25})
+    body = {"rpe": 6, "feel": 25, "carbs_g": 50, "water_ml": 375}
+    r = client.put(f"/api/rides/{rid}/feedback", json=body)
     assert r.status_code == 200 and r.json() == {"ok": True, "uploaded": False}
     summary = client.get("/api/rides").json()[0]["summary"]
-    assert (summary["rpe"], summary["feel"]) == (6, 25)
+    assert {k: summary[k] for k in body} == body
     path = client.st.storage.get_ride(rid)["fit_path"]
     ses = [
         rec.message

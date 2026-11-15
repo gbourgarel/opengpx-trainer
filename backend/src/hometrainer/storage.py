@@ -199,13 +199,21 @@ class Storage:
         r = self._exec("SELECT * FROM rides WHERE id=?", (ride_id,)).fetchone()
         return dict(r) if r else None
 
-    def set_ride_feedback(self, ride_id: int, rpe: int | None, feel: int | None) -> None:
-        """RPE / feel of a ride, kept in its summary (shown with the history)."""
+    def set_ride_feedback(
+        self,
+        ride_id: int,
+        rpe: int | None,
+        feel: int | None,
+        carbs_g: int | None = None,
+        water_ml: int | None = None,
+    ) -> None:
+        """What the rider told after a ride (RPE, feel, carbohydrates, water), kept in its
+        summary (shown with the history)."""
         r = self.get_ride(ride_id)
         if r is None:
             return
         summary = json.loads(r["summary"] or "{}")
-        summary.update(rpe=rpe, feel=feel)
+        summary.update(rpe=rpe, feel=feel, carbs_g=carbs_g, water_ml=water_ml)
         self._exec("UPDATE rides SET summary=? WHERE id=?", (json.dumps(summary), ride_id))
 
     def set_ride_intervals_id(self, ride_id: int, activity_id: str) -> None:
