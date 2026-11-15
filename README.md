@@ -261,7 +261,13 @@ leaving the tab asks Save / Discard / Stay (closing the page, the browser's own 
 direction and, with a workout, the distance covered during it (the route loops). Same
 equation of motion as the ride (`VirtualBike.accel`), integrated along the distance in 10 m
 steps with an energy balance, `v_out² = v_in² + 2·a(v_mid)·L` (`L`: road length of the step),
-so momentum carries over grade changes; the target goes through the same ramp limiter. It
+so momentum carries over grade changes; the target goes through the same ramp limiter.
+**During a GPX ride** the same estimate runs from the ride's state (position, speed, wind, air)
+with its current settings: Slope ERG at the current effort, or the manual target, gives the
+time left to the end of the route (`≈ 20:51` after "Left" in the progress block); a workout
+running gives the distance left before it ends, its steps at the current intensity
+(`≈ 20.8 km to go` under the workout profile). Recomputed off the engine loop every 10 s of
+riding and at once on any settings change, counted down in between. It
 stays within 0.4 % of the ride's own time integration on the sample route (both directions)
 and a 15 km descent, in ~2 ms per km instead of ~50 ms. Not modelled: a rider missing the
 targets, pauses.

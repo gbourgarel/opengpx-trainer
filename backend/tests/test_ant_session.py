@@ -295,6 +295,81 @@ def test_session_records_the_workout_step_of_each_sample(monkeypatch):
     assert len(laps[1]) >= 9
 
 
+def _gpx_ride(workout=None):
+    from hometrainer.gpx.route import Route
+    from tests.test_gpx_workouts import make_gpx
+
+    route = Route.from_gpx(make_gpx(n=400, grade=0.03))  # ~4.4 km at 3 %
+    h = FakeHub()
+    s = RideSession(h, Profile(power_match=False), "gpx", route=route, workout=workout)
+    return h, s
+
+
+def _run(h, s, seconds, t0, watts=None):
+    t = t0
+    for _ in range(int(seconds * 4)):
+        h.feed(
+            trainer=watts or s.requested_target_w or 200, pm=watts or s.requested_target_w or 200
+        )
+        t += 0.25
+        s.tick(t)
+    return t
+
+
+def test_live_estimate_counts_down_and_follows_the_settings():
+    h, s = _gpx_ride()
+    job = s.remaining_job()
+    assert job is not None and s.remaining_job() is None  # one at a time
+    s.set_remaining(job())
+    t = _run(h, s, 5, 1000.0)
+    first = s.tick(t)["remaining_time_s"]
+    assert 0 < first < 3600
+    # not due again before 10 s of riding, then recomputed; in between, counted down
+    assert s.remaining_job() is None
+    t = _run(h, s, 6, t)
+    s.set_remaining(s.remaining_job()())
+    t = _run(h, s, 1, t)
+    a = s.tick(t)["remaining_time_s"]
+    t = _run(h, s, 3, t)
+    b = s.tick(t)["remaining_time_s"]
+    assert s.remaining_job() is None and 2 <= a - b <= 4
+    # a higher effort: recomputed at once, and sooner at the end
+    s.adjust(effort_pct=130)
+    job = s.remaining_job()
+    assert job is not None
+    s.set_remaining(job())
+    assert s.tick(t + 0.25)["remaining_time_s"] < b
+    # set by hand: the manual target is used
+    s.adjust(manual_target_w=400)
+    s.set_remaining(s.remaining_job()())
+    fast = s.tick(t + 0.5)["remaining_time_s"]
+    s.adjust(manual_target_w=120)
+    s.set_remaining(s.remaining_job()())
+    assert s.tick(t + 0.75)["remaining_time_s"] > fast
+
+
+def test_live_estimate_with_a_workout_is_the_distance_before_it_ends():
+    w = Workout("w", [Step(60, 0.6, 0.6), Step(60, 1.0, 1.0)])
+    h, s = _gpx_ride(w)
+    s.set_remaining(s.remaining_job()())
+    tel = s.tick(1000.0)
+    assert "remaining_time_s" not in tel
+    d0 = tel["remaining_workout_distance_m"]
+    assert 500 < d0 < 2000  # 2 min at ~150-250 W
+    t = _run(h, s, 30, 1000.0)
+    d1 = s.tick(t)["remaining_workout_distance_m"]
+    assert d1 < d0
+    # a harder workout: more distance before it ends
+    s.adjust(intensity_pct=130)
+    s.set_remaining(s.remaining_job()())
+    assert s.tick(t + 0.25)["remaining_workout_distance_m"] > d1
+    # workout over: back to the time to the end of the lap
+    t = _run(h, s, 95, t)
+    assert s.workout_done
+    s.set_remaining(s.remaining_job()())
+    assert "remaining_time_s" in s.tick(t + 0.25)
+
+
 def test_simulator_manual_power_and_pm_dropout():
     from hometrainer.ant.simulator import SimulatedHub
 

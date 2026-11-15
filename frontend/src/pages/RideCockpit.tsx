@@ -10,6 +10,7 @@ import { ElevationProfile, LocalProfile, WorkoutProfile } from '../components/ch
 import { RouteMap } from '../components/RouteMap'
 import { WindBadge } from '../components/Wind'
 import { targetZone, type TargetZone } from '../targetZone'
+import { DIST_LEFT_TITLE, TIME_LEFT_TITLE } from '../liveEstimate'
 import { hrZone, powerZone } from '../zones'
 import { Metric } from './RidePage'
 import './ride-cockpit.css'
@@ -176,6 +177,9 @@ function SessionCard({ c }: { c: RideCtx }) {
       <WorkoutProfile steps={c.workout.steps} ftp={c.ftp} scale={(t.intensity_pct ?? 100) / 100} elapsed={t.elapsed_s} height={64} />
       <small className="muted">
         {fmtTime(t.elapsed_s)} / {fmtTime(c.workout.duration_s)}
+        {t.remaining_workout_distance_m != null && (
+          <span title={DIST_LEFT_TITLE}> · ≈ {(t.remaining_workout_distance_m / 1000).toFixed(1)} km to go</span>
+        )}
       </small>
     </div>
   )
@@ -217,6 +221,12 @@ function RouteProgressCard({ c }: { c: RideCtx }) {
         <span>
           <i>Left{c.workout ? ' (lap)' : ''}</i> <b>{c.remainingDist != null ? (c.remainingDist / 1000).toFixed(2) : '—'}</b> km ·{' '}
           <b>{t.elevation_left_m != null ? t.elevation_left_m.toFixed(0) : '—'}</b> m
+          {t.remaining_time_s != null && (
+            <>
+              {' '}
+              · <b title={TIME_LEFT_TITLE}>≈ {fmtTime(t.remaining_time_s)}</b>
+            </>
+          )}
         </span>
       </div>
       <div className="ck-profile-wrap">

@@ -55,18 +55,27 @@ def _ride(
     wind_kmh: float,
     wind_from_deg: float,
     duration_s: float | None = None,
+    start_m: float = 0.0,
+    start_speed_ms: float = 0.0,
+    start_target_w: float | None = None,
 ) -> Estimate:
-    """Ride the route once (``duration_s`` None) or, looping, for ``duration_s``."""
+    """Ride from ``start_m`` (position on a lap) at ``start_speed_ms`` to the end of that
+    lap (``duration_s`` None), or, looping, for ``duration_s``. ``target`` gets the time since
+    the start of the estimate. ``start_target_w``: the ramp limiter's current value."""
     bike = VirtualBike(profile.model_params())  # only its acceleration is used
     vmax = bike.params.max_speed_ms
     scale = 1.0 + profile.speed_power_scale_pct / 100.0
     wind_ms = wind_kmh / 3.6
     limiter = RateLimiter(profile.target_ramp_w_per_s)
     total = route.total_distance_m
-    t = pos = v = 0.0  # pos: position on the current lap
+    t = 0.0
+    pos = min(max(start_m, 0.0), total)  # position on the current lap
+    v = max(start_speed_ms, 0.0)
     laps = 0
     last_dt = 0.0
-    limiter.value = target(0.0, 0.0)[0]
+    limiter.value = target(0.0, pos)[0] if start_target_w is None else start_target_w
+    if pos >= total - 1e-6:
+        laps, pos = 1, 0.0  # already at the end of the lap
     while True:
         if duration_s is None and laps >= 1:
             break
@@ -105,7 +114,7 @@ def _ride(
             pos = 0.0
         v = v_out
         last_dt = dt
-    covered = laps * total + pos
+    covered = laps * total + pos - min(max(start_m, 0.0), total)
     return Estimate(duration_s=t, distance_m=covered, laps=covered / total)
 
 
@@ -147,3 +156,57 @@ def estimate_workout_on_route(
         return curve.target_watts(g, profile.ftp_w, effort_pct / 100.0), True
 
     return _ride(route, profile, target, wind_kmh, wind_from_deg, workout.duration_s)
+
+
+@dataclass(frozen=True)
+class RideState:
+    """What the live estimate needs from a ride in progress (a snapshot: the estimate runs
+    off the engine loop, on its own copy)."""
+
+    route: Route
+    profile: Profile  # the ride's (its own air, e.g. today's weather)
+    position_m: float  # on the current lap
+    speed_ms: float
+    elapsed_s: float  # riding time
+    target_w: float  # the ramp limiter's current value
+    wind_kmh: float
+    wind_from_deg: float
+    effort_pct: float
+    manual_w: float | None  # set when the target is set by hand
+    workout: Workout | None  # None, or over: ride to the end of the lap
+    intensity_pct: float = 100.0
+
+
+@dataclass(frozen=True)
+class Remaining:
+    kind: str  # "time": to the end of the route (lap); "distance": before the workout ends
+    value: float  # s or m
+
+
+def estimate_remaining(s: RideState) -> Remaining:
+    """From the ride's state, with its current settings: Slope ERG at the current effort, or
+    the manual target, to the end of the route (time); a workout running: its steps left at
+    the current intensity (free-ride steps in Slope ERG), the distance before it ends."""
+    curve = s.profile.grade_power_curve()
+    ftp = s.profile.ftp_w
+
+    def slope(pos: float) -> tuple[float, bool]:
+        g = s.route.mean_grade(pos, curve.lookahead_m)
+        return curve.target_watts(g, ftp, s.effort_pct / 100.0), True
+
+    def target(t: float, pos: float) -> tuple[float, bool]:
+        if s.manual_w is not None:
+            return s.manual_w, False
+        if s.workout is not None:
+            w = s.workout.target_watts(s.elapsed_s + t, ftp)
+            if w is not None:
+                return w * s.intensity_pct / 100.0, False
+        return slope(pos)
+
+    common = dict(start_m=s.position_m, start_speed_ms=s.speed_ms, start_target_w=s.target_w)
+    if s.workout is not None:
+        left = max(0.0, s.workout.duration_s - s.elapsed_s)
+        est = _ride(s.route, s.profile, target, s.wind_kmh, s.wind_from_deg, left, **common)
+        return Remaining("distance", est.distance_m)
+    est = _ride(s.route, s.profile, target, s.wind_kmh, s.wind_from_deg, **common)
+    return Remaining("time", est.duration_s)

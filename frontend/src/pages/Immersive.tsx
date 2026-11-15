@@ -16,6 +16,7 @@ import { wakesRideControls } from '../rideKeys'
 import { WindBadge } from '../components/Wind'
 import { ATTRIBUTION } from '../scenery/tiles'
 import { targetZone, type TargetZone } from '../targetZone'
+import { DIST_LEFT_TITLE, TIME_LEFT_TITLE } from '../liveEstimate'
 import { hrZone, powerZone } from '../zones'
 import './immersive.css'
 
@@ -175,6 +176,9 @@ function PowerBlock({ tel, workout, ftp, sourceLabel }: ImmersiveProps) {
             <span>{workout.name}</span>
             <span>
               {fmtTime(tel.elapsed_s)} / {fmtTime(workout.duration_s)}
+              {tel.remaining_workout_distance_m != null && (
+                <span title={DIST_LEFT_TITLE}> · ≈ {(tel.remaining_workout_distance_m / 1000).toFixed(1)} km</span>
+              )}
             </span>
           </div>
         </>
@@ -260,6 +264,12 @@ function RouteBlock({ tel, route, workout, routePos, remainingDist, doneIdx }: I
           </span>
           <span title={workout ? 'left in this lap (the route loops while the workout lasts)' : 'left to the end of the route'}>
             left <b>{remainingDist != null ? (remainingDist / 1000).toFixed(1) : '—'}</b> km · <b>+{Math.round(tel.elevation_left_m ?? 0)}</b> m
+            {tel.remaining_time_s != null && (
+              <>
+                {' '}
+                · <b title={TIME_LEFT_TITLE}>≈ {fmtTime(tel.remaining_time_s)}</b>
+              </>
+            )}
           </span>
         </div>
         <div className="im-route-svg">

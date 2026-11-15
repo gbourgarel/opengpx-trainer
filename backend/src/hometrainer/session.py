@@ -20,10 +20,12 @@ the ERG target sent to the trainer is corrected so that the *power meter* reads 
 
 from __future__ import annotations
 
+import copy
 import math
 import time
 import uuid
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -31,6 +33,7 @@ from typing import Literal
 from .ant.hub import STALE_AFTER_S, Readings, SensorHub
 from .checkpoint import RideCheckpoint
 from .gpx.route import Route
+from .physics.estimate import Remaining, RideState, estimate_remaining
 from .physics.grade_power import RateLimiter
 from .physics.model import VirtualBike, flat_road, no_wind
 from .profile import Profile
@@ -265,6 +268,13 @@ class RideSession:
         self.requested_target_w: float | None = None
         self.sent_target_w: float | None = None
         self.last: dict = {}
+        # live estimate (GPX rides): computed off the engine loop from a snapshot (see
+        # remaining_job), counted down between two computations
+        self._remaining: Remaining | None = None
+        self._remaining_from = (0.0, 0.0)  # (riding time, distance) of its snapshot
+        self._remaining_sig: tuple | None = None
+        self._remaining_elapsed = -math.inf
+        self.remaining_busy = False
         self.attach_hub(hub)
 
     def attach_hub(self, hub: SensorHub) -> None:
@@ -367,6 +377,71 @@ class RideSession:
         if self.route is None:
             return 0.0
         return self.bike.state.distance_m % self.route.total_distance_m
+
+    # -- live estimate -----------------------------------------------------------------
+    REMAINING_EVERY_S = 10.0  # riding time between two computations, settings unchanged
+
+    def remaining_job(self) -> Callable[[], Remaining] | None:
+        """When the live estimate is due (settings changed, or ``REMAINING_EVERY_S`` of riding
+        since the last one), a function computing it from a snapshot of the ride: to be run
+        off the engine loop, its result given to ``set_remaining``. None otherwise."""
+        if self.route is None or self.remaining_busy:
+            return None
+        if self.state not in ("ready", "running", "paused"):
+            return None
+        workout = self.workout if self.workout is not None and not self.workout_done else None
+        manual = self.target_mode == "manual" and self.manual_target_w is not None
+        sig = (
+            self.target_mode,
+            self.manual_target_w if manual else None,
+            self.effort_pct,
+            self.intensity_pct,
+            self.workout_rev,
+            workout is None,
+            self._lap,
+        )
+        if sig == self._remaining_sig and (
+            self.elapsed_s - self._remaining_elapsed < self.REMAINING_EVERY_S
+        ):
+            return None
+        st = self.bike.state
+        state = RideState(
+            route=self.route,
+            profile=self.profile,
+            position_m=self.route_position_m,
+            speed_ms=st.speed_ms,
+            elapsed_s=self.elapsed_s,
+            target_w=self.limiter.value if self.limiter.value is not None else 0.0,
+            wind_kmh=self.wind_kmh,
+            wind_from_deg=self.wind_from_deg,
+            effort_pct=self.effort_pct,
+            manual_w=self.manual_target_w if manual else None,
+            workout=copy.deepcopy(workout),  # the rider may skip / extend steps meanwhile
+            intensity_pct=self.intensity_pct,
+        )
+        self.remaining_busy = True
+        self._remaining_sig = sig
+        self._remaining_elapsed = self.elapsed_s
+        self._remaining_pending_from = (self.elapsed_s, st.distance_m)
+        return lambda: estimate_remaining(state)
+
+    def set_remaining(self, rem: Remaining | None) -> None:
+        """Result of a ``remaining_job`` (None: it failed; the next one is due in 10 s)."""
+        self.remaining_busy = False
+        if rem is not None:
+            self._remaining = rem
+            self._remaining_from = self._remaining_pending_from
+
+    def _remaining_telemetry(self) -> dict:
+        """The last estimate, counted down by the riding time / distance since its snapshot."""
+        rem = self._remaining
+        if rem is None:
+            return {}
+        t0, d0 = self._remaining_from
+        if rem.kind == "time":
+            return {"remaining_time_s": round(max(0.0, rem.value - (self.elapsed_s - t0)))}
+        left = rem.value - (self.bike.state.distance_m - d0)
+        return {"remaining_workout_distance_m": round(max(0.0, left))}
 
     @property
     def workout_done(self) -> bool:
@@ -570,6 +645,7 @@ class RideSession:
             "effort_pct": self.effort_pct,
             "target_mode": self.target_mode,
             "manual_target_w": self.manual_target_w,
+            **self._remaining_telemetry(),
         }
         if point is not None:
             out.update(

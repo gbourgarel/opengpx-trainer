@@ -228,3 +228,42 @@ def test_estimate_follows_effort_wind_and_workout():
     e = estimate_workout_on_route(r, p, w)
     assert e.duration_s == pytest.approx(1800)
     assert e.laps > 2 and e.distance_m == pytest.approx(e.laps * r.total_distance_m)
+
+
+def test_live_estimate_from_the_start_is_the_route_estimate():
+    """estimate_remaining from standstill at the start = estimate_route; from half way at
+    the steady speed, the closed form; with a workout, the workout estimate's distance."""
+    from hometrainer.physics.estimate import (
+        RideState,
+        estimate_remaining,
+        estimate_route,
+        estimate_workout_on_route,
+    )
+    from hometrainer.profile import Profile
+    from hometrainer.workouts.model import Step, Workout
+
+    p = Profile()
+    r = _route(0.04, km=6)
+    curve = p.grade_power_curve()
+    start_w = curve.target_watts(r.mean_grade(0, curve.lookahead_m), p.ftp_w)
+
+    def state(pos, v, **kw):
+        base = dict(route=r, profile=p, position_m=pos, speed_ms=v, elapsed_s=0.0)
+        base.update(target_w=start_w, wind_kmh=0, wind_from_deg=0, effort_pct=100)
+        base.update(manual_w=None, workout=None)
+        return RideState(**{**base, **kw})
+
+    whole = estimate_route(r, p).duration_s
+    rem = estimate_remaining(state(0.0, 0.0))
+    assert rem.kind == "time" and rem.value == pytest.approx(whole, rel=1e-6)
+    half = r.total_distance_m / 2
+    m = SpeedModel(p.model_params())
+    v = m.steady_speed(start_w, 0.04, m.rho(r.altitude_at(half)))
+    # constant grade, already at the steady speed: (half length / cos) / v, no standing start
+    closed = half * math.hypot(1, 0.04) / v
+    assert estimate_remaining(state(half, v)).value == pytest.approx(closed, rel=0.005)
+    # a workout from its start: the distance the workout estimate covers
+    w = Workout("w", [Step(600, 0.7, 0.7)])
+    rem = estimate_remaining(state(0.0, 0.0, workout=w, target_w=0.7 * p.ftp_w))
+    assert rem.kind == "distance"
+    assert rem.value == pytest.approx(estimate_workout_on_route(r, p, w).distance_m, rel=1e-6)

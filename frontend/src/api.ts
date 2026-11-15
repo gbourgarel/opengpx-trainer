@@ -192,6 +192,10 @@ export interface Telemetry {
   route_id?: number | null
   /** the route is ridden from its end to its start */
   route_reversed?: boolean
+  /** live estimate (GPX rides, current settings): time to the end of the route (lap)... */
+  remaining_time_s?: number
+  /** ... or, a workout running, the distance before it ends */
+  remaining_workout_distance_m?: number
   /** sensors that went silent during the ride, since when (unix s) */
   lost_sensors?: { role: 'trainer' | 'power_meter' | 'heart_rate'; since: number }[]
   state: 'disconnected' | 'idle' | 'ready' | 'running' | 'paused' | 'finished'

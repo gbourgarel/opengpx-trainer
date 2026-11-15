@@ -335,9 +335,22 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
         task.add_done_callback(done)
 
+    estimates_running: set[asyncio.Task] = set()  # keep a reference until done
+
+    async def run_remaining(s: RideSession, job) -> None:
+        """Live estimate of a GPX ride, in the threadpool (~2 ms per km left)."""
+        try:
+            rem = await asyncio.to_thread(job)
+        except Exception:
+            log.exception("live estimate failed")
+            rem = None
+        with st.session_lock:
+            s.set_remaining(rem)
+
     async def engine_loop():
         while True:
             try:
+                job = None
                 with st.session_lock:
                     s = st.session  # read once: stop() may clear it from another thread
                     if s is not None and st.hub is not None:
@@ -346,8 +359,13 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                         if tel["state"] == "finished":
                             tel["saved"] = s.saved  # None while the FIT is being written
                             save_in_background(s)
+                        job = s.remaining_job()
                     else:
                         tel = st.idle_telemetry()
+                if job is not None:
+                    task = asyncio.create_task(run_remaining(s, job))
+                    estimates_running.add(task)
+                    task.add_done_callback(estimates_running.discard)
                 tel["devices"] = st.hub.status() if st.hub else {}
                 tel["hub"] = st.hub_kind
                 if isinstance(st.hub, SimulatedHub):
