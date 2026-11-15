@@ -170,6 +170,10 @@ main {
   padding: 14px;
   margin-bottom: 14px;
 }
+.card-head .estimate {
+  font-weight: 600;
+  white-space: nowrap;
+}
 .card-head {
   display: flex;
   justify-content: space-between;

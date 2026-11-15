@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime as dt
+import json
 import logging
 import os
 import threading
@@ -13,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -24,6 +25,7 @@ from .ant.simulator import SimulatedHub
 from .ble.scan import scan_ble
 from .checkpoint import RideCheckpoint, load_checkpoint
 from .gpx.route import Route
+from .physics.estimate import Estimate, estimate_route, estimate_workout_on_route
 from .profile import BIKE_PRESETS, Profile, ProfileError
 from .recording import MAX_CARBS_G, MAX_WATER_ML, Athlete, Recorder, write_ride_feedback
 from .sensors import MultiHub
@@ -63,12 +65,48 @@ class AppState:
         # (see live()); the engine never waits for a client
         self.clients: dict[WebSocket, asyncio.Queue] = {}
         self.last_ride_id: int | None = None
+        # route time estimates, by (route, options, profile): a long route takes ~0.3 s
+        self._estimates: dict[tuple, Estimate] = {}
+        self._estimates_lock = threading.Lock()
         self._hub_lock = threading.Lock()
         # Serialises everything that touches the current session: the engine tick (event
         # loop thread) and the sync endpoints (threadpool) used to race, e.g. a ride finishing
         # on its own while "Stop & save" was clicked got saved twice.
         self.session_lock = threading.RLock()
         self._save_lock = threading.Lock()  # one FIT write at a time (see save_session)
+
+    def route_estimate(
+        self,
+        rid: int,
+        reverse: bool = False,
+        wind_kmh: float = 0.0,
+        wind_from_deg: float = 0.0,
+        workout_id: int | None = None,
+    ) -> Estimate | None:
+        """Estimated time of a route (or distance covered during a workout on it), memoised
+        for the current profile. None when the route (or workout) does not exist."""
+        p = self.profile
+        key = (rid, reverse, wind_kmh, wind_from_deg, workout_id, json.dumps(p.to_dict()))
+        with self._estimates_lock:
+            if key in self._estimates:
+                return self._estimates[key]
+        gpx = self.storage.get_route_gpx(rid)
+        if gpx is None:
+            return None
+        route = Route.from_gpx(gpx, reverse=reverse)
+        if workout_id is None:
+            est = estimate_route(route, p, 100.0, wind_kmh, wind_from_deg)
+        else:
+            d = self.storage.get_workout(workout_id)
+            if d is None:
+                return None
+            w = Workout.from_dict(d)
+            est = estimate_workout_on_route(route, p, w, 100.0, 100.0, wind_kmh, wind_from_deg)
+        with self._estimates_lock:
+            if len(self._estimates) > 500:
+                self._estimates.clear()
+            self._estimates[key] = est
+        return est
 
     def connect(self, kind: str) -> None:
         # One connection attempt at a time: two concurrent requests (double click) used to
@@ -491,7 +529,35 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     # -- routes -------------------------------------------------------------------------
     @app.get("/api/routes")
     def list_routes():
-        return st.storage.list_routes()
+        # with the estimated time at 100 % effort, no wind (memoised; sync: threadpool)
+        out = []
+        for r in st.storage.list_routes():
+            try:
+                est = st.route_estimate(r["id"])
+            except Exception:
+                log.exception("Cannot estimate route %s", r["id"])
+                est = None
+            out.append({**r, "estimate_s": None if est is None else round(est.duration_s)})
+        return out
+
+    @app.get("/api/routes/{rid}/estimate")
+    def route_estimate(
+        rid: int,
+        reverse: bool = False,
+        wind_kmh: float = Query(0.0, ge=0.0, le=150.0),
+        wind_from_deg: float = Query(0.0, ge=0.0, le=360.0),
+        workout_id: int | None = None,
+    ):
+        """Estimated time to ride the route (100 % effort), or with ``workout_id`` the
+        distance covered during that workout on it (the route loops)."""
+        est = st.route_estimate(rid, reverse, wind_kmh, wind_from_deg, workout_id)
+        if est is None:
+            raise HTTPException(404, "Route or workout not found")
+        return {
+            "duration_s": round(est.duration_s),
+            "distance_m": round(est.distance_m),
+            "laps": round(est.laps, 2),
+        }
 
     @app.post("/api/routes/import")
     async def import_route(file: UploadFile = File(...)):

@@ -150,8 +150,9 @@ class SpeedModel:
         while f(hi) < 0 and hi < 200:
             hi *= 2
         # On a descent f(v) is negative for small v then crosses zero once: find the crossing
-        # that is the stable equilibrium (largest root).
-        for _ in range(80):
+        # that is the stable equilibrium (largest root). Stopped at 1e-6 m/s (~25 halvings
+        # instead of a fixed 80: the route time estimate calls this once per 50 m).
+        while hi - lo > 1e-6:
             mid = 0.5 * (lo + hi)
             if f(mid) < 0:
                 lo = mid
@@ -217,9 +218,10 @@ class VirtualBike:
     def set_params(self, params: ModelParams) -> None:
         self.model = SpeedModel(params)
 
-    def _accel(
+    def accel(
         self, v: float, power_w: float, grade: float, rho: float, wind: tuple[float, float]
     ) -> float:
+        """dv/dt (m/s^2) along the road at speed ``v`` (also used by the route estimate)."""
         p = self.model.p
         drive = p.drivetrain_efficiency * max(power_w, 0.0) / max(v, self.V_MIN)
         resist = self.model.forces(v, grade, rho, wind).total_n
@@ -236,12 +238,12 @@ class VirtualBike:
             grade, alt = self.grade_fn(s.distance_m)
             wind = self.wind_fn(s.distance_m)  # follows the route heading, like the grade
             rho = self.model.rho(alt)
-            a1 = self._accel(v, power_w, grade, rho, wind)
+            a1 = self.accel(v, power_w, grade, rho, wind)
             if v <= 0.0 and a1 <= 0.0:
                 v = 0.0
                 continue
             v_mid = max(0.0, v + 0.5 * h * a1)
-            a2 = self._accel(v_mid, power_w, grade, rho, wind)
+            a2 = self.accel(v_mid, power_w, grade, rho, wind)
             v_new = max(0.0, v + h * a2)
             v_new = min(v_new, p.max_speed_ms)  # virtual braking
             v_avg = 0.5 * (v + v_new)

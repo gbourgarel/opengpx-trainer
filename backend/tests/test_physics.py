@@ -159,3 +159,72 @@ def test_virtual_bike_follows_the_wind_along_the_route():
     assert v_head == pytest.approx(M.steady_speed(250, 0.0, M.rho(0), (5.0, 0.0)), rel=0.01)
     assert v_tail == pytest.approx(M.steady_speed(250, 0.0, M.rho(0), (-5.0, 0.0)), rel=0.01)
     assert bike.state.wind == (-5.0, 0.0)
+
+
+# --- route time estimate (physics/estimate.py) -------------------------------------------
+def _route(grade: float, km: float = 5.0):
+    from hometrainer.gpx.route import Route
+    from tests.test_gpx_workouts import make_gpx
+
+    return Route.from_gpx(make_gpx(n=int(km * 1000 / 11.119) + 1, grade=grade))
+
+
+def test_estimate_on_a_constant_grade_is_length_over_steady_speed():
+    """Closed form: on a constant grade the target and the steady speed are constant, so the
+    time is (horizontal length / cos) / v, plus the few seconds of the standing start."""
+    from hometrainer.physics.estimate import estimate_route
+    from hometrainer.profile import Profile
+
+    p = Profile()
+    r = _route(0.05)
+    curve = p.grade_power_curve()
+    m = SpeedModel(p.model_params())
+    watts = curve.target_watts(0.05, p.ftp_w)
+    v = m.steady_speed(watts, 0.05, m.rho(r.altitude_at(r.total_distance_m / 2)))
+    closed = r.total_distance_m * math.hypot(1, 0.05) / v
+    e = estimate_route(r, p)
+    assert e.distance_m == pytest.approx(r.total_distance_m)
+    assert closed < e.duration_s < closed + 10  # standing start: a few seconds lost
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_estimate_matches_the_ride_simulation(reverse):
+    """Same physics as the ride, integrated along the distance: within 1 % of VirtualBike
+    integrated in time (target from the look-ahead grade through the ramp limiter)."""
+    from pathlib import Path
+
+    from hometrainer.gpx.route import Route
+    from hometrainer.physics.estimate import estimate_route
+    from hometrainer.profile import Profile
+
+    gpx = (Path(__file__).parents[2] / "samples" / "sample_climb.gpx").read_text()
+    r = Route.from_gpx(gpx, reverse=reverse)
+    p = Profile()
+    curve = p.grade_power_curve()
+    bike = VirtualBike(p.model_params(), r.grade_and_altitude)
+    lim = RateLimiter(p.target_ramp_w_per_s)
+    lim.value = curve.target_watts(r.mean_grade(0, curve.lookahead_m), p.ftp_w)
+    t, dt = 0.0, 0.25
+    while bike.state.distance_m < r.total_distance_m:
+        g = r.mean_grade(bike.state.distance_m, curve.lookahead_m)
+        bike.step(lim(curve.target_watts(g, p.ftp_w), dt), dt)
+        t += dt
+    assert estimate_route(r, p).duration_s == pytest.approx(t, rel=0.01)
+
+
+def test_estimate_follows_effort_wind_and_workout():
+    from hometrainer.physics.estimate import estimate_route, estimate_workout_on_route
+    from hometrainer.profile import Profile
+    from hometrainer.workouts.model import Step, Workout
+
+    p = Profile()
+    r = _route(0.0, km=4)  # flat, heading north
+    base = estimate_route(r, p).duration_s
+    assert estimate_route(r, p, effort_pct=120).duration_s < base
+    assert estimate_route(r, p, wind_kmh=20, wind_from_deg=0).duration_s > base  # headwind
+    assert estimate_route(r, p, wind_kmh=20, wind_from_deg=180).duration_s < base  # tailwind
+    # a 30 min workout loops the 4 km route: distance covered, not time
+    w = Workout(name="w", steps=[Step(duration_s=1800, start=0.75, end=0.75)])
+    e = estimate_workout_on_route(r, p, w)
+    assert e.duration_s == pytest.approx(1800)
+    assert e.laps > 2 and e.distance_m == pytest.approx(e.laps * r.total_distance_m)

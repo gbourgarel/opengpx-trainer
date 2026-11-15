@@ -247,6 +247,16 @@ points, look-ahead, target ramp rate) can be edited on the Profile page, which a
 steady-state speeds. Edits apply once saved: the page shows "Unsaved changes" until then, and
 leaving the tab asks Save / Discard / Stay (closing the page, the browser's own question).
 
+**Estimated time of a route.** The routes list and the route detail show the time to ride it
+(Slope ERG at 100 % effort, the rider holding the targets), updated with the wind, the
+direction and, with a workout, the distance covered during it (the route loops). Same
+equation of motion as the ride (`VirtualBike.accel`), integrated along the distance in 10 m
+steps with an energy balance, `v_out² = v_in² + 2·a(v_mid)·L` (`L`: road length of the step),
+so momentum carries over grade changes; the target goes through the same ramp limiter. It
+stays within 0.4 % of the ride's own time integration on the sample route (both directions)
+and a 15 km descent, in ~2 ms per km instead of ~50 ms. Not modelled: a rider missing the
+targets, pauses.
+
 **Bike & position presets.** The Profile offers typical bikes and positions instead of the
 five bike parameters; *Custom* shows the fields (starting from the preset's values) to set
 exact ones. The bike weight stays a separate field. Values (speeds: steady state, 73 kg rider

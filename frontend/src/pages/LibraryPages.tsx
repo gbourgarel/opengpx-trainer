@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { WindPicker } from '../components/Wind'
 import { loadWind, saveWind, type WindSetting } from '../wind'
-import { api, fmtTime, type PlannedWorkout, type Profile, type Ride, type RouteDetail, type RouteSummary, type Workout } from '../api'
+import { api, fmtTime, type PlannedWorkout, type Profile, type Ride, type RouteDetail, type RouteEstimate, type RouteSummary, type Workout } from '../api'
 import { ElevationProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
 
@@ -126,6 +126,22 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
   // ride the route from its end (a climb becomes its descent): chosen at start, not stored
   const [reverse, setReverse] = useState(false)
   const open = (id: number, rev = reverse) => api.route(id, rev).then(setSel).catch((e) => setError(e.message))
+  // estimated time (or, with a workout, distance) for the options chosen; the key says which
+  // options an estimate is for, so a stale one is never shown
+  const [est, setEst] = useState<{ key: string; value: RouteEstimate } | null>(null)
+  const estKey = sel ? JSON.stringify([sel.id, !!sel.reversed, wind.kmh, wind.fromDeg, workoutId]) : ''
+  useEffect(() => {
+    if (!sel) return
+    let cancelled = false
+    api
+      .routeEstimate(sel.id, { reverse: !!sel.reversed, windKmh: wind.kmh, windFromDeg: wind.fromDeg, workoutId })
+      .then((value) => !cancelled && setEst({ key: estKey, value }))
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [sel, wind.kmh, wind.fromDeg, workoutId, estKey])
+  const estimate = est && est.key === estKey ? est.value : null
 
   return (
     <div>
@@ -152,6 +168,7 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
               <b>{r.name}</b>
               <span className="muted">
                 {(r.distance_m / 1000).toFixed(1)} km · +{r.ascent_m.toFixed(0)} m · max {(r.max_grade * 100).toFixed(1)}%
+                {r.estimate_s != null && ` · ≈ ${fmtTime(r.estimate_s)}`}
               </span>
             </div>
           ))}
@@ -164,6 +181,16 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
               <span className="muted">
                 {(sel.distance_m / 1000).toFixed(2)} km · +{sel.ascent_m.toFixed(0)} / −{sel.descent_m.toFixed(0)} m · {sel.min_altitude_m.toFixed(0)}–{sel.max_altitude_m.toFixed(0)} m
               </span>
+              {estimate && (
+                <span
+                  className="estimate"
+                  title="Speed model of the ride, the rider holding the targets (Slope ERG at 100 % effort; the workout's targets with a workout), with the wind and direction chosen"
+                >
+                  {chosenWorkout
+                    ? `≈ ${(estimate.distance_m / 1000).toFixed(1)} km in ${fmtTime(estimate.duration_s)} (${estimate.laps.toFixed(1)} laps)`
+                    : `≈ ${fmtTime(estimate.duration_s)} at 100 % effort`}
+                </span>
+              )}
             </div>
             <RouteMap latlon={sel.latlon} height={300} />
             <ElevationProfile distance={sel.profile_distance_m} altitude={sel.altitude_m} grade={sel.grade} height={120} />

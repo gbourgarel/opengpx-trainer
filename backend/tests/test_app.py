@@ -166,6 +166,29 @@ def test_start_gpx_ride_in_reverse(client):
     assert (rev["ascent_m"], rev["descent_m"]) == (fwd["descent_m"], fwd["ascent_m"])
 
 
+def test_route_estimates_in_the_list_and_by_options(client):
+    from tests.test_gpx_workouts import make_gpx
+
+    rid = client.post("/api/routes/import", files={"file": ("r.gpx", make_gpx())}).json()["id"]
+    wid = client.post("/api/workouts/import", files={"file": ("w.zwo", ZWO)}).json()["id"]
+    listed = client.get("/api/routes").json()[0]
+    est = client.get(f"/api/routes/{rid}/estimate").json()
+    assert listed["estimate_s"] == est["duration_s"] > 0 and est["laps"] == 1
+    # the climb ridden down is faster; a headwind (route heads north) slows it
+    down = client.get(f"/api/routes/{rid}/estimate?reverse=true").json()
+    windy = client.get(f"/api/routes/{rid}/estimate?wind_kmh=30&wind_from_deg=0").json()
+    assert down["duration_s"] < est["duration_s"] < windy["duration_s"]
+    # with a workout: its duration, and the distance covered
+    w = client.get(f"/api/routes/{rid}/estimate?workout_id={wid}").json()
+    assert w["duration_s"] == client.get(f"/api/workouts/{wid}").json()["duration_s"]
+    assert w["distance_m"] > 0
+    # a new FTP changes the estimate (memoised per profile)
+    client.put("/api/profile", json={"ftp_w": 350})
+    assert client.get(f"/api/routes/{rid}/estimate").json()["duration_s"] < est["duration_s"]
+    assert client.get(f"/api/routes/{rid}/estimate?workout_id=999").status_code == 404
+    assert client.get("/api/routes/999/estimate").status_code == 404
+
+
 SHORT_ZWO = """<workout_file><name>Short</name><workout>
 <SteadyState Duration="2" Power="0.5"/>
 </workout></workout_file>"""
