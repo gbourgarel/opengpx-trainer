@@ -392,6 +392,26 @@ th {
   padding: 8px 12px;
   margin-bottom: 12px;
 }
+/* a sensor gone silent during the ride: over everything, the immersive view included */
+.sensor-alert {
+  position: fixed;
+  top: 62px; /* below the header (tabs, sensor dots) and the immersive top bar */
+  pointer-events: none; /* never in the way of a click on what it covers */
+}
+/* immersive view: below its controls (top centre, shown on mouse move / ride keys) */
+body:has(.immersive) .sensor-alert {
+  top: 124px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1500;
+  background: #b42318;
+  color: #fff;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 8px 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  max-width: calc(100vw - 32px);
+}
 /* "How was it?" after a ride: above everything, the immersive view included */
 .dialog-backdrop {
   position: fixed;

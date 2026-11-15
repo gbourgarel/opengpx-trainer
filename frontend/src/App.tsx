@@ -3,6 +3,7 @@ import { api, type DeviceStatus, type Profile, type RouteDetail, type Workout } 
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
 import type { ProfileGuard } from './profileDiff'
+import { lostSensorText } from './sensorAlert'
 import { SimulatorPanel } from './components/SimulatorPanel'
 import { FeedbackDialog } from './components/FeedbackDialog'
 import { UploadPrompt } from './components/UploadPrompt'
@@ -85,6 +86,8 @@ export default function App() {
   // keep the screen on during a ride, whatever the tab shown
   const riding = ['ready', 'running', 'paused'].includes(tel.state)
   const wake = useWakeLock(riding)
+  // a sensor that sent data during the ride went silent (> 5 s): banner until it comes back
+  const lostSensors = riding ? (tel.lost_sensors ?? []) : []
 
   // Once a ride is saved (it finished on its own, telemetry, or "Stop & save"): ask "How was
   // it?" (RPE / feel, written into the FIT file), then offer (never force) the upload to
@@ -227,6 +230,13 @@ export default function App() {
       {error && (
         <div className="error banner" onClick={() => setError(null)}>
           {error}
+        </div>
+      )}
+      {lostSensors.length > 0 && (
+        <div className="sensor-alert" role="alert">
+          {lostSensors.map((s) => (
+            <div key={s.role}>⚠ {lostSensorText(s.role, s.since, tel.power_source)}</div>
+          ))}
         </div>
       )}
       <main className={tab === 'ride' ? 'ride-main' : ''}>

@@ -165,6 +165,8 @@ export interface Telemetry {
   route_id?: number | null
   /** the route is ridden from its end to its start */
   route_reversed?: boolean
+  /** sensors that went silent during the ride, since when (unix s) */
+  lost_sensors?: { role: 'trainer' | 'power_meter' | 'heart_rate'; since: number }[]
   state: 'disconnected' | 'idle' | 'ready' | 'running' | 'paused' | 'finished'
   hub?: string | null
   devices?: Record<'trainer' | 'power_meter' | 'heart_rate', DeviceStatus>

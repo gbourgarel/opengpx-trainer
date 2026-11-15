@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from .ant.hub import Readings, SensorHub
+from .ant.hub import STALE_AFTER_S, Readings, SensorHub
 from .checkpoint import RideCheckpoint
 from .gpx.route import Route
 from .physics.grade_power import RateLimiter
@@ -87,6 +87,34 @@ def choose_power(r: Readings, preference: str) -> PowerChoice:
     if tr_ok:
         return PowerChoice(r.trainer_power_w, cad, "trainer", cad_src)
     return PowerChoice(None, cad, "none", cad_src)
+
+
+SENSOR_ROLES = ("trainer", "power_meter", "heart_rate")
+
+
+class LostSensors:
+    """Sensors gone silent during the ride, for an alert on every client. A sensor that sent
+    data during this ride and is no longer connected (no message for ``STALE_AFTER_S``) is
+    lost until it comes back; one never seen in the ride (unused, never paired) raises
+    nothing."""
+
+    def __init__(self) -> None:
+        self.seen: set[str] = set()
+        self.lost_since: dict[str, float] = {}
+
+    def update(self, r: Readings, now_unix: float) -> list[dict]:
+        for role in SENSOR_ROLES:
+            if getattr(r, f"{role}_connected"):
+                self.seen.add(role)
+                self.lost_since.pop(role, None)
+            elif role in self.seen:
+                # its last message came STALE_AFTER_S before it was declared gone
+                self.lost_since.setdefault(role, now_unix - STALE_AFTER_S)
+        return [
+            {"role": role, "since": round(self.lost_since[role], 1)}
+            for role in SENSOR_ROLES
+            if role in self.lost_since
+        ]
 
 
 class PowerMatch:
@@ -223,6 +251,8 @@ class RideSession:
         self.recorder = Recorder()
         self._idle_s = 0.0
         self._last_tick: float | None = None
+        self.sensors = LostSensors()
+        self._lost: list[dict] = []
         self.climb = ClimbTracker()
         self.averages = RideAverages()
         # average power of the current workout step (interval), reset at each new step
@@ -372,6 +402,7 @@ class RideSession:
         dt = 0.0 if self._last_tick is None else min(max(now - self._last_tick, 0.0), 1.0)
         self._last_tick = now
         r = self.hub.readings()
+        self._lost = self.sensors.update(r, time.time())
         rr = self.hub.drain_rr()  # beats since the last tick (dropped unless running)
         pc = choose_power(r, self.profile.power_source)
         pedaling = (pc.power_w or 0) > 5 or (pc.cadence_rpm or 0) > 5
@@ -499,6 +530,8 @@ class RideSession:
             "workout_id": self.workout_id,
             "route_id": self.route_id,
             "route_reversed": self.route_reversed,
+            # sensors that went silent during the ride: [{"role", "since" (unix s)}]
+            "lost_sensors": self._lost,
             "mode": self.mode,
             "state": self.state,
             "name": self.name,

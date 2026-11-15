@@ -127,6 +127,10 @@ progress). Environment variables:
   beeps (Web Audio, enabled by the first click or key press, remembered in the browser).
 * GPX: the wind badge in the map corner shows where the wind blows; hover it for the head /
   tail / cross components on the current heading.
+* A sensor that sent data during the ride and goes silent for 5 s (trainer, power meter, heart
+  rate) raises a red banner, also over the immersive view, until it comes back: "no data
+  since …", and for the power meter whether the trainer's power is used instead (power source
+  *Auto*) or no power is recorded (*Power meter only*).
 * The screen is kept on with the Screen Wake Lock API, which needs `localhost` or HTTPS: a
   tablet opening the app over plain `http://` on the LAN shows "screen may sleep".
 * Keyboard (ignored while typing in a field):

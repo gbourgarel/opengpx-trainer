@@ -72,6 +72,25 @@ class FakeHub(SensorHub):
             self._s.heart_rate.set(hr)
 
 
+def test_lost_sensors_only_for_sensors_seen_during_the_ride():
+    from types import SimpleNamespace
+
+    from hometrainer.session import LostSensors
+
+    def r(trainer, pm, hr):
+        return SimpleNamespace(
+            trainer_connected=trainer, power_meter_connected=pm, heart_rate_connected=hr
+        )
+
+    w = LostSensors()
+    assert w.update(r(True, True, False), 1000.0) == []  # no HR strap at all: never an alert
+    assert w.update(r(True, False, False), 1010.0) == [{"role": "power_meter", "since": 1005.0}]
+    # still lost: the time it went silent stays (last message ~5 s before it was dropped)
+    assert w.update(r(True, False, False), 1030.0) == [{"role": "power_meter", "since": 1005.0}]
+    assert w.update(r(False, True, False), 1040.0) == [{"role": "trainer", "since": 1035.0}]
+    assert w.update(r(True, True, False), 1041.0) == []  # both back
+
+
 def test_choose_power_auto_prefers_power_meter():
     h = FakeHub()
     h.feed(trainer=210, pm=200)
