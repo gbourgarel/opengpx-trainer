@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { WindPicker } from '../components/Wind'
 import { loadWind, saveWind, type WindSetting } from '../wind'
-import { api, fmtTime, type PlannedWorkout, type Profile, type Ride, type RouteDetail, type RouteEstimate, type RouteSummary, type Workout } from '../api'
+import { api, fmtTime, type PlannedWorkout, type Profile, type Ride, type RideAir, type RouteDetail, type RouteEstimate, type RouteSummary, type Workout } from '../api'
 import { ElevationProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
 
@@ -110,7 +110,13 @@ export function WorkoutsPage({ profile, canStart, onStart }: { profile: Profile 
 }
 
 // ---------------------------------------------------------------------------------------
-export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: (r: RouteDetail, w: Workout | undefined, wind: WindSetting) => void }) {
+export function RoutesPage({
+  canStart,
+  onStart,
+}: {
+  canStart: boolean
+  onStart: (r: RouteDetail, w: Workout | undefined, wind: WindSetting, air: RideAir | null) => void
+}) {
   const [list, setList] = useState<RouteSummary[]>([])
   const [wind, setWind] = useState<WindSetting>(loadWind) // last wind used, per browser
   const [sel, setSel] = useState<RouteDetail | null>(null)
@@ -125,22 +131,39 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
   const chosenWorkout = workouts.find((w) => w.id === workoutId)
   // ride the route from its end (a climb becomes its descent): chosen at start, not stored
   const [reverse, setReverse] = useState(false)
+  // "Weather now": wind filled in, air (temperature, humidity) for this ride; null = profile's
+  const [air, setAir] = useState<RideAir | null>(null)
+  const [weather, setWeather] = useState<{ busy: boolean; note?: string }>({ busy: false })
+  const fetchWeather = (id: number) => {
+    setWeather({ busy: true })
+    api
+      .routeWeather(id)
+      .then((w) => {
+        setWind({ kmh: Math.round(w.wind_kmh), fromDeg: w.wind_from_deg })
+        setAir({ temperature_c: w.temperature_c, relative_humidity: w.relative_humidity })
+        setWeather({
+          busy: false,
+          note: `Now, average of ${w.points} points: ${Math.round(w.wind_10m_kmh)} km/h at 10 m → ${Math.round(w.wind_kmh)} km/h at rider height`,
+        })
+      })
+      .catch((e: Error) => setWeather({ busy: false, note: `Weather unavailable: ${e.message}` }))
+  }
   const open = (id: number, rev = reverse) => api.route(id, rev).then(setSel).catch((e) => setError(e.message))
   // estimated time (or, with a workout, distance) for the options chosen; the key says which
   // options an estimate is for, so a stale one is never shown
   const [est, setEst] = useState<{ key: string; value: RouteEstimate } | null>(null)
-  const estKey = sel ? JSON.stringify([sel.id, !!sel.reversed, wind.kmh, wind.fromDeg, workoutId]) : ''
+  const estKey = sel ? JSON.stringify([sel.id, !!sel.reversed, wind.kmh, wind.fromDeg, workoutId, air]) : ''
   useEffect(() => {
     if (!sel) return
     let cancelled = false
     api
-      .routeEstimate(sel.id, { reverse: !!sel.reversed, windKmh: wind.kmh, windFromDeg: wind.fromDeg, workoutId })
+      .routeEstimate(sel.id, { reverse: !!sel.reversed, windKmh: wind.kmh, windFromDeg: wind.fromDeg, workoutId, air })
       .then((value) => !cancelled && setEst({ key: estKey, value }))
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [sel, wind.kmh, wind.fromDeg, workoutId, estKey])
+  }, [sel, wind.kmh, wind.fromDeg, workoutId, air, estKey])
   const estimate = est && est.key === estKey ? est.value : null
 
   return (
@@ -231,17 +254,51 @@ export function RoutesPage({ canStart, onStart }: { canStart: boolean; onStart: 
               </label>
               <WindPicker value={wind} onChange={setWind} />
               <button
+                className="ghost"
+                disabled={weather.busy}
+                title="Current wind, temperature and humidity along the route (Open-Meteo, averaged over points every ~10 km), the wind brought down to rider height. Editable before starting."
+                onClick={() => fetchWeather(sel.id)}
+              >
+                {weather.busy ? 'Weather…' : 'Weather now'}
+              </button>
+              {air && (
+                <span className="air-pick" title="Air of this ride (density): the profile's values are unchanged">
+                  <input
+                    type="number"
+                    step={0.5}
+                    min={-30}
+                    max={50}
+                    value={air.temperature_c}
+                    onChange={(e) => setAir({ ...air, temperature_c: Math.max(-30, Math.min(50, Number(e.target.value) || 0)) })}
+                  />
+                  <span className="muted">°C</span>
+                  <input
+                    type="number"
+                    step={5}
+                    min={0}
+                    max={100}
+                    value={Math.round(air.relative_humidity * 100)}
+                    onChange={(e) => setAir({ ...air, relative_humidity: Math.max(0, Math.min(100, Number(e.target.value) || 0)) / 100 })}
+                  />
+                  <span className="muted">%</span>
+                  <button className="ghost" title="Use the profile's temperature and humidity" onClick={() => setAir(null)}>
+                    ×
+                  </button>
+                </span>
+              )}
+              <button
                 className="primary"
                 disabled={!canStart}
                 title={canStart ? '' : 'Connect sensors first'}
                 onClick={() => {
                   saveWind(wind)
-                  onStart(sel, chosenWorkout, wind)
+                  onStart(sel, chosenWorkout, wind, air)
                 }}
               >
                 {chosenWorkout ? 'Ride with workout' : 'Ride this route'}
               </button>
             </div>
+            {weather.note && <p className="muted weather-note">{weather.note}</p>}
           </div>
         )}
       </div>

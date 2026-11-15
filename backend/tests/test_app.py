@@ -166,6 +166,39 @@ def test_start_gpx_ride_in_reverse(client):
     assert (rev["ascent_m"], rev["descent_m"]) == (fwd["descent_m"], fwd["ascent_m"])
 
 
+def test_weather_endpoint_and_ride_air(client, monkeypatch):
+    from hometrainer import app as app_mod
+    from hometrainer.weather import Weather
+    from tests.test_gpx_workouts import make_gpx
+
+    fake = Weather(9.0, 250, 15.0, 12.5, 0.8, 3)
+    monkeypatch.setattr(app_mod, "current_weather", lambda route: fake)  # no network in tests
+    rid = client.post("/api/routes/import", files={"file": ("r.gpx", make_gpx())}).json()["id"]
+    w = client.get(f"/api/routes/{rid}/weather").json()
+    assert (w["wind_kmh"], w["wind_from_deg"], w["temperature_c"]) == (9.0, 250, 12.5)
+    assert client.get("/api/routes/999/weather").status_code == 404
+
+    def down(route):
+        raise httpx.ConnectError("offline")
+
+    import httpx
+
+    monkeypatch.setattr(app_mod, "current_weather", down)
+    assert client.get(f"/api/routes/{rid}/weather").status_code == 502
+    # the ride uses that air, the profile keeps its own
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    body = {"mode": "gpx", "route_id": rid, "temperature_c": 12.5, "relative_humidity": 0.8}
+    assert client.post("/api/session/start", json=body).status_code == 200
+    s = client.st.session
+    assert (s.profile.temperature_c, s.profile.relative_humidity) == (12.5, 0.8)
+    assert client.st.profile.temperature_c == 20.0
+    client.post("/api/session/stop?save=false")
+    # colder air is denser: a slower estimate
+    warm = client.get(f"/api/routes/{rid}/estimate?temperature_c=30").json()["duration_s"]
+    cold = client.get(f"/api/routes/{rid}/estimate?temperature_c=-5").json()["duration_s"]
+    assert cold > warm
+
+
 def test_route_estimates_in_the_list_and_by_options(client):
     from tests.test_gpx_workouts import make_gpx
 

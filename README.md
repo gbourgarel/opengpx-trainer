@@ -12,7 +12,12 @@ Bluetooth LE (FTMS), with power meter and heart-rate sensors on either protocol.
   from a dynamic physics model fed with the measured power (see the *speed-model power scale*
   below), with an optional
   **wind** (speed and direction, set when starting the route). Climb rate (VAM) and elevation
-  gain are shown. A route can be ridden **in reverse** (*Reverse*, next to the wind when
+  gain are shown. **Weather now** (next to the wind) fills in the current wind, temperature
+  and humidity from Open-Meteo (free, no key): points every ~10 km along the route (3 to 10),
+  averaged into one weather for the ride (wind as a vector mean), the 10 m wind brought down to
+  rider height with a log profile (`u(1 m) = u(10 m)·ln(1/z0)/ln(10/z0)`, z0 = 0.03 m open
+  country: × 0.60). All editable before starting; the air applies to this ride (and its time
+  estimate) only, the Profile keeps its values. A route can be ridden **in reverse** (*Reverse*, next to the wind when
   starting it): a climb becomes its descent; the map and profile follow the direction chosen.
 * **Workout on a route**: a GPX ride can follow a workout. The workout sets the target, the route
   gives speed and position, and the route loops while the workout lasts; its free-ride steps

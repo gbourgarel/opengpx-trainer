@@ -929,6 +929,21 @@ b.warn {
 .wind-pick input {
   width: 4.5em;
 }
+/* today's air of the ride (Weather now), next to the wind */
+.air-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.air-pick input {
+  width: 4em;
+}
+.weather-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  text-align: right;
+}
 .map-follow {
   position: absolute;
   z-index: 1000;

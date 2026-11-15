@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type DeviceStatus, type Profile, type RouteDetail, type Workout } from './api'
+import { api, type DeviceStatus, type Profile, type RideAir, type RouteDetail, type Workout } from './api'
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
 import type { ProfileGuard } from './profileDiff'
@@ -178,9 +178,17 @@ export default function App() {
       })
       .catch((e) => setError(e.message))
 
-  const startRoute = (r: RouteDetail, w: Workout | undefined, wind: WindSetting) =>
+  const startRoute = (r: RouteDetail, w: Workout | undefined, wind: WindSetting, air: RideAir | null) =>
     api
-      .start({ mode: 'gpx', route_id: r.id, reverse: !!r.reversed, workout_id: w?.id, wind_kmh: wind.kmh, wind_from_deg: wind.fromDeg })
+      .start({
+        mode: 'gpx',
+        route_id: r.id,
+        reverse: !!r.reversed,
+        workout_id: w?.id,
+        wind_kmh: wind.kmh,
+        wind_from_deg: wind.fromDeg,
+        ...(air ?? {}), // today's air for this ride, else the profile's
+      })
       .then((res) => {
         setActive({ sessionId: res.session_id, mode: 'gpx', route: r, workout: w })
         setTab('ride')
