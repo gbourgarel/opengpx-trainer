@@ -125,6 +125,8 @@ class AntHub(SensorHub):
         self._pm_torque = pf.CrankTorquePower()
         self._pm_torque_seen_at = float("-inf")
         self._pm_ch = None
+        self._hr_ch = None
+        self._reopened_at: dict[str, float] = {}  # watchdog: last reopen per role (monotonic)
         self._pm_channel_num: int | None = None  # device the power-meter channel last heard
         self._pm_seen_at = float("-inf")
         self._dynamics = pf.CyclingDynamicsEnabler()
@@ -186,7 +188,7 @@ class AntHub(SensorHub):
                 device_number=self.wanted["trainer"],
             )
         if self.use_heart_rate:
-            self._open_channel(
+            self._hr_ch = self._open_channel(
                 pf.HRM_DEVICE_TYPE,
                 pf.HRM_PERIOD,
                 self._on_hrm,
@@ -200,6 +202,53 @@ class AntHub(SensorHub):
         self._tx_thread.start()
         if self.use_power_meter:
             threading.Thread(target=self._open_power_meter, name="ant-pm", daemon=True).start()
+        threading.Thread(target=self._watchdog_loop, name="ant-watchdog", daemon=True).start()
+
+    # -- watchdog ----------------------------------------------------------------------
+    # A paired sensor silent for WATCHDOG_SILENT_S gets its channel closed and reopened (same
+    # configuration): on 2026-11-08 the power-meter channel stayed deaf for 5 min while the
+    # meter kept broadcasting (KNOWN_ISSUES #14). At most once per WATCHDOG_RETRY_S, so a
+    # sensor that is off or asleep is not reopened in a loop.
+    WATCHDOG_SILENT_S = 10.0
+    WATCHDOG_RETRY_S = 60.0
+    WATCHDOG_CLOSE_WAIT_S = 0.5
+
+    @classmethod
+    def watchdog_due(cls, last_seen: float, now: float, last_reopen: float | None) -> bool:
+        """Reopen a channel? Only for a sensor seen before (``last_seen`` > 0), silent for
+        ``WATCHDOG_SILENT_S``, and not reopened in the last ``WATCHDOG_RETRY_S``."""
+        if last_seen <= 0 or now - last_seen <= cls.WATCHDOG_SILENT_S:
+            return False
+        return last_reopen is None or now - last_reopen >= cls.WATCHDOG_RETRY_S
+
+    def _watchdog_loop(self) -> None:
+        while self._running:
+            time.sleep(1.0)
+            try:
+                self._watchdog_pass(time.monotonic())
+            except Exception:  # never let the watchdog die
+                log.exception("ANT+ watchdog pass failed")
+
+    def _watchdog_pass(self, now: float) -> None:
+        channels = (
+            ("trainer", self._fec),
+            ("power_meter", self._pm_ch),
+            ("heart_rate", self._hr_ch),
+        )
+        for role, ch in channels:
+            if ch is None or not self._running:
+                continue
+            last_seen = self.devices[role].last_seen
+            if not self.watchdog_due(last_seen, now, self._reopened_at.get(role)):
+                continue
+            self._reopened_at[role] = now
+            try:
+                ch.close()
+                time.sleep(self.WATCHDOG_CLOSE_WAIT_S)
+                ch.open()
+                log.warning("ANT+ %s silent for %.0f s: channel reopened", role, now - last_seen)
+            except Exception:
+                log.exception("Could not reopen the %s channel", role)
 
     PM_WAIT_FOR_TRAINER_S = 15.0
 

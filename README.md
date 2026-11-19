@@ -310,6 +310,11 @@ One ANT node, three slave channels with wildcard pairing (the first device found
 Commands go out as acknowledged messages from a single sender thread, which coalesces requests
 and re-sends the target every 2 s.
 
+A watchdog closes and reopens the channel of a sensor that was heard and has then been silent
+for 10 s (same pairing), at most once a minute: a channel can stay deaf while the device keeps
+broadcasting, and a sensor that was switched off or fell asleep comes back on its own when it
+wakes.
+
 Cycling Dynamics (power phase, rider position, PCO) are only sent once a display enables them.
 The app records them when a head unit (e.g. a Garmin Edge) has enabled them. Enabling them
 from the app (Bicycle Power profile §4.5.2) is implemented but switched off: on a real ride

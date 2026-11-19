@@ -520,6 +520,44 @@ def test_pm_search_verdict(trainer, pm, verdict):
     assert AntHub.pm_search_verdict(trainer, pm) == verdict
 
 
+@pytest.mark.parametrize(
+    "last_seen,now,last_reopen,due",
+    [
+        (0.0, 100.0, None, False),  # never seen: nothing to recover
+        (95.0, 100.0, None, False),  # silent 5 s: not yet
+        (85.0, 100.0, None, True),  # silent 15 s: reopen
+        (85.0, 100.0, 70.0, False),  # reopened 30 s ago: wait
+        (20.0, 100.0, 30.0, True),  # still silent, last try 70 s ago: again
+    ],
+)
+def test_watchdog_due(last_seen, now, last_reopen, due):
+    from hometrainer.ant.ant_hub import AntHub
+
+    assert AntHub.watchdog_due(last_seen, now, last_reopen) is due
+
+
+def test_watchdog_reopens_only_the_silent_channels(monkeypatch):
+    """KNOWN_ISSUES #14: the power-meter channel stayed deaf 5 min while the meter was
+    broadcasting; a paired sensor silent > 10 s gets its channel reopened (not one never
+    seen, not twice within a minute)."""
+    from hometrainer.ant.ant_hub import AntHub
+
+    h = AntHub()
+    h._running = True
+    monkeypatch.setattr(h, "WATCHDOG_CLOSE_WAIT_S", 0.0)
+    h._fec, h._pm_ch, h._hr_ch = FakeChannel(), FakeChannel(), FakeChannel()
+    h.devices["trainer"].last_seen = 1000.0  # silent since 1000
+    h.devices["power_meter"].last_seen = 1018.0  # just heard
+    # heart rate never seen (last_seen 0): no strap in range, nothing to recover
+    h._watchdog_pass(1020.0)
+    assert h._fec.calls == ["close", "open"]
+    assert h._pm_ch.calls == [] and h._hr_ch.calls == []
+    h._watchdog_pass(1050.0)  # still silent, but reopened 30 s ago
+    assert h._fec.calls == ["close", "open"]
+    h._watchdog_pass(1081.0)  # 61 s later: try again
+    assert h._fec.calls == ["close", "open", "close", "open"]
+
+
 def test_concurrent_connect_is_rejected():
     import threading
 
