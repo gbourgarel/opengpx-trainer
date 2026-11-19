@@ -19,7 +19,9 @@ power phase, rider position, platform centre offset). Enabling Cycling Dynamics 
 the pages are recorded when a head unit enables them. The heart-rate channel also yields
 beat-to-beat (R-R) intervals.
 
-Set ``HOMETRAINER_ANT_LOG=/path/file.csv`` to log every raw ANT page (for debugging).
+Set ``HOMETRAINER_ANT_LOG=/path/file.csv`` to log every raw ANT page (for debugging), the
+commands sent (``fec-tx`` / ``power-tx`` rows, ``-failed`` when never acknowledged, attempts in
+the device-number column), and to request the trainer's command status (page 71) every 5 s.
 
 openant's ``easy`` API is used directly. Its high-level ``devices.FitnessEquipment`` is not used
 (FE-state parsing bug, and its ack sender retries forever recursively).
@@ -68,6 +70,7 @@ def load_libusb() -> None:
 
 class AntHub(SensorHub):
     TARGET_RESEND_S = 2.0  # re-send ERG target periodically (survives trainer reconnects)
+    STATUS_REQUEST_S = 5.0  # raw log on: request the command status (page 71) this often
     # Send the Cycling Dynamics set-up to the power meter. Off: on a real ride (2026-11-08,
     # Assioma) the power-meter channel received nothing more once the first request (page 70)
     # was sent, 0.3 s after pairing, on the 4 Hz channel. The pages are still decoded when a
@@ -424,7 +427,16 @@ class AntHub(SensorHub):
     def _log_raw(self, channel: str, data) -> None:
         if self._raw_log is None:
             return
-        num = self._device_number(data)
+        self._write_raw(channel, self._device_number(data), data)
+
+    def _log_tx(self, channel: str, data, ok: bool, attempts: int) -> None:
+        """A command sent: rows ``<channel>-tx`` (acknowledged) or ``<channel>-tx-failed``,
+        with the number of attempts in the device-number column."""
+        if self._raw_log is None:
+            return
+        self._write_raw(f"{channel}-tx" if ok else f"{channel}-tx-failed", attempts, data)
+
+    def _write_raw(self, channel: str, num: int | None, data) -> None:
         row = ",".join(str(b) for b in list(data[:8]))
         with self._raw_lock:
             if self._raw_log is not None:
@@ -537,7 +549,16 @@ class AntHub(SensorHub):
             self._command = data
             self._tx_queue.put("command")
 
+    # Power match moves the target by fractions of a watt at every tick (4 Hz): without this
+    # dead band, page 49 went out as a stream of acknowledged messages (KNOWN_ISSUES #25).
+    TARGET_MIN_CHANGE_W = 1.0
+
     def set_target_power(self, watts: float) -> None:
+        cur = self._command
+        if cur is not None and cur[0] == 0x31:
+            current_w = (cur[6] | (cur[7] << 8)) / 4.0
+            if abs(max(0.0, watts) - current_w) < self.TARGET_MIN_CHANGE_W:
+                return
         self._set_command(pf.encode_target_power(watts))
 
     def set_basic_resistance(self, percent: float) -> None:
@@ -554,13 +575,16 @@ class AntHub(SensorHub):
         ch = self._fec if ch is None else ch
         if ch is None:
             return False
-        for _ in range(retries):
+        name = "fec" if ch is self._fec else "power"
+        for attempt in range(1, retries + 1):
             try:
                 ch._ant.send_acknowledged_data(ch.id, list(data))
                 ch.wait_for_event([Message.Code.EVENT_TRANSFER_TX_COMPLETED])
+                self._log_tx(name, data, True, attempt)
                 return True
             except AntException:
                 time.sleep(0.1)
+        self._log_tx(name, data, False, retries)
         log.warning("ANT+ command %#04x not acknowledged", data[0])
         return False
 
@@ -569,6 +593,7 @@ class AntHub(SensorHub):
         requests are coalesced; the command is also re-sent periodically. Commands to the power
         meter (``("pm", data)``, Cycling Dynamics set-up) are sent in order, once."""
         last_sent = 0.0
+        last_status_req = 0.0
         user_sent = False
         while self._running:
             try:
@@ -600,3 +625,11 @@ class AntHub(SensorHub):
             if cmd is not None and ("command" in items or now - last_sent >= self.TARGET_RESEND_S):
                 self._send_ack(cmd)
                 last_sent = now
+            # debugging only (raw log on): ask for the command status (page 71), logged
+            if (
+                self._raw_log is not None
+                and cmd is not None
+                and now - last_status_req >= self.STATUS_REQUEST_S
+            ):
+                self._send_ack(pf.encode_request_page(0x47), retries=1)
+                last_status_req = now

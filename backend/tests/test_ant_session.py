@@ -558,6 +558,65 @@ def test_watchdog_reopens_only_the_silent_channels(monkeypatch):
     assert h._fec.calls == ["close", "open", "close", "open"]
 
 
+def test_target_power_dead_band():
+    """KNOWN_ISSUES #25: power match moves the target by fractions of a watt every tick; page
+    49 is only queued again once the target moved by 1 W from the last one queued."""
+    from hometrainer.ant import profiles as pf
+    from hometrainer.ant.ant_hub import AntHub
+
+    h = AntHub()
+    h.set_target_power(200.0)
+    assert h._command == pf.encode_target_power(200.0)
+    for w in (200.25, 200.5, 199.25, 200.75):  # drift within 1 W: nothing new to send
+        h.set_target_power(w)
+    assert h._command == pf.encode_target_power(200.0)
+    assert h._tx_queue.qsize() == 1
+    h.set_target_power(201.0)
+    assert h._command == pf.encode_target_power(201.0)
+    h.set_basic_resistance(10)  # leaving ERG, then back: always sent
+    h.set_target_power(201.0)
+    assert h._command == pf.encode_target_power(201.0)
+    assert h._tx_queue.qsize() == 4
+
+
+def test_sent_commands_are_logged(tmp_path):
+    from openant.easy.exception import AntException
+
+    from hometrainer.ant.ant_hub import AntHub
+
+    class Ant:
+        def __init__(self, fail):
+            self.fail = fail
+
+        def send_acknowledged_data(self, ch_id, data):
+            pass
+
+    class Ch:
+        id = 0
+
+        def __init__(self, fail):
+            self._ant = Ant(fail)
+            self.tries = 0
+
+        def wait_for_event(self, codes):
+            self.tries += 1
+            if self.tries <= self._ant.fail:
+                raise AntException("timeout")
+
+    h = AntHub()
+    h._raw_log = open(tmp_path / "ant.csv", "w")  # noqa: SIM115
+    h._fec = Ch(fail=1)
+    assert h._send_ack([0x31, 255, 255, 255, 255, 255, 32, 3])
+    pm = Ch(fail=9)
+    assert not h._send_ack([0x46, 255, 255, 254, 255, 2, 2, 1], ch=pm, retries=2)
+    h._raw_log.close()
+    rows = [r.split(",")[1:] for r in (tmp_path / "ant.csv").read_text().splitlines()]
+    assert rows == [
+        ["fec-tx", "2", "49", "255", "255", "255", "255", "255", "32", "3"],
+        ["power-tx-failed", "2", "70", "255", "255", "254", "255", "2", "2", "1"],
+    ]
+
+
 def test_concurrent_connect_is_rejected():
     import threading
 

@@ -122,7 +122,7 @@ progress). Environment variables:
 | Variable               | Effect                                                        |
 |------------------------|---------------------------------------------------------------|
 | `HOMETRAINER_DATA`     | data directory instead of `~/.hometrainer`                    |
-| `HOMETRAINER_ANT_LOG`  | CSV file where every raw ANT+ page is logged (debugging)      |
+| `HOMETRAINER_ANT_LOG`  | CSV file where every raw ANT+ page and every command sent is logged; also requests the trainer's command status (page 71) every 5 s (debugging) |
 | `HOMETRAINER_FRONTEND` | built UI to serve instead of the packaged one / `frontend/dist` |
 
 ## Ride screen
