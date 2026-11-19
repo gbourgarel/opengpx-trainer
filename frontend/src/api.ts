@@ -150,6 +150,29 @@ export interface DeviceStatus {
   ble_id: string | null
   name: string | null
   wanted: number | string | null
+  /** the device itself asks for a calibration (trainer: spin-down) */
+  calibration_requested?: boolean
+  /** running or last calibration of this sensor (since the sensors were connected) */
+  calibration?: CalibrationInfo | null
+}
+
+export type CalibrationRole = 'trainer' | 'power_meter'
+
+export interface CalibrationInfo {
+  role: CalibrationRole
+  kind: 'spin_down' | 'zero_offset'
+  phase: 'requesting' | 'speed_up' | 'coast' | 'zeroing' | 'done' | 'failed' | 'cancelled'
+  active: boolean
+  message: string
+  target_speed_kmh: number | null
+  /** spin-down in progress: the trainer's speed now */
+  speed_kmh?: number | null
+  temperature_c: number | null
+  spin_down_ms: number | null
+  zero_offset: number | null
+  /** unix s */
+  started_at: number
+  finished_at: number | null
 }
 
 export interface ScanDevice {
@@ -310,6 +333,8 @@ export const api = {
   connect: (kind: 'devices' | 'simulator') => req<{ hub: string; warnings?: string[] }>('POST', '/api/devices/connect', { kind }),
   scan: (seconds = 6) => req<ScanResult>('POST', `/api/devices/scan?seconds=${seconds}`),
   disconnect: () => req('POST', '/api/devices/disconnect'),
+  calibrate: (role: CalibrationRole) => req<CalibrationInfo>('POST', '/api/devices/calibrate', { role }),
+  cancelCalibration: () => req('POST', '/api/devices/calibrate/cancel'),
 
   workouts: () => req<Workout[]>('GET', '/api/workouts'),
   importWorkout: (f: File) => upload<Workout>('/api/workouts/import', f),

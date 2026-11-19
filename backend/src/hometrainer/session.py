@@ -491,6 +491,8 @@ class RideSession:
         rr = self.hub.drain_rr()  # beats since the last tick (dropped unless running)
         pc = choose_power(r, self.profile.power_source)
         pedaling = (pc.power_w or 0) > 5 or (pc.cadence_rpm or 0) > 5
+        if self.hub.calibrating():
+            pedaling = False  # a spin-down makes the rider pedal: not the start of the ride
 
         if self.state == "ready" and pedaling:
             self._start_if_needed()

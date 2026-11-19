@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .ant.calibration import CalibrationError
 from .ant.hub import SensorHub
 from .ant.scan import scan_ant
 from .ant.simulator import SimulatedHub
@@ -278,6 +279,10 @@ class ConnectBody(BaseModel):
     kind: Literal["devices", "ant", "simulator"] = "devices"
 
 
+class CalibrateBody(BaseModel):
+    role: Literal["trainer", "power_meter"]
+
+
 class StartBody(BaseModel):
     mode: Literal["erg", "gpx"]
     workout_id: int | None = None
@@ -487,6 +492,28 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 raise HTTPException(409, "A ride is in progress: stop it first")
         st.disconnect()  # outside the lock: stopping the hub can take seconds (BLE)
         return {"hub": None}
+
+    @app.post("/api/devices/calibrate")
+    def calibrate(body: CalibrateBody):
+        """Start a spin-down (trainer) or zero offset (power meter); progress and result are
+        in the devices status (``devices[role].calibration``, also in the telemetry)."""
+        with st.session_lock:
+            if st.session is not None and st.session.state in ("running", "paused"):
+                raise HTTPException(409, "Not during a ride")
+            if st.hub is None:
+                raise HTTPException(409, "No sensors connected")
+            try:
+                status = st.hub.start_calibration(body.role)
+            except CalibrationError as e:
+                raise HTTPException(409, str(e)) from e
+        log.info("Calibration of the %s started", body.role)
+        return status.to_dict()
+
+    @app.post("/api/devices/calibrate/cancel")
+    def cancel_calibration():
+        if st.hub is not None:
+            st.hub.cancel_calibration()
+        return {"ok": True}
 
     @app.get("/api/devices")
     def devices():

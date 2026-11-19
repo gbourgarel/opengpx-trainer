@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { api, type DeviceStatus, type Profile, type ScanDevice, type ScanResult } from '../api'
+import { lastCalibrationText } from '../calibration'
+import { CalibrateButton } from './Calibration'
 
 export type DeviceRole = 'trainer' | 'power_meter' | 'heart_rate'
 type Setter = <K extends keyof Profile>(k: K, v: Profile[K]) => void
@@ -80,6 +82,13 @@ function RoleRow({ role, label, p, set, live }: { role: DeviceRole; label: strin
           'not connected'
         )}
       </small>
+      {(role === 'trainer' || role === 'power_meter') && connected && (
+        <div className="role-cal">
+          {live?.calibration_requested && <span className="badge warn">calibration requested</span>}
+          {lastCalibrationText(live?.calibration) && <small className="muted">{lastCalibrationText(live?.calibration)}</small>}
+          <CalibrateButton role={role} dev={live} />
+        </div>
+      )}
     </div>
   )
 }

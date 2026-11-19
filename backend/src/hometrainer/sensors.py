@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 
+from .ant.calibration import CalibrationError, CalibrationStatus
 from .ant.hub import ROLES, SensorHub
 from .profile import Profile
 
@@ -80,3 +81,18 @@ class MultiHub(SensorHub):
     def set_user_configuration(self, rider_kg: float, bike_kg: float, wheel_d_m: float) -> None:
         if (h := self._trainer_hub) is not None:
             h.set_user_configuration(rider_kg, bike_kg, wheel_d_m)
+
+    # -- calibration: done by the transport serving the role (ANT+ only for now) ----------
+    def start_calibration(self, role: str) -> CalibrationStatus:
+        if role not in ("trainer", "power_meter"):
+            raise CalibrationError(f"No calibration for {role}")
+        hub = self.ant if self.transport[role] == "ant" else None
+        if hub is None:
+            raise CalibrationError(
+                f"Calibrating the {role.replace('_', ' ')} is only supported over ANT+"
+            )
+        return hub.start_calibration(role)
+
+    def cancel_calibration(self) -> None:
+        if self.ant is not None:
+            self.ant.cancel_calibration()

@@ -1,5 +1,6 @@
 /* Frontend checks: clear invariants of the pure logic (no test runner, no dependency).
  * `npm run check`. Each module exports `checks`: named functions that throw on failure. */
+import { checks as calibration } from './calibration.check.ts'
 import { checks as nudge } from './nudge.check.ts'
 import { checks as profile } from './profile.check.ts'
 import { checks as route3d } from './route3d.check.ts'
@@ -8,7 +9,7 @@ import { checks as tiles } from './tiles.check.ts'
 import { checks as zones } from './zones.check.ts'
 
 type Check = Record<string, () => void | Promise<void>>
-const groups: Record<string, Check> = { nudge, profile, route3d, stepCues, tiles, zones }
+const groups: Record<string, Check> = { calibration, nudge, profile, route3d, stepCues, tiles, zones }
 
 let failed = 0
 for (const [group, checks] of Object.entries(groups)) {

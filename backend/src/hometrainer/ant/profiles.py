@@ -48,9 +48,57 @@ class FecCommandStatus:  # page 71 (0x47)
     status: int  # 0 pass, 1 fail, 2 not supported, 3 rejected, 4 pending, 255 uninitialised
 
 
+@dataclass
+class FecCalibrationResult:  # page 1 (0x01), trainer -> display
+    zero_offset_ok: bool
+    spin_down_ok: bool
+    temperature_c: float | None
+    zero_offset: int | None
+    spin_down_ms: int | None
+
+
+@dataclass
+class FecCalibrationProgress:  # page 2 (0x02)
+    zero_offset_pending: bool
+    spin_down_pending: bool
+    temperature_condition: int  # 0 n/a, 1 too low, 2 ok, 3 too high
+    speed_condition: int  # 0 n/a, 1 too low, 2 ok
+    temperature_c: float | None
+    target_speed_ms: float | None
+    target_spin_down_ms: int | None
+
+
+def _fec_temperature(raw: int) -> float | None:
+    return None if raw == 0xFF else raw * 0.5 - 25.0
+
+
+def _u16(lo: int, hi: int) -> int | None:
+    v = lo | (hi << 8)
+    return None if v == 0xFFFF else v
+
+
 def decode_fec(data: bytes | list[int]):
     d = list(data[:8])
     page = d[0]
+    if page == 0x01:
+        return FecCalibrationResult(
+            zero_offset_ok=bool(d[1] & 0x40),
+            spin_down_ok=bool(d[1] & 0x80),
+            temperature_c=_fec_temperature(d[3]),
+            zero_offset=_u16(d[4], d[5]),
+            spin_down_ms=_u16(d[6], d[7]),
+        )
+    if page == 0x02:
+        speed = _u16(d[4], d[5])
+        return FecCalibrationProgress(
+            zero_offset_pending=bool(d[1] & 0x40),
+            spin_down_pending=bool(d[1] & 0x80),
+            temperature_condition=(d[2] >> 4) & 0x03,
+            speed_condition=(d[2] >> 6) & 0x03,
+            temperature_c=_fec_temperature(d[3]),
+            target_speed_ms=None if speed is None else speed / 1000.0,
+            target_spin_down_ms=_u16(d[6], d[7]),
+        )
     if page == 0x10:
         speed_raw = d[4] | (d[5] << 8)
         return FecGeneral(
@@ -82,6 +130,12 @@ def encode_target_power(watts: float) -> list[int]:
     """Page 49 (0x31): target power in 0.25 W units."""
     raw = int(round(max(0.0, min(watts, 4000.0)) * 4))
     return [0x31, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, raw & 0xFF, (raw >> 8) & 0xFF]
+
+
+def encode_fec_calibration_request(spin_down: bool = True, zero_offset: bool = False) -> list[int]:
+    """Page 1 (0x01) from the display: start a spin-down and / or a zero-offset calibration."""
+    mode = (0x80 if spin_down else 0) | (0x40 if zero_offset else 0)
+    return [0x01, mode, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
 
 
 def encode_basic_resistance(percent: float) -> list[int]:
@@ -237,7 +291,14 @@ def _pco(b: int) -> int | None:
 
 def decode_power_extra(
     data: bytes | list[int],
-) -> PedalEfficiency | ForceAngle | PedalPosition | AdvancedCapabilities2 | None:
+) -> (
+    PedalEfficiency
+    | ForceAngle
+    | PedalPosition
+    | AdvancedCapabilities2
+    | PmCalibrationResult
+    | None
+):
     """Pages of a dual-sided power meter beyond power and cadence (see decode_power)."""
     d = list(data[:8])
     page = d[0]
@@ -269,7 +330,32 @@ def decode_power_extra(
         )
     if page == 0x02 and d[1] == 0xFE:
         return AdvancedCapabilities2(mask=d[4], value=d[6])
+    if page == 0x01 and d[1] in (PM_CALIBRATION_OK, PM_CALIBRATION_FAILED):
+        raw = d[6] | (d[7] << 8)
+        return PmCalibrationResult(
+            ok=d[1] == PM_CALIBRATION_OK,
+            auto_zero=None if d[2] == 0xFF else bool(d[2]),
+            offset=raw - 0x10000 if raw >= 0x8000 else raw,
+        )
     return None
+
+
+# Bicycle Power page 1 calibration IDs: general calibration request / response
+PM_CALIBRATION_REQUEST = 0xAA
+PM_CALIBRATION_OK = 0xAC
+PM_CALIBRATION_FAILED = 0xAF
+
+
+@dataclass
+class PmCalibrationResult:  # page 1 (0x01), calibration ID 0xAC / 0xAF
+    ok: bool
+    auto_zero: bool | None  # auto zero on / off; None = not supported
+    offset: int  # calibration data (signed), meaning set by the manufacturer
+
+
+def encode_pm_calibration_request() -> list[int]:
+    """Page 1, General Calibration Request (0xAA): zero offset of a power meter."""
+    return [0x01, PM_CALIBRATION_REQUEST, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]
 
 
 # ANT+ rider position -> FIT RiderPositionType (0 seated, 1 standing, 2 / 3 transitions)

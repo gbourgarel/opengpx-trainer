@@ -141,6 +141,15 @@ progress). Environment variables:
   rate) raises a red banner, also over the immersive view, until it comes back: "no data
   since …", and for the power meter whether the trainer's power is used instead (power source
   *Auto*) or no power is recorded (*Power meter only*).
+* Calibration of the power source (ANT+ sensors, no ride in progress): **trainer spin-down** and
+  **power-meter zero offset**, from Profile → Devices or from the Ride tab before a ride (no
+  ride yet, or waiting for the first pedal stroke). A guided dialog shows the steps live: for a
+  spin-down, pedal up to the speed the trainer asks for (bar with the live speed), then stop
+  and let the wheel coast; the result is the spin-down time (or the zero offset value). ERG
+  is off during a spin-down and a ride waiting to start does not start meanwhile. When the
+  trainer itself flags "calibration required" (FE-C page 25), the Ride tab highlights the
+  spin-down and Devices shows "calibration requested". Results are kept until the sensors are
+  disconnected (not stored).
 * The screen is kept on with the Screen Wake Lock API, which needs `localhost` or HTTPS: a
   tablet opening the app over plain `http://` on the LAN shows "screen may sleep".
 * Keyboard (ignored while typing in a field):
@@ -306,8 +315,8 @@ sent a command to a device on any channel but the first.)
 
 | Device        | Type | Period | Pages used                                                  |
 |---------------|------|--------|-------------------------------------------------------------|
-| FE-C trainer  | 17   | 8192   | rx 16, 25, 71 · tx 49 (target power), 48 (free ride), 55 (user config) |
-| Power meter   | 11   | 8182   | rx 18 (crank torque: power and cadence per crank revolution), else rx 16 (power-only; event-averaged power) · rx 16 byte 2 (L/R balance), 19 (torque effectiveness, pedal smoothness), 0xE0–0xE2 (Cycling Dynamics), 2 / 0xFE (capabilities) |
+| FE-C trainer  | 17   | 8192   | rx 16, 25, 71, 2 / 1 (calibration progress / result) · tx 49 (target power), 48 (free ride), 55 (user config), 1 (spin-down request) |
+| Power meter   | 11   | 8182   | rx 18 (crank torque: power and cadence per crank revolution), else rx 16 (power-only; event-averaged power) · rx 16 byte 2 (L/R balance), 19 (torque effectiveness, pedal smoothness), 0xE0–0xE2 (Cycling Dynamics), 2 / 0xFE (capabilities), 1 / 0xAC–0xAF (calibration result) · tx 1 / 0xAA (zero offset request) |
 | Heart rate    | 120  | 8070   | rx byte 7 (HR), bytes 4–6 (beat time and count → R-R), page 4 (previous beat time) |
 
 Commands go out as acknowledged messages from a single sender thread, which coalesces requests

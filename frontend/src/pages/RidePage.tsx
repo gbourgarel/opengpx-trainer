@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { api, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
+import { CalibrationOffer } from '../components/Calibration'
 import { ManualTarget } from '../components/ManualTarget'
 import { useNudge, useRideShortcuts } from '../rideKeys'
 import { shortcutsHelp, SOURCE_LABEL, targetSource } from '../targetSource'
@@ -130,6 +131,7 @@ export function RidePage({
             <Metric label="Heart rate" value={tel.heart_rate_bpm} unit="bpm" />
           </div>
         )}
+        <CalibrationOffer devices={tel.devices} />
       </div>
     )
   }
@@ -197,7 +199,12 @@ export function RidePage({
         </div>
       </div>
       {error && <div className="error">{error}</div>}
-      {tel.state === 'ready' && <div className="hint">Start pedalling to begin — the clock starts automatically.</div>}
+      {tel.state === 'ready' && (
+        <>
+          <div className="hint">Start pedalling to begin — the clock starts automatically.</div>
+          <CalibrationOffer devices={tel.devices} />
+        </>
+      )}
       {tel.state === 'finished' && <div className="hint ok">Finished! {tel.saved ? `Ride saved (#${tel.saved.ride_id}).` : 'Saving the ride…'}</div>}
     </>
   )

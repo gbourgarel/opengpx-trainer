@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from .calibration import CalibrationError, CalibrationStatus, new_calibration
+
 # A reading (and a device's "connected" flag) is dropped after this long without any message.
 # 5 s rides through short reception gaps (a real ride had all ANT+ devices silent for 4.2 s at
 # the stick level), while a real disconnection is still noticed quickly. Stopping pedalling is
@@ -66,6 +68,8 @@ class DeviceInfo:
     name: str | None = None  # BLE advertised name
     wanted: int | str | None = None  # configured ANT number / BLE id (None = first found)
     last_seen: float = 0.0
+    calibration_requested: bool = False  # the device itself asks for a calibration
+    calibration: CalibrationStatus | None = None  # running or last calibration
 
 
 @dataclass
@@ -122,6 +126,52 @@ class SensorHub(ABC):
             self._lock = threading.Lock()
             self._s = _Store()
             self.devices = {k: DeviceInfo(k) for k in ROLES}
+        self._calibration = None  # SpinDown | ZeroOffset run by this hub
+        self._calibration_lock = threading.Lock()
+
+    # -- calibration --------------------------------------------------------------------
+    # A hub that can calibrate a role overrides ``_check_calibration``, sends what
+    # ``_calibration_poll`` returns and feeds the decoded answers to ``_calibration_page``.
+    def _check_calibration(self, role: str) -> None:
+        raise CalibrationError("Calibration is not supported for this sensor")
+
+    def start_calibration(self, role: str) -> CalibrationStatus:
+        if role not in ("trainer", "power_meter"):
+            raise CalibrationError(f"No calibration for {role}")
+        with self._calibration_lock:
+            if self.calibrating():
+                raise CalibrationError("A calibration is already running")
+            if not self.devices[role].connected:
+                raise CalibrationError(f"The {role.replace('_', ' ')} is not connected")
+            self._check_calibration(role)
+            self._calibration = new_calibration(role, time.monotonic())
+            self.devices[role].calibration = self._calibration.status
+            return self._calibration.status
+
+    def cancel_calibration(self) -> None:
+        with self._calibration_lock:
+            if self._calibration is not None:
+                self._calibration.cancel()
+
+    def calibrating(self, role: str | None = None) -> bool:
+        """A calibration is running (on any hub sharing this one's devices)."""
+        roles = (role,) if role else ("trainer", "power_meter")
+        return any((c := self.devices[r].calibration) is not None and c.active for r in roles)
+
+    def _calibration_poll(self, now: float) -> tuple[str, list[int]] | None:
+        """(role, request) to send now, if any."""
+        with self._calibration_lock:
+            c = self._calibration
+            if c is None:
+                return None
+            req = c.poll(now)
+            return None if req is None else (c.status.role, req)
+
+    def _calibration_page(self, role: str, msg) -> None:
+        with self._calibration_lock:
+            c = self._calibration
+            if c is not None and c.status.role == role:
+                c.on_page(msg)
 
     # -- lifecycle ----------------------------------------------------------------------
     @abstractmethod
@@ -218,8 +268,8 @@ class SensorHub(ABC):
             return out
 
     def status(self) -> dict:
-        self.readings()  # refresh connection flags
-        return {
+        r = self.readings()  # also refreshes the connection flags
+        out = {
             k: {
                 "connected": d.connected,
                 "transport": d.transport,
@@ -227,6 +277,13 @@ class SensorHub(ABC):
                 "ble_id": d.ble_id,
                 "name": d.name,
                 "wanted": d.wanted,
+                "calibration_requested": d.calibration_requested,
+                "calibration": d.calibration.to_dict() if d.calibration else None,
             }
             for k, d in self.devices.items()
         }
+        cal = out["trainer"]["calibration"]
+        if cal is not None and cal["active"]:  # the spin-down dialog shows the live speed
+            ms = r.trainer_speed_ms
+            cal["speed_kmh"] = None if ms is None else round(ms * 3.6, 1)
+        return out

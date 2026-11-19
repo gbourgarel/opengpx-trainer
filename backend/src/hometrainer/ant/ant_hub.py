@@ -36,6 +36,7 @@ import threading
 import time
 
 from . import profiles as pf
+from .calibration import CalibrationError
 from .hub import STALE_AFTER_S, SensorHub
 
 log = logging.getLogger(__name__)
@@ -207,6 +208,11 @@ class AntHub(SensorHub):
         if self.use_power_meter:
             threading.Thread(target=self._open_power_meter, name="ant-pm", daemon=True).start()
         threading.Thread(target=self._watchdog_loop, name="ant-watchdog", daemon=True).start()
+
+    def _check_calibration(self, role: str) -> None:
+        ch = self._fec if role == "trainer" else self._pm_ch
+        if ch is None or not self._running:
+            raise CalibrationError(f"The {role.replace('_', ' ')} is not on ANT+")
 
     # -- watchdog ----------------------------------------------------------------------
     # A paired sensor silent for WATCHDOG_SILENT_S gets its channel closed and reopened (same
@@ -480,12 +486,18 @@ class AntHub(SensorHub):
                 )
                 self._s.trainer_power.set(avg if avg is not None else msg.instantaneous_power_w)
                 self._s.trainer_cadence.set(self._fec_power.cadence(msg.cadence_rpm))
+                # bit 1: resistance calibration (spin-down) required
+                self.devices["trainer"].calibration_requested = bool(msg.trainer_status & 0x02)
             elif isinstance(msg, pf.FecGeneral):
                 self._s.trainer_speed.set(msg.speed_ms)
                 if msg.heart_rate and not self.devices["heart_rate"].connected:
                     self._s.heart_rate.set(msg.heart_rate)  # HR relayed by the trainer
             elif isinstance(msg, pf.FecCommandStatus):
                 self.last_command_status = msg
+        if isinstance(msg, (pf.FecCalibrationProgress, pf.FecCalibrationResult)):
+            self._calibration_page("trainer", msg)
+            if isinstance(msg, pf.FecCalibrationResult):
+                log.info("Trainer calibration result: %s", msg)
 
     def _on_power(self, data) -> None:
         self._log_raw("power", data)
@@ -497,6 +509,9 @@ class AntHub(SensorHub):
         if not self._accept("power_meter", num):
             return
         msg = pf.decode_power(data) or pf.decode_power_extra(data)
+        if isinstance(msg, pf.PmCalibrationResult):
+            self._calibration_page("power_meter", msg)
+            log.info("Power-meter calibration result: %s", msg)
         now = time.monotonic()
         # a meter lost for a while (asleep, battery) may have forgotten Cycling Dynamics
         if now - self._pm_seen_at > STALE_AFTER_S:
@@ -613,6 +628,7 @@ class AntHub(SensorHub):
         last_sent = 0.0
         last_status_req = 0.0
         user_sent = False
+        spin_down = False
         while self._running:
             try:
                 items = [self._tx_queue.get(timeout=0.5)]
@@ -631,6 +647,20 @@ class AntHub(SensorHub):
                         continue
                     sent = self._send_ack(item[1], ch=self._pm_ch)
                     log.info("Power meter command %s: %s", bytes(item[1]).hex(), sent)
+            calib = self._calibration_poll(time.monotonic())
+            if calib is not None:
+                role, req = calib
+                ch = self._fec if role == "trainer" else self._pm_ch
+                if ch is not None:
+                    sent = self._send_ack(req, ch=ch)
+                    log.info("Calibration request to the %s: %s", role, sent)
+            if self.calibrating("trainer"):
+                # no ERG command during a spin-down: it would end the calibration
+                spin_down = True
+                continue
+            if spin_down:  # spin-down over: the trainer needs its command again
+                spin_down = False
+                items.append("command")
             if self._fec is None:
                 continue  # trainer not on ANT+
             if not self.devices["trainer"].connected:

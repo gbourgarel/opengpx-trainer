@@ -459,6 +459,7 @@ body:has(.immersive) .sensor-alert {
   background: rgba(0, 0, 0, 0.55);
 }
 .dialog {
+  text-align: left;
   background: var(--panel);
   border: 1px solid var(--grid);
   border-radius: 12px;
@@ -1135,4 +1136,78 @@ b.warn {
     flex: none;
     padding: 6px 10px;
   }
+}
+
+/* calibration of the power source (Profile → Devices, Ride tab before a ride) */
+.role-cal {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+@media (max-width: 900px) {
+  .role-cal {
+    grid-column: 1;
+  }
+}
+.cal-offer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 0;
+}
+.cal-offer.asked > span {
+  color: var(--zone-high);
+}
+.hint + .cal-offer {
+  justify-content: flex-start;
+  margin: -4px 0 10px;
+}
+.dialog.calibration {
+  width: 440px;
+}
+.cal-steps {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+}
+.cal-steps li.current {
+  color: inherit;
+  font-weight: 600;
+}
+.cal-steps li.past {
+  text-decoration: line-through;
+}
+.cal-text.ok {
+  color: var(--ok);
+}
+.cal-text.error {
+  color: var(--zone-high);
+}
+.cal-speed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cal-speed .bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--grid);
+  overflow: hidden;
+}
+.cal-speed .bar > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s;
+}
+.cal-speed span {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
