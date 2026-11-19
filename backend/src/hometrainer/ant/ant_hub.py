@@ -71,6 +71,7 @@ def load_libusb() -> None:
 class AntHub(SensorHub):
     TARGET_RESEND_S = 2.0  # re-send ERG target periodically (survives trainer reconnects)
     STATUS_REQUEST_S = 5.0  # raw log on: request the command status (page 71) this often
+    CHANNEL_EXT_ASSIGN = 0x00  # 0x01 (background scan) froze a channel sending acks (#14)
     # Send the Cycling Dynamics set-up to the power meter. Off: on a real ride (2026-11-08,
     # Assioma) the power-meter channel received nothing more once the first request (page 70)
     # was sent, 0.3 s after pairing, on the 4 Hz channel. The pages are still decoded when a
@@ -264,11 +265,19 @@ class AntHub(SensorHub):
         device_number: int | None = None,
     ):
         with self._channel_lock:
-            ch = self._node.new_channel(self._channel_cls.Type.BIDIRECTIONAL_RECEIVE, 0x00, 0x01)
+            ch = self._node.new_channel(
+                self._channel_cls.Type.BIDIRECTIONAL_RECEIVE, 0x00, self.CHANNEL_EXT_ASSIGN
+            )
         ch.on_broadcast_data = on_data
         ch.on_burst_data = on_data
         ch.on_acknowledge = on_data
-        ch.set_search_timeout(0xFF)
+        if self.CHANNEL_EXT_ASSIGN & 0x01:
+            ch.set_search_timeout(0xFF)
+        else:
+            # search in low priority only, forever: a searching channel (sensor off or asleep)
+            # does not take the radio from the channels that are tracking
+            ch.set_search_timeout(0x00)
+            self._set_low_priority_search_timeout(ch, 0xFF)
         # device number 0 = wildcard; transmission type 0 = wildcard
         ch.set_id(device_number or 0, device_type, 0)
         if exclude and not device_number:
@@ -278,6 +287,15 @@ class AntHub(SensorHub):
         ch.set_rf_freq(pf.RF_FREQ)
         ch.open()
         return ch
+
+    @staticmethod
+    def _set_low_priority_search_timeout(ch, timeout: int) -> None:
+        """ANT message 0x63, in 2.5 s units (0xFF = no timeout); openant has no wrapper."""
+        from openant.base.message import Message
+
+        msg_id = Message.ID.LOW_PRIORITY_CHANNEL_SEARCH_TIMEOUT
+        ch._ant.write_message(Message(msg_id, [ch.id, timeout]))
+        ch.wait_for_response(msg_id)
 
     @staticmethod
     def _set_exclusion(ch, device_type: int, exclude: list[int]) -> None:

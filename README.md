@@ -299,7 +299,10 @@ its values unchanged.
 
 ## ANT+
 
-One ANT node, three slave channels with wildcard pairing (the first device found):
+One ANT node, three slave channels with wildcard pairing (the first device found). They are
+plain channels searching in low priority only, with no timeout, so a channel looking for a
+sensor never takes the radio from the others. (Background-scanning channels froze when the app
+sent a command to a device on any channel but the first.)
 
 | Device        | Type | Period | Pages used                                                  |
 |---------------|------|--------|-------------------------------------------------------------|
@@ -317,8 +320,8 @@ wakes.
 
 Cycling Dynamics (power phase, rider position, PCO) are only sent once a display enables them.
 The app records them when a head unit (e.g. a Garmin Edge) has enabled them. Enabling them
-from the app (Bicycle Power profile §4.5.2) is implemented but switched off: on a real ride
-the power-meter channel went silent as soon as the app sent its first request. L/R balance,
+from the app (Bicycle Power profile §4.5.2) is implemented but switched off: the test pedals
+(Favero Assioma) refuse the 8 Hz rate the dynamics pages need. L/R balance,
 torque effectiveness and pedal smoothness need no set-up.
 
 ## Bluetooth LE
