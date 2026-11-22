@@ -334,6 +334,18 @@ th {
   width: 100%;
   display: block;
 }
+.profile-svg.pickable {
+  cursor: crosshair;
+}
+/* a ride started part-way: the part of the route before the start point */
+.profile-skipped {
+  fill: rgba(15, 18, 25, 0.65);
+}
+.profile-start {
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
 .ftp-line {
   stroke: var(--muted);
   stroke-dasharray: 4 4;
@@ -971,6 +983,17 @@ b.warn {
 }
 .air-pick input {
   width: 4em;
+}
+/* start a route part-way: under its profile */
+.start-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.start-pick .km-field {
+  width: 4.5em;
 }
 .weather-note {
   margin: 6px 0 0;

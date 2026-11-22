@@ -210,6 +210,7 @@ class RideSession:
         wind_from_deg: float = 0.0,
         temperature_c: float | None = None,
         relative_humidity: float | None = None,
+        start_m: float = 0.0,
     ):
         if mode == "erg" and workout is None:
             raise ValueError("ERG mode needs a workout")
@@ -250,18 +251,23 @@ class RideSession:
         self.wind_kmh = max(0.0, float(wind_kmh)) if route is not None else 0.0
         self.wind_from_deg = float(wind_from_deg) % 360.0
         wind_fn = no_wind
+        # GPX rides started part-way: the virtual bike's distance (recorded, from 0) is
+        # counted from this point of the route; the ride still ends at the route's end
+        self.start_m = 0.0
         if route is not None:
             lap_m = route.total_distance_m
+            self.start_m = min(max(float(start_m), 0.0), max(lap_m - 100.0, 0.0))
+            start = self.start_m
 
             def grade_fn(d: float) -> tuple[float, float]:
                 # the route repeats (laps) when a workout outlasts it
-                return route.grade_and_altitude(d % lap_m)
+                return route.grade_and_altitude((start + d) % lap_m)
 
             if self.wind_kmh > 0:
                 wind_ms, wind_from = self.wind_kmh / 3.6, self.wind_from_deg
 
                 def wind_fn(d: float) -> tuple[float, float]:
-                    return route.wind_components(d % lap_m, wind_ms, wind_from)
+                    return route.wind_components((start + d) % lap_m, wind_ms, wind_from)
         else:
             grade_fn = flat_road
         # Air of the ride (density): the conditions chosen at start, else standard air
@@ -434,7 +440,13 @@ class RideSession:
         """Position on the route within the current lap."""
         if self.route is None:
             return 0.0
-        return self.bike.state.distance_m % self.route.total_distance_m
+        return self.route_m % self.route.total_distance_m
+
+    @property
+    def route_m(self) -> float:
+        """Distance along the route (laps one after the other) from its start: the start
+        point of a ride started part-way plus the distance ridden."""
+        return self.start_m + self.bike.state.distance_m
 
     # -- live estimate -----------------------------------------------------------------
     REMAINING_EVERY_S = 10.0  # riding time between two computations, settings unchanged
@@ -612,7 +624,7 @@ class RideSession:
                 self._step_time_s += dt
         st = self.bike.state
         if self.route is not None:
-            lap = int(st.distance_m // self.route.total_distance_m)
+            lap = int(self.route_m // self.route.total_distance_m)
             if lap != self._lap:
                 # back at the start of the route: the altitude jump is not climbing
                 self.climb.break_continuity()
@@ -656,7 +668,7 @@ class RideSession:
                 end_m = (self._workout_end_lap + 1) * lap_m
             else:
                 end_m = None  # workout still running: the route loops
-            if end_m is not None and st.distance_m >= end_m - 0.5:
+            if end_m is not None and self.route_m >= end_m - 0.5:
                 self.state = "finished"
 
         if running:
@@ -763,6 +775,7 @@ class RideSession:
                 heading_deg=round(point.heading_deg, 1),
                 route_distance_m=round(self.route.total_distance_m, 1),
                 route_position_m=round(self.route_position_m, 1),
+                route_start_m=round(self.start_m, 1),  # started part-way: skipped before it
                 lap=self._lap + 1,
                 # wind as set for the ride, and its components on the current heading
                 wind_kmh=round(self.wind_kmh, 1),

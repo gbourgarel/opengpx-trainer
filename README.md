@@ -27,6 +27,10 @@ and heart-rate sensors on either protocol. Formerly called *Home Trainer*.
   averaged into one weather for the ride (wind as a vector mean), the 10 m wind brought down to
   rider height with a log profile (`u(1 m) = u(10 m)·ln(1/z0)/ln(10/z0)`, z0 = 0.1 m,
   countryside with hedges: × 0.50), all editable before starting; the route's time estimate follows them. A
+  route can be **started part-way**: click the map or the elevation profile (or type a km
+  value under it) to choose the start point; the part before it is greyed, the estimate
+  covers the rest, the ride ends at the route's end and its recorded distance starts at 0
+  (with a workout, the route loops back through its start as usual). A
   route can be ridden **in reverse** (*Reverse*, next to the wind when
   starting it): a climb becomes its descent; the map and profile follow the direction chosen.
 * **Workout on a route**: a GPX ride can follow a workout. The workout sets the target, the route

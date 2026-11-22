@@ -5,13 +5,14 @@ import { checks as fileDrop } from './fileDrop.check.ts'
 import { checks as nudge } from './nudge.check.ts'
 import { checks as profile } from './profile.check.ts'
 import { checks as route3d } from './route3d.check.ts'
+import { checks as routeStart } from './routeStart.check.ts'
 import { checks as stepCues } from './stepCues.check.ts'
 import { checks as targetSource } from './targetSource.check.ts'
 import { checks as tiles } from './tiles.check.ts'
 import { checks as zones } from './zones.check.ts'
 
 type Check = Record<string, () => void | Promise<void>>
-const groups: Record<string, Check> = { calibration, fileDrop, nudge, profile, route3d, stepCues, targetSource, tiles, zones }
+const groups: Record<string, Check> = { calibration, fileDrop, nudge, profile, route3d, routeStart, stepCues, targetSource, tiles, zones }
 
 let failed = 0
 for (const [group, checks] of Object.entries(groups)) {

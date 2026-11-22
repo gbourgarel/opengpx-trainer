@@ -127,15 +127,16 @@ def estimate_route(
     wind_kmh: float = 0.0,
     wind_from_deg: float = 0.0,
     air: tuple[float, float] = (STANDARD_TEMPERATURE_C, STANDARD_HUMIDITY),
+    start_m: float = 0.0,
 ) -> Estimate:
-    """Time to ride the whole route in Slope ERG at ``effort_pct``."""
+    """Time to ride the route (from ``start_m`` to its end) in Slope ERG at ``effort_pct``."""
     curve = profile.grade_power_curve()
 
     def slope(_t: float, pos: float) -> tuple[float, bool]:
         g = route.mean_grade(pos, curve.lookahead_m)
         return curve.target_watts(g, profile.ftp_w, effort_pct / 100.0), True
 
-    return _ride(route, profile, slope, wind_kmh, wind_from_deg, air=air)
+    return _ride(route, profile, slope, wind_kmh, wind_from_deg, start_m=start_m, air=air)
 
 
 def estimate_workout_on_route(
@@ -147,9 +148,11 @@ def estimate_workout_on_route(
     wind_kmh: float = 0.0,
     wind_from_deg: float = 0.0,
     air: tuple[float, float] = (STANDARD_TEMPERATURE_C, STANDARD_HUMIDITY),
+    start_m: float = 0.0,
 ) -> Estimate:
-    """Distance covered during a workout ridden on the route (it loops while the workout
-    lasts): the workout's targets on its steps, the slope curve in its free-ride steps."""
+    """Distance covered during a workout ridden on the route from ``start_m`` (it loops while
+    the workout lasts): the workout's targets on its steps, the slope curve in its free-ride
+    steps."""
     curve = profile.grade_power_curve()
 
     def target(t: float, pos: float) -> tuple[float, bool]:
@@ -159,7 +162,9 @@ def estimate_workout_on_route(
         g = route.mean_grade(pos, curve.lookahead_m)
         return curve.target_watts(g, profile.ftp_w, effort_pct / 100.0), True
 
-    return _ride(route, profile, target, wind_kmh, wind_from_deg, workout.duration_s, air=air)
+    return _ride(
+        route, profile, target, wind_kmh, wind_from_deg, workout.duration_s, start_m, air=air
+    )
 
 
 @dataclass(frozen=True)

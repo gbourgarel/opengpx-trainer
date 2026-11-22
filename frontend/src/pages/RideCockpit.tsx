@@ -9,6 +9,7 @@ import { fmtTime, wkg, type RouteDetail, type Telemetry, type Workout } from '..
 import { ElevationProfile, LocalProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
 import { WindBadge } from '../components/Wind'
+import { indexAt } from '../routeStart'
 import { targetZone, type TargetZone } from '../targetZone'
 import { DIST_LEFT_TITLE, TIME_LEFT_TITLE } from '../liveEstimate'
 import { hrZone, powerZone } from '../zones'
@@ -24,6 +25,8 @@ export interface RideCtx {
   lthr: number | null
   routePos?: number
   doneIdx: number
+  /** started part-way, on the first lap: where the ride started (m), the part before greyed */
+  skippedM: number
   follow: boolean
   setFollow: (v: boolean) => void
   showGauge: boolean
@@ -230,7 +233,7 @@ function RouteProgressCard({ c }: { c: RideCtx }) {
         </span>
       </div>
       <div className="ck-profile-wrap">
-        <ElevationProfile distance={c.route.profile_distance_m} altitude={c.route.altitude_m} grade={c.route.grade} position={c.routePos} height={64} />
+        <ElevationProfile distance={c.route.profile_distance_m} altitude={c.route.altitude_m} grade={c.route.grade} position={c.routePos} height={64} start={c.skippedM} />
         <div className="ck-done-shade" style={{ width: `${(pos / total) * 100}%` }} />
       </div>
       <small className="muted">
@@ -247,7 +250,14 @@ function MapCard({ c }: { c: RideCtx }) {
       <label className="inline map-follow">
         <input type="checkbox" checked={c.follow} onChange={(e) => c.setFollow(e.target.checked)} /> follow rider
       </label>
-      <RouteMap latlon={c.route.latlon} position={c.tel.lat != null ? [c.tel.lat, c.tel.lon!] : undefined} follow={c.follow} done={c.doneIdx} height="100%" />
+      <RouteMap
+        latlon={c.route.latlon}
+        position={c.tel.lat != null ? [c.tel.lat, c.tel.lon!] : undefined}
+        follow={c.follow}
+        done={c.doneIdx}
+        start={c.skippedM > 0 ? indexAt(c.route.profile_distance_m, c.skippedM) : undefined}
+        height="100%"
+      />
       <WindBadge kmh={c.tel.wind_kmh ?? 0} fromDeg={c.tel.wind_from_deg ?? 0} head={c.tel.headwind_kmh} cross={c.tel.crosswind_kmh} />
     </div>
   )

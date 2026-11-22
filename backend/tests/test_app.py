@@ -166,6 +166,20 @@ def test_start_gpx_ride_in_reverse(client):
     assert (rev["ascent_m"], rev["descent_m"]) == (fwd["descent_m"], fwd["ascent_m"])
 
 
+def test_start_gpx_ride_part_way(client):
+    from tests.test_gpx_workouts import make_gpx
+
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    rid = client.post("/api/routes/import", files={"file": ("r.gpx", make_gpx())}).json()["id"]
+    body = {"mode": "gpx", "route_id": rid, "reverse": True, "start_m": 800}
+    assert client.post("/api/session/start", json=body).status_code == 200
+    tel = client.st.session.tick()
+    assert (tel["route_position_m"], tel["route_start_m"], tel["distance_m"]) == (800, 800, 0)
+    client.post("/api/session/stop?save=false")
+    bad = dict(body, start_m=-5)
+    assert client.post("/api/session/start", json=bad).status_code == 422
+
+
 def test_weather_endpoint_and_ride_air(client, monkeypatch):
     from opengpx_trainer import app as app_mod
     from opengpx_trainer.weather import Weather
@@ -216,6 +230,9 @@ def test_route_estimates_in_the_list_and_by_options(client):
     down = client.get(f"/api/routes/{rid}/estimate?reverse=true").json()
     windy = client.get(f"/api/routes/{rid}/estimate?wind_kmh=30&wind_from_deg=0").json()
     assert down["duration_s"] < est["duration_s"] < windy["duration_s"]
+    # started part-way: the rest of the route only (the climb is regular: about half)
+    half = client.get(f"/api/routes/{rid}/estimate?start_m=1100").json()["duration_s"]
+    assert half == pytest.approx(est["duration_s"] / 2, rel=0.1)
     # with a workout: its duration, and the distance covered
     w = client.get(f"/api/routes/{rid}/estimate?workout_id={wid}").json()
     assert w["duration_s"] == client.get(f"/api/workouts/{wid}").json()["duration_s"]

@@ -96,6 +96,7 @@ class AppState:
         workout_id: int | None = None,
         temperature_c: float | None = None,
         relative_humidity: float | None = None,
+        start_m: float = 0.0,
     ) -> Estimate | None:
         """Estimated time of a route (or distance covered during a workout on it), memoised
         for the current profile (air: the given one, else standard air). None when the route
@@ -105,7 +106,16 @@ class AppState:
             STANDARD_TEMPERATURE_C if temperature_c is None else temperature_c,
             STANDARD_HUMIDITY if relative_humidity is None else relative_humidity,
         )
-        key = (rid, reverse, wind_kmh, wind_from_deg, workout_id, air, json.dumps(p.to_dict()))
+        key = (
+            rid,
+            reverse,
+            wind_kmh,
+            wind_from_deg,
+            workout_id,
+            air,
+            round(start_m),
+            json.dumps(p.to_dict()),
+        )
         with self._estimates_lock:
             if key in self._estimates:
                 return self._estimates[key]
@@ -113,14 +123,17 @@ class AppState:
         if gpx is None:
             return None
         route = Route.from_gpx(gpx, reverse=reverse)
+        start_m = min(start_m, max(route.total_distance_m - 100.0, 0.0))  # as the ride does
         if workout_id is None:
-            est = estimate_route(route, p, 100.0, wind_kmh, wind_from_deg, air)
+            est = estimate_route(route, p, 100.0, wind_kmh, wind_from_deg, air, start_m)
         else:
             d = self.storage.get_workout(workout_id)
             if d is None:
                 return None
             w = Workout.from_dict(d)
-            est = estimate_workout_on_route(route, p, w, 100.0, 100.0, wind_kmh, wind_from_deg, air)
+            est = estimate_workout_on_route(
+                route, p, w, 100.0, 100.0, wind_kmh, wind_from_deg, air, start_m
+            )
         with self._estimates_lock:
             if len(self._estimates) > 500:
                 self._estimates.clear()
@@ -307,6 +320,8 @@ class StartBody(BaseModel):
     # given, and ERG rides: standard air (15 degC, 50 %)
     temperature_c: float | None = Field(None, ge=-30.0, le=50.0)
     relative_humidity: float | None = Field(None, ge=0.0, le=1.0)
+    # GPX rides: start this far along the route (in the direction ridden), up to its end
+    start_m: float = Field(0.0, ge=0.0)
 
 
 class FeedbackBody(BaseModel):
@@ -639,11 +654,19 @@ def create_app(storage: Storage | None = None) -> FastAPI:
         workout_id: int | None = None,
         temperature_c: float | None = Query(None, ge=-30.0, le=50.0),
         relative_humidity: float | None = Query(None, ge=0.0, le=1.0),
+        start_m: float = Query(0.0, ge=0.0),
     ):
         """Estimated time to ride the route (100 % effort), or with ``workout_id`` the
-        distance covered during that workout on it (the route loops)."""
+        distance covered during that workout on it (the route loops); from ``start_m``."""
         est = st.route_estimate(
-            rid, reverse, wind_kmh, wind_from_deg, workout_id, temperature_c, relative_humidity
+            rid,
+            reverse,
+            wind_kmh,
+            wind_from_deg,
+            workout_id,
+            temperature_c,
+            relative_humidity,
+            start_m,
         )
         if est is None:
             raise HTTPException(404, "Route or workout not found")
@@ -728,6 +751,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 wind_from_deg=body.wind_from_deg,
                 temperature_c=body.temperature_c if gpx else None,
                 relative_humidity=body.relative_humidity if gpx else None,
+                start_m=body.start_m if gpx else 0.0,
             )
             st.session.checkpoint = RideCheckpoint(
                 st.storage.checkpoints_dir / f"{st.session.id}.jsonl"

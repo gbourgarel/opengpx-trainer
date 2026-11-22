@@ -118,6 +118,8 @@ export function RidePage({
 
   // position within the current lap (the route loops in GPX + workout rides)
   const routePos = tel.route_position_m ?? tel.distance_m
+  // started part-way: the part before the start point is greyed, on the first lap only
+  const skippedM = (tel.lap ?? 1) === 1 ? (tel.route_start_m ?? 0) : 0
   const doneIdx = useMemo(() => {
     if (!route || routePos == null) return 0
     const k = route.profile_distance_m.findIndex((d) => d >= routePos)
@@ -326,7 +328,7 @@ export function RidePage({
   // Cockpit layout (RideCockpit): fits the window on desktop screens; the immersive view covers it
   return (
     <>
-      <RideCockpit c={{ tel, route, workout, ftp, lthr, routePos, doneIdx, follow, setFollow, showGauge, remainingDist, lap, head, controls, sourceLabel }} />
+      <RideCockpit c={{ tel, route, workout, ftp, lthr, routePos, doneIdx, skippedM, follow, setFollow, showGauge, remainingDist, lap, head, controls, sourceLabel }} />
       {immersive && route && (
         <Immersive
           tel={tel}

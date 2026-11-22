@@ -1179,3 +1179,44 @@ def test_track_resistance_page_for_the_grade_only():
     page = pf.encode_track_resistance(0.03)
     assert page[0] == 0x33 and page[7] == 0xFF  # trainer's default Crr
     assert page[5] | (page[6] << 8) == 20300  # (3 % + 200 %) / 0.01 %
+
+
+# -- GPX route started part-way --------------------------------------------------------------
+def test_gpx_ride_started_part_way_ends_at_the_route_end():
+    """ROADMAP 20: start at km X, recorded distance from 0, the ride ends at the route's end."""
+    from opengpx_trainer.gpx.route import Route
+    from tests.test_gpx_workouts import make_gpx
+
+    route = Route.from_gpx(make_gpx(grade=0.0))  # ~2.2 km
+    total = route.total_distance_m
+    h = FakeHub()
+    s = RideSession(h, Profile(ftp_w=250, power_match=False), "gpx", route=route, start_m=1500)
+    t, tel = 1000.0, s.tick(1000.0)
+    assert tel["route_position_m"] == pytest.approx(1500) and tel["route_start_m"] == 1500
+    assert tel["distance_m"] == 0
+    assert tel["altitude_m"] == pytest.approx(route.point_at(1500).altitude_m, abs=0.5)
+    while s.state != "finished" and t < 1000 + 600:
+        h.feed(trainer=300, pm=300)
+        tel = s.tick(t := t + 0.25)
+    assert s.state == "finished"
+    assert tel["distance_m"] == pytest.approx(total - 1500, abs=5)  # recorded from 0
+
+
+def test_part_way_start_is_clamped_before_the_end():
+    from opengpx_trainer.gpx.route import Route
+    from tests.test_gpx_workouts import make_gpx
+
+    route = Route.from_gpx(make_gpx(grade=0.0))
+    s = RideSession(FakeHub(), Profile(), "gpx", route=route, start_m=1e6)
+    assert s.start_m == pytest.approx(route.total_distance_m - 100)
+
+
+def test_part_way_start_with_a_workout_loops_back_through_the_start():
+    h, s, route = _mixed_session([Step(120, 0.8, 0.8)])
+    s2 = RideSession(
+        h, Profile(ftp_w=250, power_match=False), "gpx", route=route,
+        workout=s.workout, start_m=300,
+    )  # fmt: skip
+    t, tel = _ride(h, s2, 60, watts=300)
+    assert tel["lap"] >= 2  # went past the route's end and on from its start
+    assert tel["route_position_m"] < route.total_distance_m

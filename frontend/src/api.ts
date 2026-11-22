@@ -237,6 +237,8 @@ export interface Telemetry {
   np_w?: number | null
   target_wkg?: number | null
   route_position_m?: number
+  /** a ride started part-way: where on the route (m) */
+  route_start_m?: number
   lap?: number
   vam_mh?: number | null
   vam_instant_mh?: number
@@ -323,8 +325,9 @@ export const api = {
   getProfile: () => req<Profile>('GET', '/api/profile'),
   putProfile: (p: Partial<Profile>) => req<Profile>('PUT', '/api/profile', p),
   bikePresets: () => req<BikePreset[]>('GET', '/api/bike-presets'),
-  routeEstimate: (id: number, o: { reverse: boolean; windKmh: number; windFromDeg: number; workoutId: number | null; air: RideAir }) => {
+  routeEstimate: (id: number, o: { reverse: boolean; windKmh: number; windFromDeg: number; workoutId: number | null; air: RideAir; startM?: number }) => {
     const q = new URLSearchParams({ reverse: String(o.reverse), wind_kmh: String(o.windKmh), wind_from_deg: String(o.windFromDeg) })
+    if (o.startM) q.set('start_m', String(o.startM))
     if (o.workoutId != null) q.set('workout_id', String(o.workoutId))
     q.set('temperature_c', String(o.air.temperature_c))
     q.set('relative_humidity', String(o.air.relative_humidity))
@@ -362,6 +365,8 @@ export const api = {
     wind_from_deg?: number
     temperature_c?: number
     relative_humidity?: number
+    /** GPX: start this far along the route (m) */
+    start_m?: number
   }) =>
     req<{ ok: boolean; name: string; session_id: string }>('POST', '/api/session/start', body),
   workout: (id: number) => req<Workout>('GET', `/api/workouts/${id}`),

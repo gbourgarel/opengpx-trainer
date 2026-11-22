@@ -73,12 +73,18 @@ export function ElevationProfile({
   grade,
   position,
   height = 120,
+  start,
+  onPick,
 }: {
   distance: number[]
   altitude: number[]
   grade: number[]
   position?: number
   height?: number
+  /** a ride started part-way: the part before it is greyed, a line marks it */
+  start?: number
+  /** click on the profile: the fraction of its width (0-1), i.e. of the route */
+  onPick?: (fraction: number) => void
 }) {
   const W = 1000
   const total = distance[distance.length - 1] || 1
@@ -114,9 +120,29 @@ export function ElevationProfile({
       </g>
     )
   }
+  const skipped =
+    start != null && start > 0 ? (
+      <g>
+        <rect x={0} y={0} width={x(start)} height={height} className="profile-skipped" />
+        <line x1={x(start)} x2={x(start)} y1={0} y2={height} className="profile-start" />
+      </g>
+    ) : null
   return (
-    <svg viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none" className="profile-svg" style={{ height }}>
+    <svg
+      viewBox={`0 0 ${W} ${height}`}
+      preserveAspectRatio="none"
+      className={`profile-svg ${onPick ? 'pickable' : ''}`}
+      style={{ height }}
+      onClick={
+        onPick &&
+        ((e) => {
+          const r = e.currentTarget.getBoundingClientRect()
+          onPick((e.clientX - r.left) / r.width)
+        })
+      }
+    >
       {segs}
+      {skipped}
       {marker}
     </svg>
   )

@@ -6,6 +6,7 @@ import { ElevationProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
 import { DropOverlay } from '../components/DropOverlay'
 import { useFileDrop } from '../useFileDrop'
+import { clampStart, indexAt, nearestIndex, startFromProfile } from '../routeStart'
 
 function FilePick({ accept, label, onFile }: { accept: string; label: string; onFile: (f: File) => void }) {
   return (
@@ -22,6 +23,28 @@ function FilePick({ accept, label, onFile }: { accept: string; label: string; on
         }}
       />
     </label>
+  )
+}
+
+/** A distance in km, typed freely and applied on Enter or when leaving the field (remounted
+ * with a new `key` when the value changes from elsewhere, e.g. a click on the map). */
+function KmField({ m, onChange }: { m: number; onChange: (km: number) => void }) {
+  const [text, setText] = useState((m / 1000).toFixed(1))
+  const apply = () => {
+    const km = Number(text.replace(',', '.'))
+    if (Number.isFinite(km)) onChange(km)
+    else setText((m / 1000).toFixed(1))
+  }
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      className="km-field"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={apply}
+      onKeyDown={(e) => e.key === 'Enter' && apply()}
+    />
   )
 }
 
@@ -117,7 +140,7 @@ export function RoutesPage({
   onStart,
 }: {
   canStart: boolean
-  onStart: (r: RouteDetail, w: Workout | undefined, wind: WindSetting, air: RideAir) => void
+  onStart: (r: RouteDetail, w: Workout | undefined, wind: WindSetting, air: RideAir, startM: number) => void
 }) {
   const [list, setList] = useState<RouteSummary[]>([])
   const [wind, setWind] = useState<WindSetting>(loadWind) // last wind used, per browser
@@ -151,22 +174,32 @@ export function RoutesPage({
       })
       .catch((e: Error) => setWeather({ busy: false, note: `Weather unavailable: ${e.message}` }))
   }
-  const open = (id: number, rev = reverse) => api.route(id, rev).then(setSel).catch((e) => setError(e.message))
+  // start part-way (m along the route, in the direction ridden): a click on the map or the
+  // profile, or the km field; back to 0 for another route or direction
+  const [startM, setStartM] = useState(0)
+  const open = (id: number, rev = reverse) =>
+    api
+      .route(id, rev)
+      .then((r) => {
+        setSel(r)
+        setStartM(0)
+      })
+      .catch((e) => setError(e.message))
   // estimated time (or, with a workout, distance) for the options chosen; the key says which
   // options an estimate is for, so a stale one is never shown
   const [est, setEst] = useState<{ key: string; value: RouteEstimate } | null>(null)
-  const estKey = sel ? JSON.stringify([sel.id, !!sel.reversed, wind.kmh, wind.fromDeg, workoutId, air]) : ''
+  const estKey = sel ? JSON.stringify([sel.id, !!sel.reversed, wind.kmh, wind.fromDeg, workoutId, air, startM]) : ''
   useEffect(() => {
     if (!sel) return
     let cancelled = false
     api
-      .routeEstimate(sel.id, { reverse: !!sel.reversed, windKmh: wind.kmh, windFromDeg: wind.fromDeg, workoutId, air })
+      .routeEstimate(sel.id, { reverse: !!sel.reversed, windKmh: wind.kmh, windFromDeg: wind.fromDeg, workoutId, air, startM })
       .then((value) => !cancelled && setEst({ key: estKey, value }))
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [sel, wind.kmh, wind.fromDeg, workoutId, air, estKey])
+  }, [sel, wind.kmh, wind.fromDeg, workoutId, air, startM, estKey])
   const estimate = est && est.key === estKey ? est.value : null
 
   // .gpx files dropped anywhere on the tab: imported one after the other like "Import GPX",
@@ -250,8 +283,33 @@ export function RoutesPage({
                 </span>
               )}
             </div>
-            <RouteMap latlon={sel.latlon} height={300} />
-            <ElevationProfile distance={sel.profile_distance_m} altitude={sel.altitude_m} grade={sel.grade} height={120} />
+            <RouteMap
+              latlon={sel.latlon}
+              height={300}
+              start={startM > 0 ? indexAt(sel.profile_distance_m, startM) : undefined}
+              onPick={(at) => setStartM(clampStart(sel.profile_distance_m[nearestIndex(sel.latlon, at)], sel.distance_m))}
+            />
+            <ElevationProfile
+              distance={sel.profile_distance_m}
+              altitude={sel.altitude_m}
+              grade={sel.grade}
+              height={120}
+              start={startM}
+              onPick={(f) => setStartM(startFromProfile(f, sel.distance_m))}
+            />
+            <div className="start-pick">
+              <span className="muted" title="Click the map or the profile to start part-way; the ride ends at the route's end">
+                Start at km
+              </span>
+              <KmField key={startM} m={startM} onChange={(km) => setStartM(clampStart(km * 1000, sel.distance_m))} />
+              {startM > 0 ? (
+                <button className="ghost" onClick={() => setStartM(0)}>
+                  From the start
+                </button>
+              ) : (
+                <span className="muted">click the map or the profile to start part-way</span>
+              )}
+            </div>
             <div className="row-end route-actions">
               <button
                 className="ghost"
@@ -324,7 +382,7 @@ export function RoutesPage({
                 onClick={() => {
                   saveWind(wind)
                   saveAir(air)
-                  onStart(sel, chosenWorkout, wind, air)
+                  onStart(sel, chosenWorkout, wind, air, startM)
                 }}
               >
                 {chosenWorkout ? 'Ride with workout' : 'Ride this route'}
