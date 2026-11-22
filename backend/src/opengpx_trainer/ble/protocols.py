@@ -1,9 +1,10 @@
 """Bluetooth LE GATT profiles used by the app (pure functions, no hardware).
 
-* Heart Rate Service (0x180D): Heart Rate Measurement (0x2A37).
-* Cycling Power Service (0x1818): Cycling Power Measurement (0x2A63).
-* Fitness Machine Service, FTMS (0x1826): Indoor Bike Data (0x2AD2) and the
-  Fitness Machine Control Point (0x2AD9), used for ERG (target power) control.
+* Heart Rate Service (0x180D): Heart Rate Measurement (0x2A37), with R-R intervals.
+* Cycling Power Service (0x1818): Cycling Power Measurement (0x2A63), with L/R balance.
+* Fitness Machine Service, FTMS (0x1826): Indoor Bike Data (0x2AD2), the Fitness Machine
+  Control Point (0x2AD9), used for ERG (target power) and simulation control, and the
+  Supported Power Range (0x2AD8), which bounds the targets sent.
 
 All multi-byte fields are little-endian.
 """
@@ -28,6 +29,7 @@ HEART_RATE_MEASUREMENT = uuid16(0x2A37)
 CYCLING_POWER_MEASUREMENT = uuid16(0x2A63)
 INDOOR_BIKE_DATA = uuid16(0x2AD2)
 FTMS_CONTROL_POINT = uuid16(0x2AD9)
+SUPPORTED_POWER_RANGE = uuid16(0x2AD8)
 
 # which role(s) a device can fill, from the services it advertises
 SERVICE_ROLES = {
@@ -51,12 +53,43 @@ def parse_heart_rate(data: bytes) -> int | None:
     return hr or None
 
 
+def parse_rr_intervals(data: bytes) -> list[float]:
+    """Beat-to-beat (R-R) intervals of a Heart Rate Measurement, in s (flag bit 4: present,
+    after the HR value and, flag bit 3, the energy expended); implausible ones (outside
+    0.2-3 s) dropped, as over ANT+."""
+    if len(data) < 2 or not data[0] & 0x10:
+        return []
+    off = 3 if data[0] & 0x01 else 2
+    if data[0] & 0x08:
+        off += 2
+    out = []
+    while off + 2 <= len(data):
+        rr = struct.unpack_from("<H", data, off)[0] / 1024.0
+        if 0.2 <= rr <= 3.0:
+            out.append(rr)
+        off += 2
+    return out
+
+
 # --- Cycling power -------------------------------------------------------------------------
 @dataclass
 class CyclingPower:
     power_w: int
     crank_revs: int | None = None  # cumulative, rolls over at 65536
     crank_event_time: int | None = None  # 1/1024 s, rolls over at 65536
+    # FIT left_right_balance byte, as over ANT+: bit 7 set = bits 0-6 are the right's share
+    balance: int | None = None
+
+
+def _balance(raw: int, left_reference: bool) -> int | None:
+    """Pedal Power Balance (1/2 %): the left leg's share when the reference bit says so, else
+    of an unknown side (FIT: bit 7 clear)."""
+    if raw == 0xFF:
+        return None
+    pct = round(raw / 2)
+    if not 0 <= pct <= 100:
+        return None
+    return 0x80 | (100 - pct) if left_reference else pct
 
 
 def parse_cycling_power(data: bytes) -> CyclingPower | None:
@@ -64,7 +97,9 @@ def parse_cycling_power(data: bytes) -> CyclingPower | None:
         return None
     flags, power = struct.unpack_from("<Hh", data, 0)
     off = 4
-    if flags & 0x0001:  # pedal power balance
+    balance = None
+    if flags & 0x0001 and len(data) >= off + 1:  # pedal power balance
+        balance = _balance(data[off], bool(flags & 0x0002))
         off += 1
     if flags & 0x0004:  # accumulated torque
         off += 2
@@ -73,7 +108,7 @@ def parse_cycling_power(data: bytes) -> CyclingPower | None:
     revs = evt = None
     if flags & 0x0020 and len(data) >= off + 4:  # crank revolution data
         revs, evt = struct.unpack_from("<HH", data, off)
-    return CyclingPower(max(0, power), revs, evt)
+    return CyclingPower(max(0, power), revs, evt, balance)
 
 
 class CrankCadence:
@@ -183,6 +218,25 @@ def ftms_request_control() -> bytes:
 
 def ftms_start() -> bytes:
     return bytes([START_OR_RESUME])
+
+
+@dataclass(frozen=True)
+class PowerRange:
+    """FTMS Supported Power Range: the targets the trainer accepts."""
+
+    min_w: int
+    max_w: int
+    increment_w: int
+
+    def clamp(self, watts: float) -> float:
+        return max(float(self.min_w), min(watts, float(self.max_w)))
+
+
+def parse_supported_power_range(data: bytes) -> PowerRange | None:
+    if len(data) < 6:
+        return None
+    lo, hi, inc = struct.unpack_from("<hhH", data, 0)
+    return PowerRange(lo, hi, inc) if 0 <= lo < hi else None
 
 
 def ftms_set_target_power(watts: float) -> bytes:

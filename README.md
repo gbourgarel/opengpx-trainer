@@ -381,11 +381,13 @@ asyncio loop. Each device gets one connection that reconnects by itself. Standar
 
 | Role        | Service           | Characteristics used                                               |
 |-------------|-------------------|--------------------------------------------------------------------|
-| Trainer     | FTMS (0x1826)     | Indoor Bike Data 0x2AD2 (power, cadence, speed) · Control Point 0x2AD9: request control, start, set target power (ERG), indoor-bike simulation at 0 % for free ride |
-| Power meter | Cycling Power (0x1818) | Measurement 0x2A63 (power; cadence from crank revolutions, 0 after 3 s without a new crank event) |
-| Heart rate  | Heart Rate (0x180D) | Measurement 0x2A37                                                |
+| Trainer     | FTMS (0x1826)     | Indoor Bike Data 0x2AD2 (power, cadence, speed) · Control Point 0x2AD9: request control, start, set target power (ERG, bounded by the Supported Power Range 0x2AD8 when the trainer has one), indoor-bike simulation at 0 % for free ride and at the route's grade in Sim |
+| Power meter | Cycling Power (0x1818) | Measurement 0x2A63 (power; cadence from crank revolutions, 0 after 3 s without a new crank event; L/R balance) |
+| Heart rate  | Heart Rate (0x180D) | Measurement 0x2A37 (heart rate; R-R intervals for the FIT HRV) |
 
-FTMS has no rider-weight command, so the user configuration is only sent over ANT+.
+FTMS has no rider-weight command (the User Data Service would need a consent procedure that
+few trainers implement), so the user configuration is only sent over ANT+. Bluetooth speed /
+cadence sensors (0x1816) are not supported.
 
 ## intervals.icu
 

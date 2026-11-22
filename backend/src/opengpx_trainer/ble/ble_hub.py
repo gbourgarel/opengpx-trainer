@@ -4,9 +4,12 @@ Each configured device gets one connection task (a device may fill several roles
 trainer that also relays heart rate). Tasks reconnect automatically. bleak is asyncio-based, so
 it runs in a dedicated thread with its own event loop; the SensorHub interface stays sync.
 
-Trainer control uses FTMS: request control, start, then "set target power" (ERG). Free ride uses
-the FTMS indoor-bike simulation at 0 % grade. FTMS has no rider-weight command, so the user
-configuration is not sent over BLE.
+Trainer control uses FTMS: request control, start, then "set target power" (ERG), bounded by the
+trainer's Supported Power Range when it has one. Free ride uses the FTMS indoor-bike simulation
+at 0 % grade, Sim mode the same with the route's grade. FTMS has no rider-weight command (the
+User Data Service would need a consent procedure few trainers implement), so the user
+configuration is not sent over BLE. Heart-rate straps give R-R intervals, power meters the
+L/R balance, into the same readings as over ANT+.
 """
 
 from __future__ import annotations
@@ -54,6 +57,7 @@ class BleHub(SensorHub):
         self._command_seq = 0
         self._pm_cadence = bp.CrankCadence()
         self.last_control_result: tuple[int, str] | None = None
+        self.power_range: bp.PowerRange | None = None  # FTMS Supported Power Range, if read
 
     # -- lifecycle ----------------------------------------------------------------------
     def start(self) -> None:
@@ -89,6 +93,8 @@ class BleHub(SensorHub):
             self._command_seq += 1
 
     def set_target_power(self, watts: float) -> None:
+        if self.power_range is not None:  # a target outside it may be refused or ignored
+            watts = self.power_range.clamp(watts)
         self._set_command(bp.ftms_set_target_power(watts))
 
     def set_basic_resistance(self, percent: float) -> None:
@@ -139,9 +145,12 @@ class BleHub(SensorHub):
 
             def on_hr(_s, data: bytearray) -> None:
                 hr = bp.parse_heart_rate(bytes(data))
+                rr = bp.parse_rr_intervals(bytes(data))
                 with self._lock:
                     seen("heart_rate")
                     self._s.heart_rate.set(hr)
+                    if rr:
+                        self.add_rr(rr)  # beats for the FIT HRV, as over ANT+
 
             await client.start_notify(bp.HEART_RATE_MEASUREMENT, on_hr)
 
@@ -161,6 +170,8 @@ class BleHub(SensorHub):
                             power = 0.0  # repeated last frame while not pedalling
                     self._s.pm_power.set(power)
                     self._s.pm_cadence.set(None if cadence is None else round(cadence))
+                    if cp.balance is not None and power > 0:
+                        self._s.pm_balance.set(cp.balance)
 
             await client.start_notify(bp.CYCLING_POWER_MEASUREMENT, on_power)
 
@@ -192,6 +203,17 @@ class BleHub(SensorHub):
                     log.warning("FTMS command %#04x: %s", res[0], res[1])
 
         await client.start_notify(bp.FTMS_CONTROL_POINT, on_cp)
+        try:  # optional in FTMS: a trainer without it gets the targets as they are
+            rng = bp.parse_supported_power_range(
+                bytes(await client.read_gatt_char(bp.SUPPORTED_POWER_RANGE))
+            )
+            if rng is not None:
+                self.power_range = rng
+                log.info(
+                    "FTMS power range: %d-%d W (step %d)", rng.min_w, rng.max_w, rng.increment_w
+                )
+        except Exception as e:
+            log.info("FTMS power range not read: %s", e)
         await client.write_gatt_char(bp.FTMS_CONTROL_POINT, bp.ftms_request_control(), True)
         await client.write_gatt_char(bp.FTMS_CONTROL_POINT, bp.ftms_start(), True)
         sent_seq, sent_at = -1, 0.0  # (re)connected: always send the current command

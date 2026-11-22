@@ -25,7 +25,47 @@ def test_cycling_power_with_crank_data_after_optional_fields():
 
 def test_cycling_power_without_crank_data():
     cp = bp.parse_cycling_power(struct.pack("<Hh", 0, 180))
-    assert cp.power_w == 180 and cp.crank_revs is None
+    assert cp.power_w == 180 and cp.crank_revs is None and cp.balance is None
+
+
+def test_cycling_power_balance_as_the_fit_byte():
+    # 96 half-percent = 48 % for the left leg (reference bit set): right 52 % -> 0x80 | 52
+    left = bp.parse_cycling_power(struct.pack("<Hh", 0x0003, 200) + bytes([96]))
+    assert left.balance == 0x80 | 52
+    # reference unknown: the share of an unknown side, bit 7 clear (FIT convention)
+    unknown = bp.parse_cycling_power(struct.pack("<Hh", 0x0001, 200) + bytes([96]))
+    assert unknown.balance == 48
+    assert bp.parse_cycling_power(struct.pack("<Hh", 0x0001, 200) + bytes([0xFF])).balance is None
+
+
+def test_heart_rate_rr_intervals():
+    # flags: R-R present (bit 4) + energy expended (bit 3): HR, energy, then 2 intervals
+    frame = bytes([0x18, 72]) + struct.pack("<H", 15) + struct.pack("<HH", 850, 870)
+    assert bp.parse_rr_intervals(frame) == pytest.approx([850 / 1024, 870 / 1024])
+    assert bp.parse_heart_rate(frame) == 72
+    sixteen = bytes([0x11]) + struct.pack("<H", 72) + struct.pack("<H", 1024)
+    assert bp.parse_rr_intervals(sixteen) == [1.0]
+    assert bp.parse_rr_intervals(bytes([0x10, 72]) + struct.pack("<H", 100)) == []  # 0.1 s
+    assert bp.parse_rr_intervals(bytes([0x00, 72])) == []
+
+
+def test_ftms_supported_power_range_bounds_the_targets():
+    rng = bp.parse_supported_power_range(struct.pack("<hhH", 0, 1500, 1))
+    assert rng == bp.PowerRange(0, 1500, 1)
+    assert rng.clamp(2000) == 1500 and rng.clamp(-5) == 0 and rng.clamp(250) == 250
+    assert bp.parse_supported_power_range(b"\x00\x00") is None
+    assert bp.parse_supported_power_range(struct.pack("<hhH", 500, 100, 1)) is None
+
+
+def test_ble_hub_clamps_targets_to_the_power_range():
+    from opengpx_trainer.ble.ble_hub import BleHub
+
+    h = BleHub({"trainer": ("T", "Flux"), "power_meter": ("P", "Assioma")})
+    h.set_target_power(2500)
+    assert h._command == bp.ftms_set_target_power(2500)  # no range read: as it is
+    h.power_range = bp.PowerRange(0, 1500, 1)
+    h.set_target_power(2500)
+    assert h._command == bp.ftms_set_target_power(1500)
 
 
 def test_crank_cadence_rollover_and_stall():
