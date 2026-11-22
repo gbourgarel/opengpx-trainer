@@ -25,9 +25,9 @@ def cur(speed, from_deg, temp=20.0, rh=50):
 
 
 def test_wind_reduced_to_rider_height_by_the_log_profile():
-    # u(1 m) / u(10 m) = ln(1 / 0.03) / ln(10 / 0.03) for open country
-    assert pytest.approx(math.log(1 / 0.03) / math.log(10 / 0.03)) == WIND_HEIGHT_FACTOR
-    assert pytest.approx(0.60, abs=0.01) == WIND_HEIGHT_FACTOR
+    # u(1 m) / u(10 m) = ln(1 / z0) / ln(10 / z0); countryside with hedges, z0 = 0.1 m
+    assert pytest.approx(math.log(1 / 0.1) / math.log(10 / 0.1)) == WIND_HEIGHT_FACTOR
+    assert pytest.approx(0.50) == WIND_HEIGHT_FACTOR
     w = average([cur(20, 270)])
     assert (w.wind_10m_kmh, w.wind_kmh, w.wind_from_deg) == (
         20,

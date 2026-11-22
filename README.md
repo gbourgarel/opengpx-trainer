@@ -17,8 +17,8 @@ and heart-rate sensors on either protocol. Formerly called *Home Trainer*.
   elevation gain are shown. **Weather now** (next to them) fills in the current wind,
   temperature and humidity from Open-Meteo (free, no key): points every ~10 km along the route (3 to 10),
   averaged into one weather for the ride (wind as a vector mean), the 10 m wind brought down to
-  rider height with a log profile (`u(1 m) = u(10 m)·ln(1/z0)/ln(10/z0)`, z0 = 0.03 m open
-  country: × 0.60), all editable before starting; the route's time estimate follows them. A
+  rider height with a log profile (`u(1 m) = u(10 m)·ln(1/z0)/ln(10/z0)`, z0 = 0.1 m,
+  countryside with hedges: × 0.50), all editable before starting; the route's time estimate follows them. A
   route can be ridden **in reverse** (*Reverse*, next to the wind when
   starting it): a climb becomes its descent; the map and profile follow the direction chosen.
 * **Workout on a route**: a GPX ride can follow a workout. The workout sets the target, the route

@@ -11,8 +11,10 @@ route, but less sensitive to one point than a single sample):
 
 Forecast wind is the wind 10 m above the ground. At the rider's height it is weaker: with a
 neutral logarithmic profile ``u(z) = u_10 ln(z / z0) / ln(10 / z0)``, for z = ``RIDER_HEIGHT_M``
-and an open-country roughness length z0 = ``ROUGHNESS_M`` (WMO / Davenport "open": flat
-terrain, grass, few obstacles), ``u = 0.60 u_10``.
+and a roughness length z0 = ``ROUGHNESS_M`` = 0.1 m (WMO / Davenport "roughly open":
+countryside with hedges, scattered buildings), ``u = 0.50 u_10`` (ln 10 / ln 100). The
+open-country z0 = 0.03 m (factor 0.60) gave head / tail winds stronger than the user feels on
+real rides (2026-11-15).
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ API_URL = "https://api.open-meteo.com/v1/forecast"
 SAMPLE_EVERY_M = 10_000.0
 MIN_POINTS, MAX_POINTS = 3, 10
 RIDER_HEIGHT_M = 1.0
-ROUGHNESS_M = 0.03
+ROUGHNESS_M = 0.1
 WIND_HEIGHT_FACTOR = math.log(RIDER_HEIGHT_M / ROUGHNESS_M) / math.log(10.0 / ROUGHNESS_M)
 
 
