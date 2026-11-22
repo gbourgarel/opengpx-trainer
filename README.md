@@ -4,8 +4,8 @@ Free, open-source indoor-cycling app: ride **any GPX route** (or a structured wo
 on a smart trainer driven over ANT+ (FE-C, USB stick) or Bluetooth LE (FTMS), with power meter
 and heart-rate sensors on either protocol. Formerly called *Home Trainer*.
 
-* **ERG workouts**: planned workouts fetched from intervals.icu (or imported `.zwo` / `.erg` / `.mrc`),
-  with a live intensity % adjustment. The current step can be skipped or extended by 1 min, and
+* **ERG workouts**: planned workouts fetched from intervals.icu (or imported `.zwo` / `.erg` / `.mrc`,
+  with the button or by dropping files onto the Workouts tab), with a live intensity % adjustment. The current step can be skipped or extended by 1 min, and
   3-2-1 beeps announce each step change (a rising tone when the target goes up).
 * **GPX routes** (**Slope ERG**): the trainer target power follows a configurable *grade → %FTP*
   curve on the look-ahead grade, held by the trainer in ERG, so you never shift (unlike a classic

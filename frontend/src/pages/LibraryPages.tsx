@@ -48,6 +48,8 @@ function KmField({ m, onChange }: { m: number; onChange: (km: number) => void })
   )
 }
 
+const WORKOUT_EXTS = ['.zwo', '.erg', '.mrc']
+
 // ---------------------------------------------------------------------------------------
 export function WorkoutsPage({ profile, canStart, onStart }: { profile: Profile | null; canStart: boolean; onStart: (w: Workout) => void }) {
   const [list, setList] = useState<Workout[]>([])
@@ -72,8 +74,30 @@ export function WorkoutsPage({ profile, canStart, onStart }: { profile: Profile 
     }
   }
 
+  // workout files dropped anywhere on the tab: imported one after the other, like the button
+  const [dropNote, setDropNote] = useState<string | null>(null)
+  const dragging = useFileDrop(WORKOUT_EXTS, async (files, refused) => {
+    setError(null)
+    const problems = refused.map((n) => `${n}: not a .zwo / .erg / .mrc file`)
+    let imported = 0
+    for (const [i, f] of files.entries()) {
+      setDropNote(`Importing ${f.name}${files.length > 1 ? ` (${i + 1}/${files.length})` : ''}…`)
+      try {
+        await api.importWorkout(f)
+        imported += 1
+      } catch (e) {
+        problems.push(`${f.name}: ${(e as Error).message}`)
+      }
+    }
+    setDropNote(null)
+    if (imported) reload()
+    if (problems.length) setError(problems.join(' · '))
+  })
+
   return (
     <div>
+      {dragging && <DropOverlay text="Drop .zwo / .erg / .mrc files to import them" />}
+      {dropNote && <div className="hint">{dropNote}</div>}
       <div className="toolbar">
         <FilePick accept=".zwo,.erg,.mrc" label="Import .zwo / .erg / .mrc" onFile={(f) => run(() => api.importWorkout(f).then(reload))} />
         <button disabled={busy} onClick={() => run(() => api.planned().then(setPlanned))}>
