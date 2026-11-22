@@ -101,7 +101,9 @@ cd frontend && npm run dev                     # :5173, proxies /api and /ws to 
 
 ### Testing without hardware (fake power input)
 
-Click **Simulator** instead of **Connect sensors**. A simulator panel appears on the Ride page:
+Start the app with `--simulator` (or `OPENGPX_TRAINER_SIMULATOR=1`), then click **Simulator**
+instead of **Connect sensors** (the button is hidden otherwise). A simulator panel appears on
+the Ride page:
 
 * **Follow target**: behaves like an ERG trainer, so power tracks the target with a 1.5 s lag.
 * **Manual power**: you set the rider's power with the slider or ±10/±50 buttons, or from the
@@ -126,6 +128,7 @@ in progress). Environment variables:
 | `OPENGPX_TRAINER_DATA`     | data directory instead of `~/.opengpx-trainer`            |
 | `OPENGPX_TRAINER_ANT_LOG`  | CSV file where every raw ANT+ page and every command sent is logged; also requests the trainer's command status (page 71) every 5 s (debugging) |
 | `OPENGPX_TRAINER_FRONTEND` | built UI to serve instead of the packaged one / `frontend/dist` |
+| `OPENGPX_TRAINER_SIMULATOR` | `1`: show the Simulator button (same as `--simulator`)   |
 
 From the former name (*Home Trainer*): at the first start, `~/.hometrainer` is moved to
 `~/.opengpx-trainer` (when the new one does not exist yet) and `hometrainer.db` renamed;

@@ -340,6 +340,9 @@ def frontend_dir() -> Path | None:
 
 def create_app(storage: Storage | None = None) -> FastAPI:
     st = AppState(storage or Storage())
+    # the Simulator button only with --simulator / OPENGPX_TRAINER_SIMULATOR=1 (development,
+    # demos); the API itself stays available (end-to-end checks connect it directly)
+    simulator_offered = (env("SIMULATOR") or "0").lower() not in ("0", "false", "no")
 
     saving: set[asyncio.Task] = set()  # strong refs to the background FIT writes
     upload_lock = asyncio.Lock()  # one intervals.icu upload at a time: never the same ride twice
@@ -392,6 +395,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                     task.add_done_callback(estimates_running.discard)
                 tel["devices"] = st.hub.status() if st.hub else {}
                 tel["hub"] = st.hub_kind
+                tel["simulator_offered"] = simulator_offered
                 if isinstance(st.hub, SimulatedHub):
                     tel["sim"] = asdict(st.hub.settings)
                 for q in list(st.clients.values()):

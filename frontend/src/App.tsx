@@ -228,9 +228,11 @@ export default function App() {
               <button className="primary" disabled={connecting} onClick={() => connect('devices')} title="Connect the sensors chosen in Profile → Devices (ANT+ and/or Bluetooth)">
                 {connecting ? 'Connecting…' : 'Connect sensors'}
               </button>
-              <button className="ghost" disabled={connecting} onClick={() => connect('simulator')}>
-                Simulator
-              </button>
+              {tel.simulator_offered && (
+                <button className="ghost" disabled={connecting} onClick={() => connect('simulator')}>
+                  Simulator
+                </button>
+              )}
             </>
           )}
         </div>

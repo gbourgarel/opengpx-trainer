@@ -221,6 +221,8 @@ export interface Telemetry {
   lost_sensors?: { role: 'trainer' | 'power_meter' | 'heart_rate'; since: number }[]
   state: 'disconnected' | 'idle' | 'ready' | 'running' | 'paused' | 'finished'
   hub?: string | null
+  /** the app was started with --simulator: offer the Simulator button */
+  simulator_offered?: boolean
   devices?: Record<'trainer' | 'power_meter' | 'heart_rate', DeviceStatus>
   mode?: 'erg' | 'gpx'
   name?: string

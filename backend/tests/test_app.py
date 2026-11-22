@@ -411,6 +411,21 @@ def test_live_websocket_sends_telemetry(client):
     assert not client.st.clients  # forgotten once closed
 
 
+@pytest.mark.parametrize("value,offered", [(None, False), ("1", True), ("0", False)])
+def test_simulator_offered_only_when_asked(tmp_path, monkeypatch, value, offered):
+    """The Simulator button is for development and demos: hidden unless the app is started
+    with --simulator (OPENGPX_TRAINER_SIMULATOR=1); the API stays usable for the tests."""
+    monkeypatch.delenv("HOMETRAINER_SIMULATOR", raising=False)
+    if value is None:
+        monkeypatch.delenv("OPENGPX_TRAINER_SIMULATOR", raising=False)
+    else:
+        monkeypatch.setenv("OPENGPX_TRAINER_SIMULATOR", value)
+    with TestClient(create_app(Storage(tmp_path))) as c:
+        with c.websocket_connect("/ws/live") as ws:
+            assert ws.receive_json()["simulator_offered"] is offered
+        assert c.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+
+
 def test_a_client_that_stops_reading_does_not_stall_the_engine(client, monkeypatch):
     """Review #11: a sleeping tablet blocked ``await send_json`` in the engine loop, so the
     ride stopped ticking (riding time lost, no samples) until the socket timed out."""

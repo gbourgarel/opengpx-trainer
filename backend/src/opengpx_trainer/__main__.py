@@ -1,11 +1,14 @@
 import argparse
 import logging
+import os
 import socket
 import threading
 import time
 import webbrowser
 
 import uvicorn
+
+from .envvars import PREFIX
 
 
 def open_browser_when_up(host: str, port: int, timeout_s: float = 30.0) -> None:
@@ -33,7 +36,14 @@ def main() -> None:
     ap.add_argument(
         "--no-browser", action="store_true", help="do not open the UI in the browser at start"
     )
+    ap.add_argument(
+        "--simulator",
+        action="store_true",
+        help="offer the simulator (fake sensors) in the UI, for development or a demo",
+    )
     args = ap.parse_args()
+    if args.simulator:  # read by the app (also in the --reload worker): same as the variable
+        os.environ[PREFIX + "SIMULATOR"] = "1"
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
