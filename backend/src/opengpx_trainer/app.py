@@ -508,16 +508,21 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     @app.post("/api/devices/calibrate")
     def calibrate(body: CalibrateBody):
         """Start a spin-down (trainer) or zero offset (power meter); progress and result are
-        in the devices status (``devices[role].calibration``, also in the telemetry)."""
+        in the devices status (``devices[role].calibration``, also in the telemetry).
+
+        During a ride, only while it is paused (the Tacx wants a warm-up first): the ride
+        stays paused meanwhile and resumes on the next pedal stroke once it is over."""
         with st.session_lock:
-            if st.session is not None and st.session.state in ("running", "paused"):
-                raise HTTPException(409, "Not during a ride")
+            if st.session is not None and st.session.state == "running":
+                raise HTTPException(409, "Pause the ride first")
             if st.hub is None:
                 raise HTTPException(409, "No sensors connected")
             try:
                 status = st.hub.start_calibration(body.role)
             except CalibrationError as e:
                 raise HTTPException(409, str(e)) from e
+            if st.session is not None and st.session.state == "paused":
+                st.session.resume_on_pedalling()
         log.info("Calibration of the %s started", body.role)
         return status.to_dict()
 

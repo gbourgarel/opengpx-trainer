@@ -257,3 +257,43 @@ def test_calibration_api_and_no_auto_start(tmp_path):
                 st.session.tick()
         assert st.session.state == "running"
         assert c.post("/api/devices/calibrate", json={"role": "trainer"}).status_code == 409
+
+
+def test_calibration_during_a_paused_ride(tmp_path):
+    """ROADMAP 4a: calibrate after the warm-up; the ride stays paused meanwhile and resumes on
+    a pedal stroke once the calibration is over and the pedals have stopped."""
+    from fastapi.testclient import TestClient
+
+    from opengpx_trainer.app import create_app
+    from opengpx_trainer.storage import Storage
+
+    with TestClient(create_app(Storage(tmp_path))) as c:
+        c.post("/api/devices/connect", json={"kind": "simulator"})
+        st = c.app.state.st
+        st.hub.update_settings(noise=False)
+        w = c.post("/api/workouts/import", files={"file": ("w.zwo", ZWO)})
+        c.post("/api/session/start", json={"mode": "erg", "workout_id": w.json()["id"]})
+
+        def ticks(n):
+            for _ in range(n):
+                st.hub.step()
+                with st.session_lock:
+                    st.session.tick()
+
+        ticks(4)
+        assert st.session.state == "running"
+        refused = c.post("/api/devices/calibrate", json={"role": "trainer"})
+        assert refused.status_code == 409 and "Pause" in refused.json()["detail"]
+        c.post("/api/session/pause")
+        assert c.post("/api/devices/calibrate", json={"role": "trainer"}).status_code == 200
+        ticks(20)  # pedalling up to the target speed: the ride does not resume
+        assert st.session.state == "paused"
+        c.post("/api/devices/calibrate/cancel")  # e.g. failed while pedalling
+        ticks(8)
+        assert st.session.state == "paused"  # Try again stays possible
+        st.hub.update_settings(pedaling=False)
+        ticks(4)
+        assert st.session.state == "paused"
+        st.hub.update_settings(pedaling=True)
+        ticks(4)
+        assert st.session.state == "running"  # resumed by the next pedal stroke

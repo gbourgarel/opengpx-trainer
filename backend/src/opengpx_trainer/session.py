@@ -268,6 +268,7 @@ class RideSession:
         self.recorder = Recorder()
         self._idle_s = 0.0
         self._coast_s = 0.0  # coasting time counted towards COAST_PAUSE_AFTER_S
+        self._pedal_stop_awaited = False  # a calibration ran: pedals not stopped since
         self._last_tick: float | None = None
         self.sensors = LostSensors()
         self._lost: list[dict] = []
@@ -307,6 +308,13 @@ class RideSession:
     def pause(self) -> None:
         if self.state == "running":
             self.state = "paused"
+
+    def resume_on_pedalling(self) -> None:
+        """A paused ride resumes on the next pedal stroke, as after an auto-pause (a pause by
+        hand otherwise waits for Resume). Used by a calibration during the ride: pedalling is
+        ignored while it runs, the first stroke after it carries on with the ride."""
+        if self.state == "paused":
+            self._idle_s = max(self._idle_s, AUTO_PAUSE_AFTER_S)
 
     def resume(self) -> None:
         if self.state in ("paused", "ready"):
@@ -500,6 +508,15 @@ class RideSession:
         pc = choose_power(r, self.profile.power_source)
         pedaling = (pc.power_w or 0) > 5 or (pc.cadence_rpm or 0) > 5
         if self.hub.calibrating():
+            self._pedal_stop_awaited = True
+        elif not pedaling:
+            self._pedal_stop_awaited = False
+        if self._pedal_stop_awaited and self.state == "paused":
+            # a spin-down makes the rider pedal, and a failed one ends while they still do:
+            # resume on a stroke after the calibration (and after the pedals stopped), so that
+            # Try again stays possible
+            pedaling = False
+        elif self.hub.calibrating():
             pedaling = False  # a spin-down makes the rider pedal: not the start of the ride
 
         if self.state == "ready" and pedaling:

@@ -151,9 +151,12 @@ settings remembered in the browser (sound, wind, air) are kept.
   rate) raises a red banner, also over the immersive view, until it comes back: "no data
   since …", and for the power meter whether the trainer's power is used instead (power source
   *Auto*) or no power is recorded (*Power meter only*).
-* Calibration of the power source (ANT+ sensors, no ride in progress): **trainer spin-down** and
-  **power-meter zero offset**, from Profile → Devices or from the Ride tab before a ride (no
-  ride yet, or waiting for the first pedal stroke). A guided dialog shows the steps live: for a
+* Calibration of the power source (ANT+ sensors): **trainer spin-down** and **power-meter zero
+  offset**, from Profile → Devices or from the Ride tab before a ride (no ride yet, or
+  waiting for the first pedal stroke) or while it is paused, e.g. after the warm-up the
+  trainer wants: the ride stays paused during the calibration and resumes on the first pedal
+  stroke after it (once the pedals have stopped, so a failed spin-down can be tried again
+  without the ride carrying on). A guided dialog shows the steps live: for a
   spin-down, pedal up to the speed the trainer asks for (bar with the live speed), then stop
   and let the wheel coast; the result is the spin-down time when the trainer gives one (the
   Tacx Flux does not: "Spin-down done"), or the zero offset value. ERG is off during a

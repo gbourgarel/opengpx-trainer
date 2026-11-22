@@ -205,6 +205,8 @@ export function RidePage({
           <CalibrationOffer devices={tel.devices} />
         </>
       )}
+      {/* after the warm-up: calibrate while paused, the next pedal stroke resumes the ride */}
+      {tel.state === 'paused' && <CalibrationOffer devices={tel.devices} />}
       {tel.state === 'finished' && <div className="hint ok">Finished! {tel.saved ? `Ride saved (#${tel.saved.ride_id}).` : 'Saving the ride…'}</div>}
     </>
   )

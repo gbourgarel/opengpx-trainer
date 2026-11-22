@@ -4,7 +4,7 @@ import { CALIBRATION_LABEL, CALIBRATION_ROLES, calibrationView, canCalibrate, fo
 
 const INTRO: Record<CalibrationRole, string[]> = {
   trainer: [
-    'The trainer measures how its flywheel slows down, so that its power reading (and ERG) stays accurate. Best done warmed up, after ~10 min of riding.',
+    'The trainer measures how its flywheel slows down, so that its power reading (and ERG) stays accurate. Best done warmed up, after ~10 min of riding: pause the ride, it resumes on your next pedal stroke afterwards.',
     'You will pedal up to the speed the trainer asks for (about 30 km/h), then stop pedalling and let the wheel coast until it stops. ERG is off meanwhile.',
   ],
   power_meter: ['The power meter measures what zero torque reads.', 'Unclip and keep the cranks still, with no weight on the pedals.'],
