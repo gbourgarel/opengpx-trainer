@@ -968,16 +968,63 @@ def test_erg_auto_pauses_on_pedalling_alone():
     assert s.state == "running"  # auto-resume
 
 
-def test_gpx_auto_pause_still_waits_for_the_virtual_stop():
-    h, s = _gpx_session(grade=0.0)
+def _coast(h, s, seconds, t, feed=True):
+    for _ in range(int(seconds * 4)):
+        if feed:
+            h.feed(trainer=0, pm=0, cad=0)
+        s.tick(t := t + 0.25)
+    return t
+
+
+def _ride_gpx_then_coast(grade, seconds):
+    h, s = _gpx_session(grade=grade)
     t = 1000.0
     for _ in range(120):
         h.feed(trainer=250, pm=250)
         s.tick(t := t + 0.25)
-    h.feed(trainer=0, pm=0, cad=0)
-    for _ in range(16):
-        s.tick(t := t + 0.25)
-    assert s.state == "running"  # still coasting on the route
+    return h, s, _coast(h, s, seconds, t)
+
+
+def test_gpx_coasting_pauses_after_15_s_without_pedalling():
+    """KNOWN_ISSUES #27: the virtual bike coasted on for 70 s at the end of a ride."""
+    from opengpx_trainer.session import COAST_PAUSE_AFTER_S
+
+    h, s, t = _ride_gpx_then_coast(0.0, COAST_PAUSE_AFTER_S - 1)
+    assert s.state == "running"  # a short coast does not pause
+    t = _coast(h, s, 1.5, t)
+    assert s.state == "paused" and s.bike.state.speed_ms > 3  # well before the virtual stop
+    elapsed, dist = s.elapsed_s, s.bike.state.distance_m
+    t = _coast(h, s, 10, t)
+    assert (s.elapsed_s, s.bike.state.distance_m) == (elapsed, dist)
+    h.feed(trainer=200, pm=200)
+    s.tick(t + 0.25)
+    assert s.state == "running"  # auto-resume on the next pedal stroke
+
+
+def test_gpx_coasting_down_a_real_descent_does_not_pause():
+    _, s, _ = _ride_gpx_then_coast(-0.05, 60)
+    assert s.state == "running" and s.bike.state.speed_ms > 8
+
+
+def test_gpx_coasting_pause_ignores_a_power_source_that_went_silent(monkeypatch):
+    """No power reading at all is a dropout, not the rider stopping."""
+    import opengpx_trainer.ant.hub as hub_mod
+
+    h, s, t = _ride_gpx_then_coast(0.0, 2)
+    now = hub_mod.time.monotonic()
+    monkeypatch.setattr(hub_mod.time, "monotonic", lambda: now + 10)  # every sensor stale
+    _coast(h, s, 20, t, feed=False)
+    assert s.state == "running"
+
+
+def test_gpx_manual_resume_while_coasting_counts_again():
+    from opengpx_trainer.session import COAST_PAUSE_AFTER_S
+
+    h, s, t = _ride_gpx_then_coast(0.0, COAST_PAUSE_AFTER_S + 1)
+    assert s.state == "paused"
+    s.resume()
+    t = _coast(h, s, 2, t)
+    assert s.state == "running"
 
 
 def _erg_session(steps):

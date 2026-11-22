@@ -134,8 +134,11 @@ settings remembered in the browser (sound, wind, air) are kept.
 
 ## Ride screen
 
-* Auto start when you pedal, auto pause after 3 s without power or cadence (on a GPX route,
-  once the virtual bike has also stopped), auto resume.
+* Auto start when you pedal, auto pause after 3 s without power or cadence, auto resume. On
+  a GPX route the virtual bike coasts on when you stop pedalling: the ride pauses once it has
+  stopped, or after 15 s without pedalling. Those 15 s do not count down a real descent
+  (look-ahead grade of −3 % or steeper, where freewheeling is legitimate), nor while the power
+  source sends nothing (a dropout is not a stop).
 * Workout: **+1 min** and **Skip step** for the current step; *Sound on/off* for the 3-2-1
   beeps (Web Audio, enabled by the first click or key press, remembered in the browser).
 * GPX: the wind badge in the map corner shows where the wind blows; hover it for the head /

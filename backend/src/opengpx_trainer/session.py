@@ -48,6 +48,12 @@ State = Literal["ready", "running", "paused", "finished"]
 
 FREE_RIDE_RESISTANCE_PCT = 20.0
 AUTO_PAUSE_AFTER_S = 3.0
+# On a route the virtual bike coasts on when the rider stops pedalling (minutes on the flat,
+# for ever downhill): pause after this long without pedalling, counted only while the
+# look-ahead grade is above COAST_PAUSE_MIN_GRADE (freewheeling down a real descent is
+# legitimate: coasting at -3 % holds ~38 km/h with the default CdA / Crr).
+COAST_PAUSE_AFTER_S = 15.0
+COAST_PAUSE_MIN_GRADE = -0.03
 
 
 @dataclass
@@ -261,6 +267,7 @@ class RideSession:
         self._workout_end_lap: int | None = None  # lap index when the workout ended
         self.recorder = Recorder()
         self._idle_s = 0.0
+        self._coast_s = 0.0  # coasting time counted towards COAST_PAUSE_AFTER_S
         self._last_tick: float | None = None
         self.sensors = LostSensors()
         self._lost: list[dict] = []
@@ -305,6 +312,7 @@ class RideSession:
         if self.state in ("paused", "ready"):
             self._start_if_needed()
             self.state = "running"
+            self._coast_s = 0.0  # resumed by hand while coasting: count again
 
     def finish(self) -> None:
         self.state = "finished"
@@ -554,6 +562,17 @@ class RideSession:
                 self.state = "paused"
         elif pedaling:
             self._idle_s = 0.0 if self.state == "running" else self._idle_s
+        # on a route, a coasting bike pauses as well, but only on zeros actually reported by
+        # the power source (a dropout is not the rider stopping) and not down a real descent
+        if running and pedaling:
+            self._coast_s = 0.0
+        elif running and self.mode == "gpx" and pc.source != "none" and pc.power_w is not None:
+            g = self.route.mean_grade(self.route_position_m, self.curve.lookahead_m)
+            if g > COAST_PAUSE_MIN_GRADE:
+                self._coast_s += dt
+            if self._coast_s >= COAST_PAUSE_AFTER_S and self.state == "running":
+                self.state = "paused"
+                self._idle_s = max(self._idle_s, AUTO_PAUSE_AFTER_S)  # so that it auto-resumes
 
         point = self.route.point_at(self.route_position_m) if self.route else None
         if self.mode == "erg" and self.workout_done and running:
