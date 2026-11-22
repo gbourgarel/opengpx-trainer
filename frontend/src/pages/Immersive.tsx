@@ -133,7 +133,14 @@ function PowerBlock({ tel, workout, ftp, sourceLabel }: ImmersiveProps) {
           </>
         ) : (
           <>
-            free ride · <span className="nw">{wkg(shown, tel.rider_mass_kg)} W/kg</span>
+            {tel.sim_grade_pct != null ? (
+              <>
+                Sim <b>{tel.sim_grade_pct.toFixed(1)} %</b>
+              </>
+            ) : (
+              'free ride'
+            )}{' '}
+            · <span className="nw">{wkg(shown, tel.rider_mass_kg)} W/kg</span>
             {pzone}
           </>
         )}

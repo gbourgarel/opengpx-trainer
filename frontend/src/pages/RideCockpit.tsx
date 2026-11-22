@@ -137,7 +137,7 @@ function Dial({ c }: { c: RideCtx }) {
         )}
       </text>
       <text x={cx} y={cy + 44} className="ck-target">
-        {target ? `target ${target} W` : 'free ride'}
+        {target ? `target ${target} W` : t.sim_grade_pct != null ? `Sim · ${t.sim_grade_pct.toFixed(1)} %` : 'free ride'}
       </text>
       {target && (
         <text x={cx} y={cy + 66} className={`ck-zone zone-text-${zone}`}>

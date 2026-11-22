@@ -63,3 +63,24 @@ export function saveAir(a: AirSetting) {
     /* not remembered */
   }
 }
+
+const TRAINER_EFFECT_SETTING = 'trainerEffect'
+
+/** Sim mode: the share of the grade sent to the trainer (0-100 %), 50 % the first time. */
+export function loadTrainerEffect(): number {
+  try {
+    const v = Number(getSetting(TRAINER_EFFECT_SETTING))
+    if (getSetting(TRAINER_EFFECT_SETTING) != null && Number.isFinite(v)) return Math.max(0, Math.min(100, v))
+  } catch {
+    /* private mode */
+  }
+  return 50
+}
+
+export function saveTrainerEffect(pct: number) {
+  try {
+    setSetting(TRAINER_EFFECT_SETTING, String(pct))
+  } catch {
+    /* not remembered */
+  }
+}

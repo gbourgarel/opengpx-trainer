@@ -191,6 +191,10 @@ class SensorHub(ABC):
     def set_basic_resistance(self, percent: float) -> None: ...
 
     @abstractmethod
+    def set_slope(self, grade: float) -> None:
+        """Simulation mode: the trainer sets the resistance for this grade (rise / run)."""
+
+    @abstractmethod
     def set_user_configuration(self, rider_kg: float, bike_kg: float, wheel_d_m: float) -> None: ...
 
     # -- readings -----------------------------------------------------------------------

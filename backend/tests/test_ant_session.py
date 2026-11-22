@@ -56,6 +56,9 @@ class FakeHub(SensorHub):
     def set_basic_resistance(self, p):
         self.targets.append(("res", p))
 
+    def set_slope(self, g):
+        self.targets.append(("slope", g))
+
     def set_user_configuration(self, *a): ...
 
     def feed(self, trainer=None, pm=None, cad=90, hr=140):
@@ -1106,3 +1109,73 @@ def test_step_edits_need_a_workout():
     for edit in (s.skip_step, lambda: s.extend_step(30)):
         with pytest.raises(ValueError):
             edit()
+
+
+# -- Sim mode (classic trainer simulation) ------------------------------------------------
+def _slopes(h):
+    return [g for x in h.targets if isinstance(x, tuple) and x[0] == "slope" for g in [x[1]]]
+
+
+def test_sim_mode_sends_the_grade_times_the_trainer_effect():
+    """ROADMAP 17b: the trainer simulates the road; the rider shifts and chooses the power."""
+    h, s = _gpx_session(grade=0.06)
+    s.adjust(target_mode="sim")
+    _, tel = _ride(h, s, 10, watts=230)
+    assert tel["target_w"] is None and tel["sent_target_w"] is None
+    assert tel["trainer_effect_pct"] == 50 and tel["sim_grade_pct"] == pytest.approx(3.0)
+    assert _slopes(h)[-1] == pytest.approx(0.03)
+    assert not [x for x in h.targets[-20:] if not isinstance(x, tuple)]  # no ERG target
+    assert s.recorder.samples[-1].target_w is None  # no target_power in the FIT
+    assert tel["speed_kmh"] > 10  # the measured power drives the virtual bike as before
+
+
+def test_sim_grade_changes_at_most_1_pct_per_second_in_0_1_pct_steps():
+    h, s = _gpx_session(grade=0.06)
+    s.adjust(target_mode="sim")
+    t, _ = _ride(h, s, 4)
+    n = len(_slopes(h))
+    t, _ = _ride(h, s, 4, t0=t)
+    assert len(set(_slopes(h)[n:])) == 1  # steady grade: always the same value
+    s.adjust(trainer_effect_pct=100)  # 3 % -> 6 %: over 3 s, not at once
+    t, tel = _ride(h, s, 1, t0=t)
+    assert tel["sim_grade_pct"] == pytest.approx(4.0, abs=0.15)
+    _, tel = _ride(h, s, 3, t0=t)
+    assert tel["sim_grade_pct"] == pytest.approx(6.0)
+    for g in _slopes(h):
+        assert round(g * 1000) == pytest.approx(g * 1000, abs=1e-6)
+    s.adjust(trainer_effect_pct=150)
+    assert s.trainer_effect_pct == 100  # 0-100 %
+
+
+def test_sim_mode_back_to_slope_erg():
+    h, s = _gpx_session(grade=0.06)
+    s.adjust(target_mode="sim")
+    t, _ = _ride(h, s, 2)
+    s.adjust(target_mode="slope")
+    _, tel = _ride(h, s, 1, t0=t)
+    assert tel["target_w"] is not None and tel["sim_grade_pct"] is None
+    assert not isinstance(h.targets[-1], tuple)
+
+
+def test_sim_mode_keeps_the_workout_targets_while_it_lasts():
+    h, s, _ = _mixed_session([Step(20, 0.5, 0.5)], grade=0.06)
+    s.adjust(target_mode="sim")
+    t, tel = _ride(h, s, 10)
+    assert tel["target_w"] == 125 and tel["sim_grade_pct"] is None  # the workout's
+    _, tel = _ride(h, s, 15, t0=t)  # workout over: the trainer simulates the road
+    assert tel["target_w"] is None and tel["sim_grade_pct"] == pytest.approx(3.0)
+
+
+def test_sim_mode_only_on_gpx_rides():
+    h = FakeHub()
+    s = RideSession(h, Profile(), "erg", workout=Workout("w", [Step(60, 0.5, 0.5)]))
+    with pytest.raises(ValueError):
+        s.adjust(target_mode="sim")
+
+
+def test_track_resistance_page_for_the_grade_only():
+    from opengpx_trainer.ant import profiles as pf
+
+    page = pf.encode_track_resistance(0.03)
+    assert page[0] == 0x33 and page[7] == 0xFF  # trainer's default Crr
+    assert page[5] | (page[6] << 8) == 20300  # (3 % + 200 %) / 0.01 %

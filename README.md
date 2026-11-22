@@ -9,7 +9,13 @@ and heart-rate sensors on either protocol. Formerly called *Home Trainer*.
   3-2-1 beeps announce each step change (a rising tone when the target goes up).
 * **GPX routes** (**Slope ERG**): the trainer target power follows a configurable *grade → %FTP*
   curve on the look-ahead grade, held by the trainer in ERG, so you never shift (unlike a classic
-  simulation mode, where the grade sets the resistance); or a target set by hand. Routes are
+  simulation mode, where the grade sets the resistance); or a target set by hand; or **Sim**,
+  that classic mode: the route's smoothed grade under the wheel × a *trainer effect* (50 % the
+  first time, ↑ / ↓ by 10 %, remembered per browser) is sent to the trainer (FE-C page 51 /
+  FTMS indoor bike simulation, grade only), changing by at most 1 % per second; you shift and
+  choose your power, which drives the virtual bike as in the other modes (no target, no
+  `target_power` in the FIT). A GPX + workout ride keeps the workout's targets until it is
+  over, then Sim applies. Routes are
   imported with *Import GPX* or by dropping one or more `.gpx` files anywhere on the Routes
   tab. Virtual speed and position on the trace come
   from a dynamic physics model fed with the measured power (see the *speed-model power scale*
@@ -305,8 +311,8 @@ equation of motion as the ride (`VirtualBike.accel`), integrated along the dista
 steps with an energy balance, `v_out² = v_in² + 2·a(v_mid)·L` (`L`: road length of the step),
 so momentum carries over grade changes; the target goes through the same ramp limiter.
 **During a GPX ride** the same estimate runs from the ride's state (position, speed, wind, air)
-with its current settings: Slope ERG at the current effort, or the manual target, gives the
-time left to the end of the route (`≈ 20:51` after "Left" in the progress block); a workout
+with its current settings: Slope ERG at the current effort, the manual target, or in Sim the
+mean power of the last 30 s (held constant), gives the time left to the end of the route (`≈ 20:51` after "Left" in the progress block); a workout
 running gives the distance left before it ends, its steps at the current intensity
 (`≈ 20.8 km to go` under the workout profile). Recomputed off the engine loop every 10 s of
 riding and at once on any settings change, counted down in between. It

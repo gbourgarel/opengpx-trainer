@@ -69,7 +69,8 @@ export function useNudge(tel: Telemetry, onError: (msg: string) => void) {
   const pendingRef = useRef<Pending | null>(null)
   const queue = useRef<Promise<void>>(Promise.resolve())
 
-  const telValue = (t: Telemetry, field: KeyField) => t[field] ?? (field === 'manual_target_w' ? (t.target_w ?? 0) : 100)
+  const telValue = (t: Telemetry, field: KeyField) =>
+    t[field] ?? (field === 'manual_target_w' ? (t.target_w ?? 0) : field === 'trainer_effect_pct' ? 50 : 100)
 
   const nudge = useCallback((field: KeyField, up: boolean) => {
     const { tel: t, onError: fail } = latest.current

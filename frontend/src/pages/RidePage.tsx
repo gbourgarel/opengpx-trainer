@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { CalibrationOffer } from '../components/Calibration'
 import { ManualTarget } from '../components/ManualTarget'
 import { StopDialog } from '../components/StopDialog'
 import { useNudge, useRideShortcuts } from '../rideKeys'
+import { loadTrainerEffect, saveTrainerEffect } from '../wind'
 import { shortcutsHelp, SOURCE_LABEL, targetSource } from '../targetSource'
 import { useStepCues } from '../stepCues'
 import type { WakeLockStatus } from '../wakeLock'
@@ -106,6 +107,11 @@ export function RidePage({
     step: tel.step_index != null ? workout?.steps[tel.step_index] : undefined,
   })
   const { nudge, shown } = useNudge(tel, setError) // ↑ / ↓ keys and +/− buttons
+  // Sim: the trainer effect is remembered per browser for the next Sim ride
+  const effect = tel.trainer_effect_pct
+  useEffect(() => {
+    if (tel.target_mode === 'sim' && effect != null) saveTrainerEffect(effect)
+  }, [tel.target_mode, effect])
   useRideShortcuts({ tel, enabled: inSession && !!active, source, nudge, sound, setSound, onError: setError, canImmersive, immersive, setImmersive })
   const ftp = profile?.ftp_w ?? 250
   const lthr = profile?.threshold_hr_bpm ?? null // heart-rate zones
@@ -145,7 +151,7 @@ export function RidePage({
   const lap = tel.lap ?? 1
   // under the power dial: where the target comes from (GPX rides; in ERG it is the workout)
   const sourceLabel = tel.mode === 'gpx' ? SOURCE_LABEL[source] : undefined
-  const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : 'GPX · Slope ERG'
+  const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : tel.target_mode === 'sim' ? 'GPX · Sim' : 'GPX · Slope ERG'
 
   const pauseButton =
     tel.state === 'running' ? (
@@ -242,6 +248,13 @@ export function RidePage({
       <ManualTarget key={tel.session_id} server={tel.manual_target_w} onError={setError} />
     ) : source === 'workout' ? (
       intensity('Intensity')
+    ) : source === 'sim' ? (
+      <Stepper
+        label={compact ? 'Trainer effect' : `Trainer effect · grade sent ${tel.sim_grade_pct != null ? `${tel.sim_grade_pct.toFixed(1)} %` : '—'}`}
+        title="Share of the route's grade the trainer simulates (shift gears as on the road)"
+        value={shown('trainer_effect_pct')}
+        onStep={(up) => nudge('trainer_effect_pct', up)}
+      />
     ) : source === 'free-ride' ? (
       <>
         {effort(compact ? 'Free-ride step · effort' : 'Free-ride step → Slope ERG · effort')}
@@ -258,11 +271,18 @@ export function RidePage({
           // left button: the automatic source (the workout while it lasts, else the slope)
           <div className="seg target-mode" title="What sets the trainer target">
             <button
-              className={source !== 'manual' ? 'on' : ''}
+              className={tel.target_mode !== 'manual' && tel.target_mode !== 'sim' ? 'on' : ''}
               onClick={() => act(() => api.adjust({ target_mode: 'slope' }))}
               title={workoutActive ? 'The workout sets the target (Slope ERG in its free-ride steps)' : 'Slope ERG: the slope of the route sets the target, held by the trainer in ERG (no shifting)'}
             >
               {workoutActive ? 'Workout' : 'Slope ERG'}
+            </button>
+            <button
+              className={tel.target_mode === 'sim' ? 'on' : ''}
+              onClick={() => act(() => api.adjust({ target_mode: 'sim', trainer_effect_pct: loadTrainerEffect() }))}
+              title="Sim: the trainer simulates the route's grade (× trainer effect); you shift and choose your power, like on the road"
+            >
+              Sim
             </button>
             <button className={source === 'manual' ? 'on' : ''} onClick={() => act(() => api.adjust({ target_mode: 'manual' }))} title="Set the target in watts">
               Manual
@@ -271,6 +291,7 @@ export function RidePage({
         )}
         {sourceControls(false)}
         {source === 'manual' && workoutActive && <small className="muted override-note">Workout target overridden; its steps keep running.</small>}
+        {tel.target_mode === 'sim' && workoutActive && <small className="muted override-note">Sim once the workout is over; until then its targets apply.</small>}
         {split && (
           <div className="split" title="Instantaneous resistive power at current speed">
             <span>Resistive power</span>

@@ -78,6 +78,10 @@ class MultiHub(SensorHub):
         if (h := self._trainer_hub) is not None:
             h.set_basic_resistance(percent)
 
+    def set_slope(self, grade: float) -> None:
+        if (h := self._trainer_hub) is not None:
+            h.set_slope(grade)
+
     def set_user_configuration(self, rider_kg: float, bike_kg: float, wheel_d_m: float) -> None:
         if (h := self._trainer_hub) is not None:
             h.set_user_configuration(rider_kg, bike_kg, wheel_d_m)

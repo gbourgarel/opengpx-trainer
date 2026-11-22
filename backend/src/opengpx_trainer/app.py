@@ -319,8 +319,9 @@ class FeedbackBody(BaseModel):
 class AdjustBody(BaseModel):
     intensity_pct: float | None = None
     effort_pct: float | None = None
-    target_mode: Literal["slope", "manual"] | None = None
+    target_mode: Literal["slope", "manual", "sim"] | None = None
     manual_target_w: float | None = None
+    trainer_effect_pct: float | None = None  # Sim: share of the grade sent to the trainer
 
 
 class StepBody(BaseModel):
@@ -760,6 +761,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                     body.effort_pct,
                     body.target_mode,
                     body.manual_target_w,
+                    body.trainer_effect_pct,
                 )
             except ValueError as e:
                 raise HTTPException(422, str(e)) from e
@@ -768,6 +770,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
                 "effort_pct": s.effort_pct,
                 "target_mode": s.target_mode,
                 "manual_target_w": s.manual_target_w,
+                "trainer_effect_pct": s.trainer_effect_pct,
             }
 
     @app.post("/api/session/step")

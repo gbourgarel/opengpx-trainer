@@ -619,6 +619,10 @@ class AntHub(SensorHub):
     def set_basic_resistance(self, percent: float) -> None:
         self._set_command(pf.encode_basic_resistance(percent))
 
+    def set_slope(self, grade: float) -> None:
+        # page 51, grade only: the trainer's default rolling resistance (Crr byte 0xFF)
+        self._set_command(pf.encode_track_resistance(grade))
+
     def set_user_configuration(self, rider_kg: float, bike_kg: float, wheel_d_m: float) -> None:
         self._user_cfg = pf.encode_user_configuration(rider_kg, bike_kg, wheel_d_m)
         self._tx_queue.put("user")

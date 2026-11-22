@@ -258,8 +258,12 @@ export interface Telemetry {
   power_split_w?: { gravity: number; rolling: number; aero: number }
   intensity_pct?: number
   effort_pct?: number
-  target_mode?: 'slope' | 'manual'
+  target_mode?: 'slope' | 'manual' | 'sim'
   manual_target_w?: number | null
+  /** Sim: share of the route's grade sent to the trainer (0-100 %) */
+  trainer_effect_pct?: number
+  /** Sim: the grade sent to the trainer now (%), null otherwise */
+  sim_grade_pct?: number | null
   lat?: number
   lon?: number
   heading_deg?: number
@@ -367,8 +371,9 @@ export const api = {
   adjust: (a: {
     intensity_pct?: number
     effort_pct?: number
-    target_mode?: 'slope' | 'manual'
+    target_mode?: 'slope' | 'manual' | 'sim'
     manual_target_w?: number
+    trainer_effect_pct?: number
   }) =>
     req('POST', '/api/session/adjust', a),
   /** the ride's workout as edited by the rider (skipped / extended steps) */

@@ -43,6 +43,7 @@ class SimulatedHub(SensorHub):
         self.settings = settings or SimSettings()
         self.dt = 1.0 / rate_hz
         self._target = 0.0
+        self.slope: float | None = None  # last grade received in Sim mode
         self._power = 0.0
         self._hr = 90.0
         self._t = 0.0
@@ -81,6 +82,11 @@ class SimulatedHub(SensorHub):
 
     def set_basic_resistance(self, percent: float) -> None:
         self._target = 120 + percent  # crude: rider "free rides" around 120-200 W
+
+    def set_slope(self, grade: float) -> None:
+        # crude simulated rider in "follow" mode: pushes harder uphill, eases off downhill
+        self.slope = grade
+        self._target = max(60.0, min(180.0 + 2000.0 * grade, 450.0))
 
     def set_user_configuration(self, rider_kg: float, bike_kg: float, wheel_d_m: float) -> None:
         pass

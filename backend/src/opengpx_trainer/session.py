@@ -41,8 +41,13 @@ from .recording import Recorder, RideAverages, Sample, pedal_fields
 from .workouts.model import Step, Workout, WorkoutPosition
 
 Mode = Literal["erg", "gpx"]
-TargetMode = Literal["slope", "manual"]
+TargetMode = Literal["slope", "manual", "sim"]
 MAX_MANUAL_TARGET_W = 2000.0
+# Sim mode (classic trainer simulation): the grade under the wheel x the trainer effect is
+# sent to the trainer, which sets the resistance; the rider shifts and chooses the power.
+DEFAULT_TRAINER_EFFECT_PCT = 50.0
+SIM_GRADE_RATE = 0.01  # the grade sent changes by at most 1 % per second (no jumps)
+SIM_GRADE_STEP = 0.001  # sent in 0.1 % steps: a new command only when it really changes
 MAX_STEP_EXTENSION_S = 600.0
 State = Literal["ready", "running", "paused", "finished"]
 
@@ -232,8 +237,11 @@ class RideSession:
         self.elapsed_s = 0.0
         self.intensity_pct = 100.0  # ERG: scales workout targets
         self.effort_pct = 100.0  # GPX: scales the grade->power curve target
-        self.target_mode: TargetMode = "slope"  # GPX: grade curve, or rider-set watts
+        # GPX: grade curve, rider-set watts, or the trainer simulating the grade
+        self.target_mode: TargetMode = "slope"
         self.manual_target_w: float | None = None
+        self.trainer_effect_pct = DEFAULT_TRAINER_EFFECT_PCT  # Sim: share of the grade sent
+        self.sim_grade: float | None = None  # Sim: the grade last sent to the trainer
         self.curve = profile.grade_power_curve()
         self.limiter = RateLimiter(self.curve.max_ramp_w_per_s)
         self.power_match = PowerMatch()
@@ -331,10 +339,11 @@ class RideSession:
         effort_pct=None,
         target_mode=None,
         manual_target_w=None,
+        trainer_effect_pct=None,
     ) -> None:
         if target_mode is not None:
-            if target_mode not in ("slope", "manual"):
-                raise ValueError("target_mode must be 'slope' or 'manual'")
+            if target_mode not in ("slope", "manual", "sim"):
+                raise ValueError("target_mode must be 'slope', 'manual' or 'sim'")
             if self.mode != "gpx":
                 raise ValueError("target_mode only applies to GPX rides")
             if target_mode == "manual" and self.manual_target_w is None:
@@ -354,6 +363,31 @@ class RideSession:
             self.intensity_pct = max(10.0, min(float(intensity_pct), 200.0))
         if effort_pct is not None:
             self.effort_pct = max(10.0, min(float(effort_pct), 200.0))
+        if trainer_effect_pct is not None:
+            self.trainer_effect_pct = max(0.0, min(float(trainer_effect_pct), 100.0))
+
+    @property
+    def sim_active(self) -> bool:
+        """The trainer simulates the grade now: Sim chosen on a GPX ride, and no workout
+        running (a GPX + workout ride keeps the workout's targets, Slope ERG in its free-ride
+        steps, until the workout is over)."""
+        return (
+            self.mode == "gpx"
+            and self.target_mode == "sim"
+            and (self.workout is None or self.workout_done)
+        )
+
+    def _sim_grade(self, dt: float) -> float:
+        """The grade to send: the route's (smoothed) grade under the wheel x the trainer effect,
+        rate-limited and quantised (see SIM_GRADE_RATE / SIM_GRADE_STEP)."""
+        want = self.route.grade_at(self.route_position_m) * self.trainer_effect_pct / 100.0
+        prev = self.sim_grade
+        if prev is not None:
+            want = max(prev - SIM_GRADE_RATE * dt, min(want, prev + SIM_GRADE_RATE * dt))
+            if abs(want - prev) < SIM_GRADE_STEP:
+                return prev
+        self.sim_grade = round(want / SIM_GRADE_STEP) * SIM_GRADE_STEP
+        return self.sim_grade
 
     # -- workout edits (rider) ------------------------------------------------------------
     def _current_step(self) -> tuple[Step, WorkoutPosition]:
@@ -415,9 +449,12 @@ class RideSession:
             return None
         workout = self.workout if self.workout is not None and not self.workout_done else None
         manual = self.target_mode == "manual" and self.manual_target_w is not None
+        # Sim: no target, the rider chooses the power: the estimate assumes the recent one
+        sim_w = self._recent_power_w() if self.sim_active else None
         sig = (
             self.target_mode,
             self.manual_target_w if manual else None,
+            self.sim_active,
             self.effort_pct,
             self.intensity_pct,
             self.workout_rev,
@@ -441,7 +478,7 @@ class RideSession:
             temperature_c=self.temperature_c,
             relative_humidity=self.relative_humidity,
             effort_pct=self.effort_pct,
-            manual_w=self.manual_target_w if manual else None,
+            manual_w=self.manual_target_w if manual else sim_w,
             workout=copy.deepcopy(workout),  # the rider may skip / extend steps meanwhile
             intensity_pct=self.intensity_pct,
         )
@@ -450,6 +487,15 @@ class RideSession:
         self._remaining_elapsed = self.elapsed_s
         self._remaining_pending_from = (self.elapsed_s, st.distance_m)
         return lambda: estimate_remaining(state)
+
+    RECENT_POWER_S = 30
+
+    def _recent_power_w(self) -> float | None:
+        """Mean power of the last ``RECENT_POWER_S`` recorded seconds (None before any, or
+        when ~0: the estimate then assumes the slope curve rather than never arriving)."""
+        recent = self.recorder.samples[-self.RECENT_POWER_S :]
+        mean = sum(s.power_w or 0.0 for s in recent) / len(recent) if recent else 0.0
+        return mean if mean >= 20.0 else None
 
     def set_remaining(self, rem: Remaining | None) -> None:
         """Result of a ``remaining_job`` (None: it failed; the next one is due in 10 s)."""
@@ -530,7 +576,12 @@ class RideSession:
             self.elapsed_s += dt
 
         # trainer command (also while ready/paused so ERG is set when pedalling starts)
-        if self.state != "finished":
+        if self.state != "finished" and self.sim_active:
+            # the trainer sets the resistance from the grade: no target, no power match
+            self.requested_target_w = self.sent_target_w = None
+            self.hub.set_slope(self._sim_grade(dt if running else 0.0))
+        elif self.state != "finished":
+            self.sim_grade = None
             self.requested_target_w = self._target(dt if running else 0.0)
             if self.requested_target_w is None:
                 self.sent_target_w = None
@@ -700,6 +751,9 @@ class RideSession:
             "effort_pct": self.effort_pct,
             "target_mode": self.target_mode,
             "manual_target_w": self.manual_target_w,
+            "trainer_effect_pct": self.trainer_effect_pct,
+            # Sim: the grade sent to the trainer (route grade x trainer effect), in %
+            "sim_grade_pct": None if self.sim_grade is None else round(self.sim_grade * 100, 1),
             **self._remaining_telemetry(),
         }
         if point is not None:

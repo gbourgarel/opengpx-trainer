@@ -94,6 +94,10 @@ class BleHub(SensorHub):
     def set_basic_resistance(self, percent: float) -> None:
         self._set_command(bp.ftms_set_simulation(grade=0.0))  # free ride: flat road feel
 
+    def set_slope(self, grade: float) -> None:
+        # FTMS needs every field: the same defaults as free ride (no wind), only the grade
+        self._set_command(bp.ftms_set_simulation(grade=grade))
+
     def set_user_configuration(self, rider_kg: float, bike_kg: float, wheel_d_m: float) -> None:
         pass  # not part of FTMS
 
