@@ -1,7 +1,7 @@
 [project]
-name = "hometrainer"
+name = "opengpx-trainer"
 version = "0.1.0"
-description = "Home trainer app: ERG workouts from intervals.icu and GPX route simulation over ANT+ FE-C"
+description = "Ride any GPX route or ERG workout on a home trainer (ANT+ / BLE), with a 3D view"
 authors = [
     { name = "Guillaume Bourgarel", email = "guillaume.bourgarel@gmail.com" }
 ]
@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-hometrainer = "hometrainer.__main__:main"
+opengpx-trainer = "opengpx_trainer.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

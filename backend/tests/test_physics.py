@@ -2,8 +2,8 @@ import math
 
 import pytest
 
-from hometrainer.physics.grade_power import GradePowerCurve, RateLimiter
-from hometrainer.physics.model import ModelParams, SpeedModel, VirtualBike, air_density
+from opengpx_trainer.physics.grade_power import GradePowerCurve, RateLimiter
+from opengpx_trainer.physics.model import ModelParams, SpeedModel, VirtualBike, air_density
 
 P = ModelParams()
 M = SpeedModel(P)
@@ -163,7 +163,7 @@ def test_virtual_bike_follows_the_wind_along_the_route():
 
 # --- route time estimate (physics/estimate.py) -------------------------------------------
 def _route(grade: float, km: float = 5.0):
-    from hometrainer.gpx.route import Route
+    from opengpx_trainer.gpx.route import Route
     from tests.test_gpx_workouts import make_gpx
 
     return Route.from_gpx(make_gpx(n=int(km * 1000 / 11.119) + 1, grade=grade))
@@ -172,8 +172,8 @@ def _route(grade: float, km: float = 5.0):
 def test_estimate_on_a_constant_grade_is_length_over_steady_speed():
     """Closed form: on a constant grade the target and the steady speed are constant, so the
     time is (horizontal length / cos) / v, plus the few seconds of the standing start."""
-    from hometrainer.physics.estimate import estimate_route
-    from hometrainer.profile import Profile
+    from opengpx_trainer.physics.estimate import estimate_route
+    from opengpx_trainer.profile import Profile
 
     p = Profile()
     r = _route(0.05)
@@ -193,9 +193,9 @@ def test_estimate_matches_the_ride_simulation(reverse):
     integrated in time (target from the look-ahead grade through the ramp limiter)."""
     from pathlib import Path
 
-    from hometrainer.gpx.route import Route
-    from hometrainer.physics.estimate import estimate_route
-    from hometrainer.profile import Profile
+    from opengpx_trainer.gpx.route import Route
+    from opengpx_trainer.physics.estimate import estimate_route
+    from opengpx_trainer.profile import Profile
 
     gpx = (Path(__file__).parents[2] / "samples" / "sample_climb.gpx").read_text()
     r = Route.from_gpx(gpx, reverse=reverse)
@@ -213,9 +213,9 @@ def test_estimate_matches_the_ride_simulation(reverse):
 
 
 def test_estimate_follows_effort_wind_and_workout():
-    from hometrainer.physics.estimate import estimate_route, estimate_workout_on_route
-    from hometrainer.profile import Profile
-    from hometrainer.workouts.model import Step, Workout
+    from opengpx_trainer.physics.estimate import estimate_route, estimate_workout_on_route
+    from opengpx_trainer.profile import Profile
+    from opengpx_trainer.workouts.model import Step, Workout
 
     p = Profile()
     r = _route(0.0, km=4)  # flat, heading north
@@ -233,14 +233,14 @@ def test_estimate_follows_effort_wind_and_workout():
 def test_live_estimate_from_the_start_is_the_route_estimate():
     """estimate_remaining from standstill at the start = estimate_route; from half way at
     the steady speed, the closed form; with a workout, the workout estimate's distance."""
-    from hometrainer.physics.estimate import (
+    from opengpx_trainer.physics.estimate import (
         RideState,
         estimate_remaining,
         estimate_route,
         estimate_workout_on_route,
     )
-    from hometrainer.profile import Profile
-    from hometrainer.workouts.model import Step, Workout
+    from opengpx_trainer.profile import Profile
+    from opengpx_trainer.workouts.model import Step, Workout
 
     p = Profile()
     r = _route(0.04, km=6)

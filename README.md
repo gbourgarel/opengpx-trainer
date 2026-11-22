@@ -1,7 +1,8 @@
-# Home Trainer
+# OpenGPX Trainer
 
-Personal indoor-cycling app that drives a smart trainer over ANT+ (FE-C, USB stick) or
-Bluetooth LE (FTMS), with power meter and heart-rate sensors on either protocol.
+Free, open-source indoor-cycling app: ride **any GPX route** (or a structured workout, or both)
+on a smart trainer driven over ANT+ (FE-C, USB stick) or Bluetooth LE (FTMS), with power meter
+and heart-rate sensors on either protocol. Formerly called *Home Trainer*.
 
 * **ERG workouts**: planned workouts fetched from intervals.icu (or imported `.zwo` / `.erg` / `.mrc`),
   with a live intensity % adjustment. The current step can be skipped or extended by 1 min, and
@@ -53,9 +54,10 @@ app, and the release wheel contains the UI and libusb.
    `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`.
    Then open a new terminal.
 2. Install the app from the latest release:
-   `uv tool install <URL of the hometrainer-….whl from the Releases page>`.
-   An update is the same command with the newer wheel.
-3. Run `hometrainer`. The UI opens in the browser at http://127.0.0.1:8000 (`--no-browser`
+   `uv tool install <URL of the opengpx_trainer-….whl from the Releases page>`.
+   An update is the same command with the newer wheel. (Coming from the former `hometrainer`
+   wheel: `uv tool uninstall hometrainer` first; the data is moved over at the first start.)
+3. Run `opengpx-trainer`. The UI opens in the browser at http://127.0.0.1:8000 (`--no-browser`
    to skip, `--port` to use another port). Stop it with Ctrl+C.
 
 Bluetooth sensors need nothing else (on macOS, allow Bluetooth for Terminal, see below). An
@@ -87,13 +89,13 @@ cd frontend && npm install && npm run build && cd ..
 cd backend && uv sync
 
 # run (serves the built UI too) → http://127.0.0.1:8000
-cd backend && uv run hometrainer
+cd backend && uv run opengpx-trainer
 ```
 
 Development, with hot reload on both sides:
 
 ```bash
-cd backend && uv run hometrainer --reload      # :8000
+cd backend && uv run opengpx-trainer --reload  # :8000
 cd frontend && npm run dev                     # :5173, proxies /api and /ws to :8000
 ```
 
@@ -116,14 +118,19 @@ The same controls are available over the API: `PUT /api/simulator` with e.g.
 Tests: `cd backend && uv run pytest`, lint: `uv run ruff check src tests`. Frontend:
 `cd frontend && npm run build` (type-check + bundle) and `npm run lint` (oxlint).
 
-Data lives in `~/.hometrainer`: the SQLite DB, `rides/*.fit`, and `checkpoints/` (rides in
-progress). Environment variables:
+Data lives in `~/.opengpx-trainer`: the SQLite DB, `rides/*.fit`, and `checkpoints/` (rides
+in progress). Environment variables:
 
-| Variable               | Effect                                                        |
-|------------------------|---------------------------------------------------------------|
-| `HOMETRAINER_DATA`     | data directory instead of `~/.hometrainer`                    |
-| `HOMETRAINER_ANT_LOG`  | CSV file where every raw ANT+ page and every command sent is logged; also requests the trainer's command status (page 71) every 5 s (debugging) |
-| `HOMETRAINER_FRONTEND` | built UI to serve instead of the packaged one / `frontend/dist` |
+| Variable                   | Effect                                                    |
+|----------------------------|-----------------------------------------------------------|
+| `OPENGPX_TRAINER_DATA`     | data directory instead of `~/.opengpx-trainer`            |
+| `OPENGPX_TRAINER_ANT_LOG`  | CSV file where every raw ANT+ page and every command sent is logged; also requests the trainer's command status (page 71) every 5 s (debugging) |
+| `OPENGPX_TRAINER_FRONTEND` | built UI to serve instead of the packaged one / `frontend/dist` |
+
+From the former name (*Home Trainer*): at the first start, `~/.hometrainer` is moved to
+`~/.opengpx-trainer` (when the new one does not exist yet) and `hometrainer.db` renamed;
+the former `HOMETRAINER_*` variables are still read when the new ones are not set, and the
+settings remembered in the browser (sound, wind, air) are kept.
 
 ## Ride screen
 

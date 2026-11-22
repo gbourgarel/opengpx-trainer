@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from hometrainer.ble import protocols as bp
+from opengpx_trainer.ble import protocols as bp
 
 
 def test_heart_rate_8_and_16_bit():

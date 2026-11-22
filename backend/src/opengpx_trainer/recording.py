@@ -47,7 +47,8 @@ from .pedaling import pedal_summary, position_changes
 log = logging.getLogger(__name__)
 
 # developer data: identifies this app's fields in the FIT file (16-byte application id)
-TARGET_POWER_APP_ID = b"hometrainer\x00\x00\x00\x00\x01"
+TARGET_POWER_APP_ID = b"opengpx-trainer\x01"
+assert len(TARGET_POWER_APP_ID) == 16
 TARGET_POWER_FIELD = 0
 
 

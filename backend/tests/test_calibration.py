@@ -2,9 +2,9 @@
 
 import pytest
 
-from hometrainer.ant import profiles as pf
-from hometrainer.ant.calibration import CalibrationError, SpinDown, ZeroOffset
-from hometrainer.profile import Profile
+from opengpx_trainer.ant import profiles as pf
+from opengpx_trainer.ant.calibration import CalibrationError, SpinDown, ZeroOffset
+from opengpx_trainer.profile import Profile
 
 ZWO = """<workout_file><name>W</name><workout>
 <SteadyState Duration="300" Power="0.5"/>
@@ -102,7 +102,7 @@ def test_zero_offset():
 
 # -- hubs ----------------------------------------------------------------------------------
 def test_trainer_asks_for_a_spin_down():
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     h = AntHub()
     h._on_fec([0x19, 1, 90, 0, 0, 200, 0x60, 0x30])  # status bits 1 and 2 (0x60 >> 4)
@@ -112,7 +112,7 @@ def test_trainer_asks_for_a_spin_down():
 
 
 def test_simulated_spin_down_and_zero_offset():
-    from hometrainer.ant.simulator import SimulatedHub
+    from opengpx_trainer.ant.simulator import SimulatedHub
 
     h = SimulatedHub()
     h.update_settings(noise=False)
@@ -149,7 +149,7 @@ def test_simulated_spin_down_and_zero_offset():
 
 
 def test_multihub_calibrates_over_ant_only(monkeypatch):
-    from hometrainer.sensors import MultiHub
+    from opengpx_trainer.sensors import MultiHub
 
     p = Profile()
     p.trainer_transport = "ble"
@@ -162,8 +162,8 @@ def test_multihub_calibrates_over_ant_only(monkeypatch):
 def test_calibration_api_and_no_auto_start(tmp_path):
     from fastapi.testclient import TestClient
 
-    from hometrainer.app import create_app
-    from hometrainer.storage import Storage
+    from opengpx_trainer.app import create_app
+    from opengpx_trainer.storage import Storage
 
     with TestClient(create_app(Storage(tmp_path))) as c:
         assert c.post("/api/devices/calibrate", json={"role": "trainer"}).status_code == 409

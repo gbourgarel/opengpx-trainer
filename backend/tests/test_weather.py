@@ -5,8 +5,8 @@ import math
 import httpx
 import pytest
 
-from hometrainer.gpx.route import Route
-from hometrainer.weather import (
+from opengpx_trainer.gpx.route import Route
+from opengpx_trainer.weather import (
     WIND_HEIGHT_FACTOR,
     average,
     current_weather,

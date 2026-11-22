@@ -198,7 +198,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>Home Trainer</h1>
+        <h1>OpenGPX Trainer</h1>
         <nav>
           {TABS.map(([k, label]) => (
             <button key={k} className={tab === k ? 'active' : ''} onClick={() => goTab(k)}>

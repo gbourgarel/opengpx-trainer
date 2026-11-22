@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .envvars import env
 from .profile import Profile, ProfileError
 
 log = logging.getLogger(__name__)
@@ -45,8 +45,26 @@ CREATE TABLE IF NOT EXISTS rides (
 """
 
 
-def default_data_dir() -> Path:
-    return Path(os.environ.get("HOMETRAINER_DATA", Path.home() / ".hometrainer"))
+DATA_DIR_NAME = ".opengpx-trainer"
+DB_NAME = "opengpx-trainer.db"
+# names used before the app was renamed from "Home Trainer" (2026-11)
+FORMER_DATA_DIR_NAME = ".hometrainer"
+FORMER_DB_NAME = "hometrainer.db"
+
+
+def default_data_dir(home: Path | None = None) -> Path:
+    """``OPENGPX_TRAINER_DATA`` (or the former ``HOMETRAINER_DATA``), else
+    ``~/.opengpx-trainer``. A ``~/.hometrainer`` left by the app's former name is moved there
+    the first time."""
+    custom = env("DATA")
+    if custom:
+        return Path(custom)
+    home = home or Path.home()
+    data_dir, former = home / DATA_DIR_NAME, home / FORMER_DATA_DIR_NAME
+    if not data_dir.exists() and former.is_dir():
+        former.rename(data_dir)
+        log.info("Data moved from %s to %s (the app was renamed)", former, data_dir)
+    return data_dir
 
 
 def _now() -> str:
@@ -61,10 +79,15 @@ class Storage:
         self.checkpoints_dir = self.data_dir / "checkpoints"  # rides in progress (crash-safe)
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._db = sqlite3.connect(self.data_dir / "hometrainer.db", check_same_thread=False)
+        db_path, former_db = self.data_dir / DB_NAME, self.data_dir / FORMER_DB_NAME
+        if not db_path.exists() and former_db.is_file():
+            former_db.rename(db_path)
+            log.info("Database renamed from %s to %s", former_db.name, db_path.name)
+        self._db = sqlite3.connect(db_path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.executescript(SCHEMA)
         self._migrate()
+        self._relocate_fit_files()
         self._db.commit()
 
     def _migrate(self) -> None:
@@ -75,6 +98,17 @@ class Storage:
             # the ride session a row comes from: a checkpoint of a ride already saved (crash
             # between the save and the checkpoint removal) is then not saved twice
             self._db.execute("ALTER TABLE rides ADD COLUMN session_id TEXT")
+
+    def _relocate_fit_files(self) -> None:
+        """Rides store the absolute path of their FIT file: after the data directory was moved
+        (renamed app, or moved by hand), point the rows whose file is gone to the file of the
+        same name in ``rides/``, when there is one."""
+        rows = self._db.execute("SELECT id, fit_path FROM rides WHERE fit_path IS NOT NULL")
+        for r in rows.fetchall():
+            old = Path(r["fit_path"])
+            moved = self.rides_dir / old.name
+            if not old.exists() and moved.is_file():
+                self._db.execute("UPDATE rides SET fit_path=? WHERE id=?", (str(moved), r["id"]))
 
     def close(self) -> None:
         self._db.close()

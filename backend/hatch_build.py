@@ -1,6 +1,6 @@
-"""Hatch build hook: ship the built frontend inside the wheel, as ``hometrainer/web``.
+"""Hatch build hook: ship the built frontend inside the wheel, as ``opengpx_trainer/web``.
 
-A friend then installs one file (``uv tool install hometrainer-….whl``) without Node. Run
+A friend then installs one file (``uv tool install opengpx_trainer-….whl``) without Node. Run
 ``npm run build`` in ``frontend/`` first, then ``uv build --wheel`` here (not a plain
 ``uv build``: the wheel would be built from the sdist, which has no ``frontend/``). Editable
 installs (``uv sync``) skip the hook and the app serves ``frontend/dist`` from the repository.
@@ -18,4 +18,4 @@ class FrontendBuildHook(BuildHookInterface):
         dist = Path(self.root).parent / "frontend" / "dist"
         if not (dist / "index.html").is_file():
             raise RuntimeError(f"{dist} not found: run `npm run build` in frontend/ first")
-        build_data["force_include"][str(dist)] = "hometrainer/web"
+        build_data["force_include"][str(dist)] = "opengpx_trainer/web"

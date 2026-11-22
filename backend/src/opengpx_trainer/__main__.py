@@ -24,7 +24,9 @@ def open_browser_when_up(host: str, port: int, timeout_s: float = 30.0) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Home trainer app")
+    ap = argparse.ArgumentParser(
+        description="OpenGPX Trainer: ride any GPX route or workout on a home trainer"
+    )
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--reload", action="store_true")
@@ -40,7 +42,7 @@ def main() -> None:
             target=open_browser_when_up, args=(args.host, args.port), daemon=True
         ).start()
     uvicorn.run(
-        "hometrainer.app:create_app",
+        "opengpx_trainer.app:create_app",
         factory=True,
         host=args.host,
         port=args.port,

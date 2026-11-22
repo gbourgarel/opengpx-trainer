@@ -5,8 +5,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from hometrainer.app import create_app
-from hometrainer.storage import Storage
+from opengpx_trainer.app import create_app
+from opengpx_trainer.storage import Storage
 from tests.test_gpx_workouts import ZWO
 
 
@@ -57,7 +57,7 @@ def test_valid_profile_update_and_optional_fields(client):
 def test_bad_stored_profile_falls_back_to_defaults(tmp_path):
     import json
 
-    from hometrainer.profile import Profile
+    from opengpx_trainer.profile import Profile
 
     s = Storage(tmp_path)
     s._exec(
@@ -69,7 +69,7 @@ def test_bad_stored_profile_falls_back_to_defaults(tmp_path):
 
 
 def test_default_profile_is_its_preset():
-    from hometrainer.profile import BIKE_PRESETS, PRESET_FIELDS, Profile
+    from opengpx_trainer.profile import BIKE_PRESETS, PRESET_FIELDS, Profile
 
     p = Profile()
     preset = BIKE_PRESETS[p.bike_preset]
@@ -167,8 +167,8 @@ def test_start_gpx_ride_in_reverse(client):
 
 
 def test_weather_endpoint_and_ride_air(client, monkeypatch):
-    from hometrainer import app as app_mod
-    from hometrainer.weather import Weather
+    from opengpx_trainer import app as app_mod
+    from opengpx_trainer.weather import Weather
     from tests.test_gpx_workouts import make_gpx
 
     fake = Weather(9.0, 250, 15.0, 12.5, 0.8, 3)
@@ -257,7 +257,7 @@ def test_concurrent_saves_write_a_single_ride(client):
     with client.st.session_lock:  # keep the background engine out while we prepare
         s.finish()
     if not s.recorder.samples:  # make sure there is something to save
-        from hometrainer.recording import Sample
+        from opengpx_trainer.recording import Sample
 
         s.recorder.add(Sample(1e9, 1.0, 150, 90, 120, 8.0, 8.0))
     results = []
@@ -273,8 +273,8 @@ def test_concurrent_saves_write_a_single_ride(client):
 
 
 def test_ride_is_uploaded_to_intervals_only_once(client, monkeypatch):
-    from hometrainer.recording import Sample
-    from hometrainer.workouts.intervals_icu import IntervalsIcuClient
+    from opengpx_trainer.recording import Sample
+    from opengpx_trainer.workouts.intervals_icu import IntervalsIcuClient
 
     calls = []
 
@@ -319,7 +319,7 @@ def test_ride_feedback_is_written_to_fit_and_history(client):
     from fit_tool.fit_file import FitFile
     from fit_tool.profile.messages.session_message import SessionMessage
 
-    from hometrainer.recording import Sample
+    from opengpx_trainer.recording import Sample
 
     start_erg(client)
     s = client.st.session
@@ -350,7 +350,7 @@ def test_ride_is_saved_without_holding_the_session_lock(client, monkeypatch):
     import threading
     import time
 
-    from hometrainer.recording import Recorder
+    from opengpx_trainer.recording import Recorder
 
     real_write = Recorder.write_fit
     lock_free = []
@@ -393,7 +393,7 @@ def test_disconnect_is_refused_during_a_ride(client):
 def test_publish_latest_keeps_only_the_newest_message():
     import asyncio
 
-    from hometrainer.app import publish_latest
+    from opengpx_trainer.app import publish_latest
 
     q: asyncio.Queue = asyncio.Queue(maxsize=1)
     for i in range(3):
@@ -418,7 +418,7 @@ def test_a_client_that_stops_reading_does_not_stall_the_engine(client, monkeypat
 
     from starlette.websockets import WebSocket
 
-    import hometrainer.app as app_mod
+    import opengpx_trainer.app as app_mod
 
     async def never_sent(self, data, mode="text"):
         await asyncio.sleep(3600)  # the client's TCP buffer is full

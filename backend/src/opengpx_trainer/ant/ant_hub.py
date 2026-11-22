@@ -19,7 +19,7 @@ power phase, rider position, platform centre offset). Enabling Cycling Dynamics 
 the pages are recorded when a head unit enables them. The heart-rate channel also yields
 beat-to-beat (R-R) intervals.
 
-Set ``HOMETRAINER_ANT_LOG=/path/file.csv`` to log every raw ANT page (for debugging), the
+Set ``OPENGPX_TRAINER_ANT_LOG=/path/file.csv`` to log every raw ANT page (for debugging), the
 commands sent (``fec-tx`` / ``power-tx`` rows, ``-failed`` when never acknowledged, attempts in
 the device-number column), and to request the trainer's command status (page 71) every 5 s.
 
@@ -30,11 +30,11 @@ openant's ``easy`` API is used directly. Its high-level ``devices.FitnessEquipme
 from __future__ import annotations
 
 import logging
-import os
 import queue
 import threading
 import time
 
+from ..envvars import env
 from . import profiles as pf
 from .calibration import CalibrationError
 from .hub import STALE_AFTER_S, SensorHub
@@ -179,7 +179,7 @@ class AntHub(SensorHub):
         node.set_network_key(0x00, ANTPLUS_NETWORK_KEY)
 
         self._channel_cls = Channel
-        log_path = os.environ.get("HOMETRAINER_ANT_LOG")
+        log_path = env("ANT_LOG")
         if log_path and self._raw_log is None:
             self._raw_log = open(log_path, "a", buffering=1)  # noqa: SIM115 (closed in stop)
             self._raw_log.write("t_s,channel,device_number,b0,b1,b2,b3,b4,b5,b6,b7\n")

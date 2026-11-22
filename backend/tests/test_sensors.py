@@ -6,10 +6,10 @@ import struct
 
 import pytest
 
-from hometrainer.ble import protocols as bp
-from hometrainer.ble.ble_hub import BleDevice, BleHub
-from hometrainer.profile import Profile, ProfileError
-from hometrainer.sensors import MultiHub
+from opengpx_trainer.ble import protocols as bp
+from opengpx_trainer.ble.ble_hub import BleDevice, BleHub
+from opengpx_trainer.profile import Profile, ProfileError
+from opengpx_trainer.sensors import MultiHub
 
 
 class FakeClient:
@@ -129,8 +129,8 @@ async def test_ftms_control_loop_requests_control_then_sends_targets():
 def test_scan_endpoint_merges_results_and_reconnects(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
-    import hometrainer.app as appmod
-    from hometrainer.storage import Storage
+    import opengpx_trainer.app as appmod
+    from opengpx_trainer.storage import Storage
 
     monkeypatch.setattr(
         appmod, "scan_ant", lambda s: [{"transport": "ant", "device_number": 40688, "roles": []}]
@@ -184,7 +184,7 @@ def _ext(num, dtype):
 
 def test_ant_hub_scan_uses_an_extra_channel_and_reuses_it(monkeypatch):
     """The scan used to disconnect ANT+ for ~15 s (and could fail on the stick's reset)."""
-    from hometrainer.ant import ant_hub as ah
+    from opengpx_trainer.ant import ant_hub as ah
 
     hub = ah.AntHub()
     hub._node, hub._running, hub._channel_cls = FakeNode(), True, FakeChannel
@@ -213,8 +213,8 @@ def test_ant_hub_scan_uses_an_extra_channel_and_reuses_it(monkeypatch):
 def test_scan_endpoint_keeps_ant_connected(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
-    import hometrainer.app as appmod
-    from hometrainer.storage import Storage
+    import opengpx_trainer.app as appmod
+    from opengpx_trainer.storage import Storage
 
     monkeypatch.setattr(appmod, "scan_ant", lambda s: pytest.fail("stick must not be reopened"))
 
@@ -251,7 +251,7 @@ def test_standalone_ant_scan_retries_after_missed_first_command(monkeypatch):
     import openant.easy.node as node_mod
     from openant.easy.exception import AntException
 
-    from hometrainer.ant import scan as scan_mod
+    from opengpx_trainer.ant import scan as scan_mod
 
     attempts, stopped = [], []
 

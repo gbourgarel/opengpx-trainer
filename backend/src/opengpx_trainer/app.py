@@ -7,7 +7,6 @@ import contextlib
 import datetime as dt
 import json
 import logging
-import os
 import threading
 import time
 from dataclasses import asdict
@@ -25,6 +24,7 @@ from .ant.scan import scan_ant
 from .ant.simulator import SimulatedHub
 from .ble.scan import scan_ble
 from .checkpoint import RideCheckpoint, load_checkpoint
+from .envvars import env
 from .gpx.route import Route
 from .physics.estimate import Estimate, estimate_route, estimate_workout_on_route
 from .profile import (
@@ -318,11 +318,12 @@ class StepBody(BaseModel):
 
 
 def frontend_dir() -> Path | None:
-    """The built UI to serve: ``HOMETRAINER_FRONTEND``, else the copy packaged in the wheel
-    (``hometrainer/web``, see ``hatch_build.py``), else ``frontend/dist`` of the repository."""
-    env = os.environ.get("HOMETRAINER_FRONTEND")
+    """The built UI to serve: ``OPENGPX_TRAINER_FRONTEND``, else the copy packaged in the wheel
+    (``opengpx_trainer/web``, see ``hatch_build.py``), else ``frontend/dist`` of the
+    repository."""
+    custom = env("FRONTEND")
     here = Path(__file__).resolve().parent
-    candidates = [Path(env)] if env else [here / "web", here.parents[2] / "frontend" / "dist"]
+    candidates = [Path(custom)] if custom else [here / "web", here.parents[2] / "frontend" / "dist"]
     return next((d for d in candidates if d.is_dir()), None)
 
 
@@ -402,7 +403,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             st.disconnect()
             st.storage.close()
 
-    app = FastAPI(title="Home Trainer", lifespan=lifespan)
+    app = FastAPI(title="OpenGPX Trainer", lifespan=lifespan)
     app.state.st = st
 
     # -- profile ------------------------------------------------------------------------

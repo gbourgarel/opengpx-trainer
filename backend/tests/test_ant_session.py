@@ -3,12 +3,12 @@ import time
 
 import pytest
 
-from hometrainer.ant import profiles as pf
-from hometrainer.ant.hub import SensorHub
-from hometrainer.profile import Profile
-from hometrainer.recording import Recorder, Sample
-from hometrainer.session import PowerMatch, RideSession, choose_power
-from hometrainer.workouts.model import Step, Workout
+from opengpx_trainer.ant import profiles as pf
+from opengpx_trainer.ant.hub import SensorHub
+from opengpx_trainer.profile import Profile
+from opengpx_trainer.recording import Recorder, Sample
+from opengpx_trainer.session import PowerMatch, RideSession, choose_power
+from opengpx_trainer.workouts.model import Step, Workout
 
 
 def test_target_power_page():
@@ -75,7 +75,7 @@ class FakeHub(SensorHub):
 def test_lost_sensors_only_for_sensors_seen_during_the_ride():
     from types import SimpleNamespace
 
-    from hometrainer.session import LostSensors
+    from opengpx_trainer.session import LostSensors
 
     def r(trainer, pm, hr):
         return SimpleNamespace(
@@ -135,7 +135,7 @@ def test_erg_session_flow():
 
 
 def test_speed_power_scale_affects_speed_only():
-    from hometrainer.gpx.route import Route
+    from opengpx_trainer.gpx.route import Route
     from tests.test_gpx_workouts import make_gpx
 
     route = Route.from_gpx(make_gpx(grade=0.0))
@@ -277,8 +277,8 @@ def test_fit_embeds_the_workout_as_ridden(tmp_path):
 
 
 def test_session_records_the_workout_step_of_each_sample(monkeypatch):
-    from hometrainer import session as session_mod
-    from hometrainer.recording import split_laps
+    from opengpx_trainer import session as session_mod
+    from opengpx_trainer.recording import split_laps
 
     h = FakeHub()
     w = Workout("t", [Step(10, 0.5, 0.5), Step(10, 1.0, 1.0)])
@@ -296,7 +296,7 @@ def test_session_records_the_workout_step_of_each_sample(monkeypatch):
 
 
 def _gpx_ride(workout=None):
-    from hometrainer.gpx.route import Route
+    from opengpx_trainer.gpx.route import Route
     from tests.test_gpx_workouts import make_gpx
 
     route = Route.from_gpx(make_gpx(n=400, grade=0.03))  # ~4.4 km at 3 %
@@ -371,7 +371,7 @@ def test_live_estimate_with_a_workout_is_the_distance_before_it_ends():
 
 
 def test_simulator_manual_power_and_pm_dropout():
-    from hometrainer.ant.simulator import SimulatedHub
+    from opengpx_trainer.ant.simulator import SimulatedHub
 
     h = SimulatedHub()
     h.update_settings(mode="manual", manual_power_w=320, noise=False, pm_bias=0.0)
@@ -390,7 +390,7 @@ def test_simulator_manual_power_and_pm_dropout():
 
 
 def test_simulator_follow_mode_tracks_target():
-    from hometrainer.ant.simulator import SimulatedHub
+    from opengpx_trainer.ant.simulator import SimulatedHub
 
     h = SimulatedHub()
     h.update_settings(noise=False)
@@ -403,8 +403,8 @@ def test_simulator_follow_mode_tracks_target():
 def test_simulator_api(tmp_path):
     from fastapi.testclient import TestClient
 
-    from hometrainer.app import create_app
-    from hometrainer.storage import Storage
+    from opengpx_trainer.app import create_app
+    from opengpx_trainer.storage import Storage
 
     with TestClient(create_app(Storage(tmp_path))) as c:
         assert c.get("/api/simulator").status_code == 409
@@ -432,7 +432,7 @@ def test_event_averaged_power_drops_to_zero_when_events_stop():
 
 
 def test_power_channel_ignores_trainer_own_broadcast():
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     h = AntHub()
     trainer_page = [0x19, 1, 90, 0, 0, 200, 0x30, 0x30]
@@ -465,7 +465,7 @@ class FakeChannel:
 
 
 def _late_trainer_hub(monkeypatch):
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     h = AntHub()
     h._running = True
@@ -515,7 +515,7 @@ def test_power_meter_search_kept_when_a_real_meter_paired(monkeypatch):
     ],
 )
 def test_pm_search_verdict(trainer, pm, verdict):
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     assert AntHub.pm_search_verdict(trainer, pm) == verdict
 
@@ -531,7 +531,7 @@ def test_pm_search_verdict(trainer, pm, verdict):
     ],
 )
 def test_watchdog_due(last_seen, now, last_reopen, due):
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     assert AntHub.watchdog_due(last_seen, now, last_reopen) is due
 
@@ -540,7 +540,7 @@ def test_watchdog_reopens_only_the_silent_channels(monkeypatch):
     """KNOWN_ISSUES #14: the power-meter channel stayed deaf 5 min while the meter was
     broadcasting; a paired sensor silent > 10 s gets its channel reopened (not one never
     seen, not twice within a minute)."""
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     h = AntHub()
     h._running = True
@@ -561,8 +561,8 @@ def test_watchdog_reopens_only_the_silent_channels(monkeypatch):
 def test_target_power_dead_band():
     """KNOWN_ISSUES #25: power match moves the target by fractions of a watt every tick; page
     49 is only queued again once the target moved by 1 W from the last one queued."""
-    from hometrainer.ant import profiles as pf
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant import profiles as pf
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     h = AntHub()
     h.set_target_power(200.0)
@@ -582,7 +582,7 @@ def test_target_power_dead_band():
 def test_sent_commands_are_logged(tmp_path):
     from openant.easy.exception import AntException
 
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     class Ant:
         def __init__(self, fail):
@@ -620,7 +620,7 @@ def test_sent_commands_are_logged(tmp_path):
 def test_concurrent_connect_is_rejected():
     import threading
 
-    from hometrainer.app import AppState, HubBusy
+    from opengpx_trainer.app import AppState, HubBusy
 
     class SlowHub(FakeHub):
         started = 0
@@ -632,7 +632,7 @@ def test_concurrent_connect_is_rejected():
     st = AppState.__new__(AppState)
     st.hub, st.hub_kind, st._hub_lock = None, None, threading.Lock()
     st.session = None
-    import hometrainer.app as appmod
+    import opengpx_trainer.app as appmod
 
     orig = appmod.SimulatedHub
     appmod.SimulatedHub = SlowHub
@@ -656,7 +656,7 @@ def test_concurrent_connect_is_rejected():
 
 
 def test_power_meter_pinned_to_configured_device():
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     h = AntHub(power_meter_id=63426)
     pm_page = [0x10, 1, 0xFF, 90, 0, 0, 200, 0]
@@ -670,8 +670,8 @@ def test_power_meter_pinned_to_configured_device():
 def test_profile_device_numbers_validation(tmp_path):
     from fastapi.testclient import TestClient
 
-    from hometrainer.app import create_app
-    from hometrainer.storage import Storage
+    from opengpx_trainer.app import create_app
+    from opengpx_trainer.storage import Storage
 
     with TestClient(create_app(Storage(tmp_path))) as c:
         r = c.put("/api/profile", json={"power_meter_device_number": 63426})
@@ -686,8 +686,8 @@ def test_ant_start_releases_stick_and_retries_on_timeout(monkeypatch):
     import openant.easy.node as node_mod
     from openant.easy.exception import AntException
 
-    from hometrainer.ant import ant_hub
-    from hometrainer.ant.ant_hub import AntHub, AntUnavailable
+    from opengpx_trainer.ant import ant_hub
+    from opengpx_trainer.ant.ant_hub import AntHub, AntUnavailable
 
     created, stopped = [], []
 
@@ -732,13 +732,13 @@ def test_cadence_comes_from_power_meter_even_at_zero():
 
 def test_stalled_power_meter_reports_zero_cadence():
     """Real log (PM 63426): stopped rider, PM repeats cadence 61 / event 62 / 99 W for 90 s."""
-    from hometrainer.ant.ant_hub import AntHub
+    from opengpx_trainer.ant.ant_hub import AntHub
 
     h = AntHub(power_meter_id=63426)
     ext = [0x80, 63426 & 0xFF, 63426 >> 8, 11, 5]
     page = lambda ev, acc, cad, w: [0x10, ev, 0xFF, cad, acc & 0xFF, acc >> 8, w, 0] + ext  # noqa: E731
     t = [100.0]
-    import hometrainer.ant.profiles as prof
+    import opengpx_trainer.ant.profiles as prof
 
     monkey_time = prof.time.monotonic
     prof.time.monotonic = lambda: t[0]
@@ -756,7 +756,7 @@ def test_stalled_power_meter_reports_zero_cadence():
 
 
 def _gpx_session(grade=0.06):
-    from hometrainer.gpx.route import Route
+    from opengpx_trainer.gpx.route import Route
     from tests.test_gpx_workouts import make_gpx
 
     h = FakeHub()
@@ -813,7 +813,7 @@ def test_power_to_weight_uses_rider_mass_only():
 
 
 def test_climb_tracker_vam_and_gain():
-    from hometrainer.session import ClimbTracker
+    from opengpx_trainer.session import ClimbTracker
 
     c = ClimbTracker(window_s=30, min_span_s=5)
     c.update(0, 100.0)
@@ -860,7 +860,7 @@ def test_gpx_elevation_done_plus_left_equals_route_ascent():
 # --- GPX + workout (mixed mode) ----------------------------------------------------------
 def _mixed_session(steps, n_points=40, grade=0.0):
     """Short route (~430 m for 40 points) so laps happen quickly."""
-    from hometrainer.gpx.route import Route
+    from opengpx_trainer.gpx.route import Route
     from tests.test_gpx_workouts import make_gpx
 
     h = FakeHub()
@@ -930,7 +930,7 @@ def test_plain_gpx_ride_still_ends_at_route_end():
 
 def test_finished_ride_hands_the_trainer_back_to_free_ride():
     """Roadmap: after an automatic finish the ANT sender kept re-sending the last target."""
-    from hometrainer.session import FREE_RIDE_RESISTANCE_PCT
+    from opengpx_trainer.session import FREE_RIDE_RESISTANCE_PCT
 
     h, s = _gpx_session(grade=0.0)
     t, tel = 1000.0, None
@@ -1020,7 +1020,7 @@ def test_extend_step_keeps_its_target_longer():
 
 
 def test_gpx_wind_slows_or_pushes_the_rider_and_is_reported():
-    from hometrainer.gpx.route import Route
+    from opengpx_trainer.gpx.route import Route
     from tests.test_gpx_workouts import make_gpx
 
     route = Route.from_gpx(make_gpx(grade=0.0))  # heading north
@@ -1051,7 +1051,7 @@ def test_erg_ride_ignores_the_wind():
 
 
 def test_step_edits_need_a_workout():
-    from hometrainer.gpx.route import Route
+    from opengpx_trainer.gpx.route import Route
     from tests.test_gpx_workouts import make_gpx
 
     s = RideSession(FakeHub(), Profile(), "gpx", route=Route.from_gpx(make_gpx()))

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Telemetry } from './api'
+import { getSetting, setSetting } from './localSettings'
 
 /** Audio cues of a structured workout: 3-2-1 beeps before each step change, then a cue at
  * the change — a rising two-tone when the target goes up, a single long beep otherwise —
@@ -87,11 +88,11 @@ export function playCue(c: Cue) {
   }
 }
 
-const STORAGE_KEY = 'hometrainer.sound'
+const SOUND_SETTING = 'sound'
 
 function loadSound(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) !== 'off'
+    return getSetting(SOUND_SETTING) !== 'off'
   } catch {
     return true
   }
@@ -122,7 +123,7 @@ export function useStepCues(tel: Telemetry): [boolean, (on: boolean) => void] {
     setSound(on)
     if (on) unlockAudio()
     try {
-      localStorage.setItem(STORAGE_KEY, on ? 'on' : 'off')
+      setSetting(SOUND_SETTING, on ? 'on' : 'off')
     } catch {
       /* private mode: not remembered */
     }

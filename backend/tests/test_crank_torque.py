@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from hometrainer.ant import profiles as pf
+from opengpx_trainer.ant import profiles as pf
 
 
 def page18(ev, ticks, cad, period, torque):
@@ -44,7 +44,7 @@ def test_crank_torque_stall_drops_to_zero():
 
 
 def test_hub_prefers_crank_torque_pages_over_power_only(monkeypatch):
-    from hometrainer.ant import ant_hub as ah
+    from opengpx_trainer.ant import ant_hub as ah
 
     clock = [100.0]
     monkeypatch.setattr(ah.time, "monotonic", lambda: clock[0])

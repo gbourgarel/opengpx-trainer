@@ -2,8 +2,8 @@ import math
 
 import pytest
 
-from hometrainer.gpx.route import Route
-from hometrainer.workouts.parsers import parse_erg_mrc, parse_zwo
+from opengpx_trainer.gpx.route import Route
+from opengpx_trainer.workouts.parsers import parse_erg_mrc, parse_zwo
 
 
 def make_gpx(n=200, step_deg=0.0001, grade=0.05, noise=0.0) -> str:
@@ -152,7 +152,7 @@ async def test_intervals_lists_only_cycling_workouts():
 
     import httpx
 
-    from hometrainer.workouts.intervals_icu import IntervalsIcuClient
+    from opengpx_trainer.workouts.intervals_icu import IntervalsIcuClient
 
     events = [
         {"id": 1, "category": "WORKOUT", "type": "Ride", "name": "Sweet spot"},

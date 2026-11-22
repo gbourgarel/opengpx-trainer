@@ -4,10 +4,10 @@ import datetime as dt
 
 from fastapi.testclient import TestClient
 
-from hometrainer.app import create_app
-from hometrainer.checkpoint import RideCheckpoint, load_checkpoint
-from hometrainer.recording import Sample
-from hometrainer.storage import Storage
+from opengpx_trainer.app import create_app
+from opengpx_trainer.checkpoint import RideCheckpoint, load_checkpoint
+from opengpx_trainer.recording import Sample
+from opengpx_trainer.storage import Storage
 from tests.test_app import start_erg
 
 HEADER = {
@@ -107,7 +107,7 @@ def test_crash_between_save_and_checkpoint_removal_records_the_ride_once(tmp_pat
 def test_rides_table_from_before_session_ids_is_migrated(tmp_path):
     import sqlite3
 
-    db = sqlite3.connect(tmp_path / "hometrainer.db")
+    db = sqlite3.connect(tmp_path / "opengpx-trainer.db")
     db.execute(
         "CREATE TABLE rides (id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, "
         "mode TEXT NOT NULL, name TEXT NOT NULL, duration_s REAL, distance_m REAL, "

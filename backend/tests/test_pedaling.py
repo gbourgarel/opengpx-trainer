@@ -11,11 +11,11 @@ import pytest
 from fit_tool.data_message import DataMessage
 from fit_tool.fit_file import FitFile
 
-from hometrainer.ant import ant_hub as ah
-from hometrainer.ant import profiles as pf
-from hometrainer.ant.hub import SensorHub
-from hometrainer.checkpoint import RideCheckpoint, load_checkpoint
-from hometrainer.pedaling import (
+from opengpx_trainer.ant import ant_hub as ah
+from opengpx_trainer.ant import profiles as pf
+from opengpx_trainer.ant.hub import SensorHub
+from opengpx_trainer.checkpoint import RideCheckpoint, load_checkpoint
+from opengpx_trainer.pedaling import (
     attributed_positions,
     balance_100,
     circular_mean_deg,
@@ -23,10 +23,10 @@ from hometrainer.pedaling import (
     pedal_summary,
     position_changes,
 )
-from hometrainer.profile import Profile
-from hometrainer.recording import Recorder, Sample, hrv_is_synthetic, write_ride_feedback
-from hometrainer.session import RideSession
-from hometrainer.workouts.model import Step, Workout
+from opengpx_trainer.profile import Profile
+from opengpx_trainer.recording import Recorder, Sample, hrv_is_synthetic, write_ride_feedback
+from opengpx_trainer.session import RideSession
+from opengpx_trainer.workouts.model import Step, Workout
 
 PM = 63426
 EXT = [0x80, PM & 0xFF, PM >> 8, 11, 5]
@@ -418,7 +418,7 @@ def test_fit_has_the_totals_a_head_unit_writes(tmp_path):
     from fit_tool.profile.messages.user_profile_message import UserProfileMessage
     from fit_tool.profile.messages.zones_target_message import ZonesTargetMessage
 
-    from hometrainer.recording import GROSS_EFFICIENCY, Athlete
+    from opengpx_trainer.recording import GROSS_EFFICIENCY, Athlete
 
     t0 = 1_793_806_952.0
     rec = Recorder()

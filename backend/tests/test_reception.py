@@ -1,7 +1,7 @@
 """Short reception gaps must not zero the power (real ride, 2026-11-01: all ANT+ devices silent
 for 4.2 s at the stick level, power recorded as 0 W for 2 s)."""
 
-from hometrainer.ant import hub as hub_mod
+from opengpx_trainer.ant import hub as hub_mod
 from tests.test_ant_session import FakeHub
 
 

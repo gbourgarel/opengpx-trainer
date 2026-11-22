@@ -4,10 +4,10 @@ import random
 
 import pytest
 
-from hometrainer.profile import Profile
-from hometrainer.recording import RideAverages, normalized_power
-from hometrainer.session import RideSession
-from hometrainer.workouts.model import Step, Workout
+from opengpx_trainer.profile import Profile
+from opengpx_trainer.recording import RideAverages, normalized_power
+from opengpx_trainer.session import RideSession
+from opengpx_trainer.workouts.model import Step, Workout
 from tests.test_ant_session import FakeHub
 
 
