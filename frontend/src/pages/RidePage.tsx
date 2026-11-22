@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { api, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { CalibrationOffer } from '../components/Calibration'
 import { ManualTarget } from '../components/ManualTarget'
+import { StopDialog } from '../components/StopDialog'
 import { useNudge, useRideShortcuts } from '../rideKeys'
 import { shortcutsHelp, SOURCE_LABEL, targetSource } from '../targetSource'
 import { useStepCues } from '../stepCues'
@@ -80,6 +81,7 @@ export function RidePage({
   onEnd: (rideId?: number) => void
 }) {
   const [error, setError] = useState<string | null>(null)
+  const [stopAsk, setStopAsk] = useState(false)
   const [follow, setFollow] = useState(true)
   const [sound, setSound] = useStepCues(tel) // 3-2-1 beeps before each workout step change
   const inSession = ['ready', 'running', 'paused', 'finished'].includes(tel.state)
@@ -151,15 +153,17 @@ export function RidePage({
     ) : tel.state === 'paused' || tel.state === 'ready' ? (
       <button onClick={() => act(api.resume)}>Resume</button>
     ) : null
+  const stop = (save: boolean) => {
+    setStopAsk(false)
+    act(() => api.stop(save).then((r) => onEnd(r.saved?.ride_id)))
+  }
   const stopButton = (
-    <button
-      className="danger"
-      onClick={() => {
-        if (tel.state === 'finished' || confirm('Stop and save this ride?')) act(() => api.stop(true).then((r) => onEnd(r.saved?.ride_id)))
-      }}
-    >
-      {tel.state === 'finished' ? 'Close' : 'Stop & save'}
+    <button className="danger" onClick={() => (tel.state === 'finished' ? stop(true) : setStopAsk(true))}>
+      {tel.state === 'finished' ? 'Close' : 'Stop'}
     </button>
+  )
+  const stopDialog = stopAsk && tel.state !== 'finished' && (
+    <StopDialog elapsedS={tel.elapsed_s} distanceM={tel.mode === 'gpx' ? tel.distance_m : undefined} onSave={() => stop(true)} onDiscard={() => stop(false)} onClose={() => setStopAsk(false)} />
   )
 
   // head (title, badges, pause/stop) and controls, laid out by RideCockpit
@@ -320,6 +324,7 @@ export function RidePage({
           onExit={() => setImmersive(false)}
         />
       )}
+      {stopDialog}
     </>
   )
 }

@@ -250,5 +250,18 @@ class Storage:
         summary.update(rpe=rpe, feel=feel, carbs_g=carbs_g, water_ml=water_ml)
         self._exec("UPDATE rides SET summary=? WHERE id=?", (json.dumps(summary), ride_id))
 
+    def delete_ride(self, ride_id: int) -> bool:
+        """Remove a ride from the history and its FIT file (when it is in ``rides/``; a path
+        elsewhere is left alone). False when there is no such ride."""
+        r = self.get_ride(ride_id)
+        if r is None:
+            return False
+        self._exec("DELETE FROM rides WHERE id=?", (ride_id,))
+        if r["fit_path"]:
+            fit = Path(r["fit_path"])
+            if fit.resolve().parent == self.rides_dir.resolve():
+                fit.unlink(missing_ok=True)
+        return True
+
     def set_ride_intervals_id(self, ride_id: int, activity_id: str) -> None:
         self._exec("UPDATE rides SET intervals_activity_id=? WHERE id=?", (activity_id, ride_id))

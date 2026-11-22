@@ -380,6 +380,7 @@ export const api = {
 
   rides: () => req<Ride[]>('GET', '/api/rides'),
   /** idempotent: a ride already on intervals.icu is not sent again (already = true) */
+  deleteRide: (id: number) => req('DELETE', `/api/rides/${id}`),
   uploadRide: (id: number) => req<{ intervals_activity_id: string; already?: boolean }>('POST', `/api/rides/${id}/upload`),
 }
 

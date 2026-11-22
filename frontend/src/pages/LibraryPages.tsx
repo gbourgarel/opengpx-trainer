@@ -369,6 +369,19 @@ export function HistoryPage() {
                       Upload
                     </button>
                   )}
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      const kept = r.intervals_activity_id ? '\n\nIts copy on intervals.icu is not deleted (delete it there if needed).' : ''
+                      if (confirm(`Delete the ride "${r.name}" (history and FIT file)?${kept}`))
+                        api
+                          .deleteRide(r.id)
+                          .then(reload)
+                          .catch((e: Error) => setMsg(e.message))
+                    }}
+                  >
+                    Delete
+                  </button>
                 </div>
               </td>
             </tr>

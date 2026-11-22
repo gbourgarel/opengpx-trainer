@@ -451,3 +451,39 @@ def test_a_client_that_stops_reading_does_not_stall_the_engine(client, monkeypat
         while client.st.clients and time.monotonic() < deadline:
             time.sleep(0.05)
         assert not client.st.clients  # the stalled client was dropped
+
+
+def test_delete_ride_removes_history_row_and_fit(client):
+    from pathlib import Path
+
+    from opengpx_trainer.recording import Sample
+
+    start_erg(client)
+    with client.st.session_lock:
+        for i in range(30):
+            client.st.session.recorder.add(Sample(1.8e9 + i, i + 1.0, 200, 90, 140, 9.0, 9.0 * i))
+    rid = client.post("/api/session/stop").json()["saved"]["ride_id"]
+    fit = Path(client.st.storage.get_ride(rid)["fit_path"])
+    assert fit.exists()
+    assert client.delete(f"/api/rides/{rid}").json() == {"ok": True}
+    assert not fit.exists() and client.get("/api/rides").json() == []
+    assert client.delete(f"/api/rides/{rid}").status_code == 404
+
+
+def test_delete_ride_leaves_a_fit_outside_the_rides_directory(client, tmp_path):
+    outside = tmp_path / "elsewhere.fit"
+    outside.write_bytes(b"fit")
+    rid = client.st.storage.add_ride("2026-11-22T10:00:00", "erg", "x", {}, str(outside))
+    assert client.delete(f"/api/rides/{rid}").status_code == 200
+    assert outside.exists()
+
+
+def test_stop_without_saving_records_nothing(client):
+    start_erg(client)
+    with client.st.session_lock:
+        s = client.st.session
+        for _ in range(8):
+            s.tick()
+    assert client.post("/api/session/stop?save=false").json() == {"saved": None}
+    assert client.get("/api/rides").json() == []
+    assert not list(client.st.storage.rides_dir.glob("*.fit"))

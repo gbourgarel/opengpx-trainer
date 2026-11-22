@@ -828,6 +828,15 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             r["fit_path"], media_type="application/octet-stream", filename=Path(r["fit_path"]).name
         )
 
+    @app.delete("/api/rides/{ride_id}")
+    async def delete_ride(ride_id: int):
+        """Remove a ride (history row and FIT file). Never touches intervals.icu: an uploaded
+        copy stays there. Under the upload lock, so an upload in flight is not cut off."""
+        async with upload_lock:
+            if not await asyncio.to_thread(st.storage.delete_ride, ride_id):
+                raise HTTPException(404, "Ride not found")
+        return {"ok": True}
+
     @app.put("/api/rides/{ride_id}/feedback")
     def ride_feedback(ride_id: int, body: FeedbackBody):
         """RPE and feel of a saved ride, written into its FIT file (asked after the ride,

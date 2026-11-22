@@ -206,9 +206,12 @@ settings remembered in the browser (sound, wind, air) are kept.
   moving the mouse; pressing Space or ↑ / ↓ shows them again, so the change can be seen. The
   view closes by itself when the ride ends.
 
-* When a ride ends (end of the workout or route, or *Stop & save*) the trainer goes back to
+* When a ride ends (end of the workout or route, or *Stop* → *Save*) the trainer goes back to
   free ride, the FIT file is written in the background, and the upload to intervals.icu is
-  offered if an API key is set.
+  offered if an API key is set. *Stop* asks *Save* / *Discard* / *Keep riding*; *Discard*
+  asks once more and records nothing.
+* History: *Delete* removes a ride (history row and FIT file) after a confirmation. It never
+  touches intervals.icu: an uploaded copy stays there.
 
 ## Recording
 
