@@ -45,6 +45,12 @@ export const checks = {
     assert.deepEqual(requestedCalibrations({ trainer: dev({ calibration_requested: true, transport: 'ble' }) }), [])
     assert.deepEqual(requestedCalibrations(undefined), [])
   },
+  'no nudge once the last calibration succeeded, again after a failure': () => {
+    const after = (phase: CalibrationInfo['phase']) => ({ trainer: dev({ calibration_requested: true, calibration: cal({ phase, active: false, finished_at: 1100 }) }) })
+    assert.deepEqual(requestedCalibrations(after('done')), [])
+    assert.deepEqual(requestedCalibrations(after('failed')), ['trainer'])
+    assert.deepEqual(requestedCalibrations(after('cancelled')), ['trainer'])
+  },
   'the dialog follows its own run, never the previous result': () => {
     const previous = cal({ phase: 'done', active: false, started_at: 900, finished_at: 950, spin_down_ms: 9000 })
     const started = cal({ started_at: 1000 })
@@ -64,6 +70,9 @@ export const checks = {
     const done = v({ phase: 'done', active: false, spin_down_ms: 9840 })
     assert.equal(done.tone, 'ok')
     assert.match(done.text, /9\.8 s/)
+    const noTime = v({ phase: 'done', active: false, spin_down_ms: null })
+    assert.equal(noTime.tone, 'ok')
+    assert.equal(noTime.text, 'Spin-down done.')
     const failed = v({ phase: 'failed', active: false, message: 'The trainer does not answer.' })
     assert.equal(failed.tone, 'error')
     assert.equal(failed.text, 'The trainer does not answer.')
@@ -81,6 +90,7 @@ export const checks = {
     assert.equal(lastCalibrationText(null), null)
     const t = new Date(2026, 10, 19, 18, 5).getTime() / 1000
     assert.equal(lastCalibrationText(cal({ phase: 'done', active: false, finished_at: t, spin_down_ms: 9840 })), 'last: 18:05 · 9.8 s')
+    assert.equal(lastCalibrationText(cal({ phase: 'done', active: false, finished_at: t })), 'last: 18:05 · done')
     assert.equal(lastCalibrationText(cal({ kind: 'zero_offset', phase: 'done', active: false, finished_at: t, zero_offset: 0 })), 'last: 18:05 · offset 0')
     assert.equal(lastCalibrationText(cal({ phase: 'failed', active: false, finished_at: t })), 'last: 18:05 · failed')
     assert.equal(lastCalibrationText(cal({ phase: 'cancelled', active: false, finished_at: t })), null)

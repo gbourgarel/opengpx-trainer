@@ -77,6 +77,10 @@ class AppState:
         self._estimates: dict[tuple, Estimate] = {}
         self._estimates_lock = threading.Lock()
         self._hub_lock = threading.Lock()
+        # Last calibration results by hub kind, kept across reconnections while the app runs:
+        # the Ride tab no longer nudges for a spin-down done earlier (the Tacx raises its
+        # "calibration required" flag at every power-up and after a reboot)
+        self._last_calibrations: dict[str | None, dict] = {}
         # Serialises everything that touches the current session: the engine tick (event
         # loop thread) and the sync endpoints (threadpool) used to race, e.g. a ride finishing
         # on its own while "Stop & save" was clicked got saved twice.
@@ -141,6 +145,8 @@ class AppState:
             except Exception:
                 hub.stop()  # release the USB device if start failed half-way
                 raise
+            for role, cal in self._last_calibrations.get(kind, {}).items():
+                hub.devices[role].calibration = cal
             self.hub, self.hub_kind = hub, kind
             if self.session is not None:
                 # keep an existing ride driving the trainer through the *new* hub; otherwise
@@ -169,6 +175,11 @@ class AppState:
 
     def _disconnect_locked(self) -> None:
         if self.hub is not None:
+            self._last_calibrations[self.hub_kind] = {
+                role: d.calibration
+                for role, d in self.hub.devices.items()
+                if d.calibration is not None and not d.calibration.active
+            }
             self.hub.stop()
         self.hub, self.hub_kind = None, None
 

@@ -102,19 +102,36 @@ class _Calibration:
 
 class SpinDown(_Calibration):
     NO_ANSWER = "The trainer does not answer the spin-down request."
+    # Once answering, the trainer sends page 2 at ~2 Hz until the result (largest gap seen:
+    # 1 s). The Tacx rebooted twice during / right after a spin-down (2026-11-22): silent for
+    # 8-32 s, then back with its counters reset, never sending page 2 again.
+    SILENT_AFTER_S = 4.0
+    LOST = (
+        "The trainer stopped sending calibration data (it may have restarted). "
+        "Wait a few seconds, then try again."
+    )
 
     def __init__(self, now: float):
         super().__init__(CalibrationStatus("trainer", "spin_down", "requesting"), now)
+        self.last_page: float | None = None
 
     def _request(self) -> list[int]:
         return pf.encode_fec_calibration_request(spin_down=True)
 
-    def on_page(self, msg) -> None:
+    def poll(self, now: float) -> list[int] | None:
+        silent = self.last_page is not None and now - self.last_page > self.SILENT_AFTER_S
+        if self.status.active and silent:
+            self._finish("failed", self.LOST)
+            return None
+        return super().poll(now)
+
+    def on_page(self, msg, now: float | None = None) -> None:
         s = self.status
         if not s.active:
             return
         if isinstance(msg, pf.FecCalibrationProgress) and msg.spin_down_pending:
             self.answered = True
+            self.last_page = time.monotonic() if now is None else now
             if msg.target_speed_ms is not None:
                 s.target_speed_kmh = round(msg.target_speed_ms * 3.6, 1)
             if msg.temperature_c is not None:

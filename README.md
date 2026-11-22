@@ -155,11 +155,15 @@ settings remembered in the browser (sound, wind, air) are kept.
   **power-meter zero offset**, from Profile → Devices or from the Ride tab before a ride (no
   ride yet, or waiting for the first pedal stroke). A guided dialog shows the steps live: for a
   spin-down, pedal up to the speed the trainer asks for (bar with the live speed), then stop
-  and let the wheel coast; the result is the spin-down time (or the zero offset value). ERG
-  is off during a spin-down and a ride waiting to start does not start meanwhile. When the
-  trainer itself flags "calibration required" (FE-C page 25), the Ride tab highlights the
-  spin-down and Devices shows "calibration requested". Results are kept until the sensors are
-  disconnected (not stored).
+  and let the wheel coast; the result is the spin-down time when the trainer gives one (the
+  Tacx Flux does not: "Spin-down done"), or the zero offset value. ERG is off during a
+  spin-down and a ride waiting to start does not start meanwhile. A trainer that stops
+  sending calibration data for 4 s (it may have restarted) ends the spin-down with a
+  message and *Try again*. When the trainer itself flags "calibration required" (FE-C page
+  25), the Ride tab highlights the spin-down and Devices shows "calibration requested",
+  unless the last calibration of that sensor succeeded (the Tacx raises the flag at every
+  power-up). Results are kept while the app runs, across reconnections (not stored). The
+  rider configuration (weight, wheel size) is sent again whenever the trainer asks for it.
 * The screen is kept on with the Screen Wake Lock API, which needs `localhost` or HTTPS: a
   tablet opening the app over plain `http://` on the LAN shows "screen may sleep".
 * Keyboard (ignored while typing in a field):

@@ -72,6 +72,20 @@ def load_libusb() -> None:
 class AntHub(SensorHub):
     TARGET_RESEND_S = 2.0  # re-send ERG target periodically (survives trainer reconnects)
     STATUS_REQUEST_S = 5.0  # raw log on: request the command status (page 71) this often
+    # The trainer asks for the user configuration (page 25 status bit 2) at power-up; after a
+    # reboot the connection may never look lost (2026-11-22: rebooted during a spin-down and
+    # rode a whole ride without rider weight or wheel size). Re-send it at this pace meanwhile.
+    USER_CONFIG_RETRY_S = 5.0
+
+    @classmethod
+    def user_config_due(
+        cls, queued: bool, sent: bool, asked: bool, last_sent: float, now: float
+    ) -> bool:
+        """Send the user configuration (page 55) now? When queued (profile changed), never
+        sent to this trainer connection, or asked for by the trainer (at most every
+        ``USER_CONFIG_RETRY_S``)."""
+        return queued or not sent or (asked and now - last_sent >= cls.USER_CONFIG_RETRY_S)
+
     CHANNEL_EXT_ASSIGN = 0x00  # 0x01 (background scan) froze a channel sending acks (#14)
     # Send the Cycling Dynamics set-up to the power meter. Off: on a real ride (2026-11-08,
     # Assioma) the power-meter channel received nothing more once the first request (page 70)
@@ -114,6 +128,7 @@ class AntHub(SensorHub):
         self._running = False
         self._command: list[int] | None = None
         self._user_cfg: list[int] | None = None
+        self._user_cfg_asked = False  # page 25: "user configuration required"
         self._fec_ch = None
         self._channel_cls = None
         # openant numbers channels len(node.channels) and dispatches by list index: channels
@@ -488,6 +503,7 @@ class AntHub(SensorHub):
                 self._s.trainer_cadence.set(self._fec_power.cadence(msg.cadence_rpm))
                 # bit 1: resistance calibration (spin-down) required
                 self.devices["trainer"].calibration_requested = bool(msg.trainer_status & 0x02)
+                self._user_cfg_asked = bool(msg.trainer_status & 0x04)
             elif isinstance(msg, pf.FecGeneral):
                 self._s.trainer_speed.set(msg.speed_ms)
                 if msg.heart_rate and not self.devices["heart_rate"].connected:
@@ -628,6 +644,7 @@ class AntHub(SensorHub):
         last_sent = 0.0
         last_status_req = 0.0
         user_sent = False
+        last_user = 0.0
         spin_down = False
         while self._running:
             try:
@@ -666,9 +683,14 @@ class AntHub(SensorHub):
             if not self.devices["trainer"].connected:
                 user_sent = False  # (re)send user config once the trainer shows up again
                 continue
-            if self._user_cfg and ("user" in items or not user_sent):
-                user_sent = self._send_ack(self._user_cfg)
             now = time.monotonic()
+            if self._user_cfg and self.user_config_due(
+                "user" in items, user_sent, self._user_cfg_asked, last_user, now
+            ):
+                if user_sent:  # i.e. asked for again
+                    log.info("The trainer asks for the user configuration: sending it again")
+                user_sent = self._send_ack(self._user_cfg)
+                last_user = now
             cmd = self._command
             if cmd is not None and ("command" in items or now - last_sent >= self.TARGET_RESEND_S):
                 self._send_ack(cmd)

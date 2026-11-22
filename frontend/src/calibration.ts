@@ -14,11 +14,13 @@ export function canCalibrate(dev?: DeviceStatus | null): boolean {
   return !!dev?.connected && (dev.transport === 'ant' || dev.transport === 'sim')
 }
 
-/** Roles whose device asks for a calibration and can get one now (nothing running). */
+/** Roles whose device asks for a calibration and can get one now (nothing running), unless
+ * the last one succeeded: the Tacx raises its flag at every power-up and after a reboot, even
+ * right after a successful spin-down (the backend keeps the last result while it runs). */
 export function requestedCalibrations(devices?: Partial<Record<string, DeviceStatus>>): CalibrationRole[] {
   return CALIBRATION_ROLES.filter((r) => {
     const d = devices?.[r]
-    return !!d?.calibration_requested && canCalibrate(d) && !d.calibration?.active
+    return !!d?.calibration_requested && canCalibrate(d) && !d.calibration?.active && d.calibration?.phase !== 'done'
   })
 }
 
@@ -55,7 +57,9 @@ export function calibrationView(c: CalibrationInfo): CalibrationView {
     if (end) return { ...end, steps }
     if (c.phase === 'done') {
       const temp = c.temperature_c != null ? ` (trainer at ${c.temperature_c} °C)` : ''
-      return { steps, step: 2, text: `Spin-down time ${seconds(c.spin_down_ms)}${temp}.`, tone: 'ok' }
+      // the Tacx gives no time (0xFFFF, 2026-11-22): a success all the same
+      const text = c.spin_down_ms == null ? `Spin-down done${temp}.` : `Spin-down time ${seconds(c.spin_down_ms)}${temp}.`
+      return { steps, step: 2, text, tone: 'ok' }
     }
     if (c.phase === 'coast') return { steps, step: 1, text: 'Stop pedalling now and let the wheel coast down: the trainer is measuring.', tone: 'active' }
     if (c.phase === 'speed_up') {
@@ -81,5 +85,6 @@ export function lastCalibrationText(c: CalibrationInfo | null | undefined): stri
   const at = `${two(d.getHours())}:${two(d.getMinutes())}`
   if (c.phase === 'cancelled') return null
   if (c.phase === 'failed') return `last: ${at} · failed`
-  return `last: ${at} · ${c.kind === 'spin_down' ? seconds(c.spin_down_ms) : `offset ${c.zero_offset ?? '—'}`}`
+  if (c.kind === 'spin_down') return `last: ${at} · ${c.spin_down_ms == null ? 'done' : seconds(c.spin_down_ms)}`
+  return `last: ${at} · offset ${c.zero_offset ?? '—'}`
 }

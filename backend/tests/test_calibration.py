@@ -80,6 +80,67 @@ def test_spin_down_failures():
     assert cancelled.status.phase == "cancelled" and cancelled.poll(1.0) is None
 
 
+def test_spin_down_fails_when_the_trainer_goes_silent():
+    """KNOWN_ISSUES #28: the Tacx rebooted mid speed-up and never sent page 2 again; the
+    dialog kept saying "Pedal up" until the 120 s timeout."""
+    c = SpinDown(now=0.0)
+    c.poll(0.0)
+    for t in (0.5, 1.0, 1.5, 2.5):  # page 2 at ~2 Hz, one 1 s gap (seen)
+        c.on_page(progress(1), now=t)
+        assert c.poll(t + 0.4) is None and c.status.active
+    assert c.poll(6.4) is None and c.status.active  # 3.9 s of silence
+    c.poll(6.6)
+    assert c.status.phase == "failed" and "restarted" in c.status.message
+
+    coasting = SpinDown(now=0.0)  # also while coasting: no page 2 until the result
+    coasting.on_page(progress(2), now=1.0)
+    coasting.poll(5.5)
+    assert coasting.status.phase == "failed"
+
+
+def test_spin_down_without_a_time_is_a_success():
+    c = SpinDown(now=0.0)
+    c.on_page(progress(2), now=1.0)
+    c.on_page(pf.decode_fec([1, 0x80, 0, 255, 255, 255, 255, 255]), now=2.0)  # Tacx, 2026-11-22
+    assert (c.status.phase, c.status.spin_down_ms) == ("done", None)
+
+
+def test_user_configuration_is_resent_when_the_trainer_asks():
+    """KNOWN_ISSUES #29: a reboot during a spin-down left the Tacx without rider weight and
+    wheel size for the whole ride (status "user configuration required")."""
+    from opengpx_trainer.ant.ant_hub import AntHub
+
+    due = AntHub.user_config_due
+    assert due(False, False, False, 0.0, 100.0)  # never sent to this connection
+    assert due(True, True, False, 99.0, 100.0)  # profile changed
+    assert not due(False, True, False, 0.0, 100.0)  # sent, not asked
+    assert due(False, True, True, 94.0, 100.0)  # asked: again, every 5 s
+    assert not due(False, True, True, 97.0, 100.0)
+    h = AntHub()
+    h._on_fec([0x19, 1, 90, 0, 0, 200, 0x60, 0x30])  # status 6: calibration + user config
+    assert h._user_cfg_asked
+    h._on_fec([0x19, 2, 90, 0, 0, 200, 0x20, 0x30])  # status 2: user config received
+    assert not h._user_cfg_asked
+
+
+def test_last_calibration_survives_a_reconnection(tmp_path):
+    """KNOWN_ISSUES #30: keep the last result, so a flag raised again by a power-up or a
+    reboot does not look like a failure (and the Ride tab stops nudging)."""
+    from opengpx_trainer.ant.calibration import CalibrationStatus
+    from opengpx_trainer.app import AppState
+    from opengpx_trainer.storage import Storage
+
+    st = AppState(Storage(tmp_path))
+    st.connect("simulator")
+    done = CalibrationStatus("trainer", "spin_down", "done", finished_at=1.0)
+    st.hub.devices["trainer"].calibration = done
+    st.disconnect()
+    st.connect("simulator")
+    assert st.hub.devices["trainer"].calibration is done
+    assert st.hub.devices["power_meter"].calibration is None
+    st.disconnect()
+
+
 def test_zero_offset():
     c = ZeroOffset(now=0.0)
     assert c.status.phase == "zeroing"
