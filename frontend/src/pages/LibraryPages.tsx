@@ -4,6 +4,8 @@ import { loadAir, loadWind, saveAir, saveWind, type WindSetting } from '../wind'
 import { api, fmtTime, type PlannedWorkout, type Profile, type Ride, type RideAir, type RouteDetail, type RouteEstimate, type RouteSummary, type Workout } from '../api'
 import { ElevationProfile, WorkoutProfile } from '../components/charts'
 import { RouteMap } from '../components/RouteMap'
+import { DropOverlay } from '../components/DropOverlay'
+import { useFileDrop } from '../useFileDrop'
 
 function FilePick({ accept, label, onFile }: { accept: string; label: string; onFile: (f: File) => void }) {
   return (
@@ -167,8 +169,33 @@ export function RoutesPage({
   }, [sel, wind.kmh, wind.fromDeg, workoutId, air, estKey])
   const estimate = est && est.key === estKey ? est.value : null
 
+  // .gpx files dropped anywhere on the tab: imported one after the other like "Import GPX",
+  // the last one opened
+  const [dropNote, setDropNote] = useState<string | null>(null)
+  const dragging = useFileDrop(['.gpx'], async (files, refused) => {
+    setError(null)
+    const problems = refused.map((n) => `${n}: not a .gpx file`)
+    let last: RouteSummary | null = null
+    for (const [i, f] of files.entries()) {
+      setDropNote(`Importing ${f.name}${files.length > 1 ? ` (${i + 1}/${files.length})` : ''}…`)
+      try {
+        last = await api.importRoute(f)
+      } catch (e) {
+        problems.push(`${f.name}: ${(e as Error).message}`)
+      }
+    }
+    setDropNote(null)
+    if (last) {
+      reload()
+      open(last.id)
+    }
+    if (problems.length) setError(problems.join(' · '))
+  })
+
   return (
     <div>
+      {dragging && <DropOverlay text="Drop .gpx files to import them" />}
+      {dropNote && <div className="hint">{dropNote}</div>}
       <div className="toolbar">
         <FilePick
           accept=".gpx"

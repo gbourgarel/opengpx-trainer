@@ -1211,3 +1211,21 @@ b.warn {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* files dragged over a tab that imports them (Routes: .gpx) */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 18, 25, 0.7);
+}
+.drop-overlay > div {
+  border: 2px dashed var(--accent);
+  border-radius: 16px;
+  padding: 48px 64px;
+  font-size: 20px;
+  font-weight: 600;
+  background: var(--panel);
+}

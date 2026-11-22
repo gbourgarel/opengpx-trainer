@@ -9,7 +9,9 @@ and heart-rate sensors on either protocol. Formerly called *Home Trainer*.
   3-2-1 beeps announce each step change (a rising tone when the target goes up).
 * **GPX routes** (**Slope ERG**): the trainer target power follows a configurable *grade → %FTP*
   curve on the look-ahead grade, held by the trainer in ERG, so you never shift (unlike a classic
-  simulation mode, where the grade sets the resistance); or a target set by hand. Virtual speed and position on the trace come
+  simulation mode, where the grade sets the resistance); or a target set by hand. Routes are
+  imported with *Import GPX* or by dropping one or more `.gpx` files anywhere on the Routes
+  tab. Virtual speed and position on the trace come
   from a dynamic physics model fed with the measured power (see the *speed-model power scale*
   below), with the **conditions of the ride** set when starting the route: **wind** (speed and
   direction) and **air** (temperature, humidity: the air density), remembered per browser for
