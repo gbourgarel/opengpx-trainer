@@ -183,6 +183,82 @@ def encode_request_page(page: int, descriptor: int = 0xFF) -> list[int]:
     return [0x46, 0xFF, 0xFF, descriptor & 0xFF, 0xFF, 0x02, page & 0xFF, 0x01]
 
 
+# --- identity of a sensor (common pages, HRM background pages) ----------------------------
+@dataclass
+class SensorIdentity:
+    """Who a sensor is, as it broadcasts it (for the FIT ``device_info``); None = not heard
+    yet. Each page carries a few fields; they come every ~30 s at most."""
+
+    manufacturer: int | None = None  # FIT / ANT+ manufacturer id (89 Tacx, 263 Favero, ...)
+    product: int | None = None  # model number
+    serial_number: int | None = None
+    hardware_version: int | None = None
+    software_version: float | None = None
+    battery_voltage: float | None = None
+    battery_status: int | None = None  # FIT battery_status: 1 new ... 5 critical
+
+    def merge(self, part: SensorIdentity) -> None:
+        """Take the fields ``part`` (one decoded page) carries."""
+        for k, v in vars(part).items():
+            if v is not None:
+                setattr(self, k, v)
+
+
+def _software_version(main: int, supplemental: int) -> float | None:
+    """ANT+ software revision: main / 10, or (main x 100 + supplemental) / 1000 when the
+    supplemental byte is used (Tacx: 40 / 3 -> 4.003; Favero: 62 / 40 -> 6.24)."""
+    if main == 0xFF:
+        return None
+    if supplemental == 0xFF:
+        return main / 10
+    return (main * 100 + supplemental) / 1000
+
+
+def _battery(fraction: int, bits: int) -> SensorIdentity:
+    coarse, status = bits & 0x0F, (bits >> 4) & 0x07
+    return SensorIdentity(
+        battery_voltage=None if coarse == 0x0F else round(coarse + fraction / 256, 2),
+        battery_status=status if 1 <= status <= 5 else None,
+    )
+
+
+def decode_common(data: bytes | list[int]) -> SensorIdentity | None:
+    """Common pages 80-82, broadcast by every ANT+ sensor (FE-C and power meter here)."""
+    d = list(data[:8])
+    if d[0] == 0x50:
+        return SensorIdentity(
+            hardware_version=None if d[3] == 0xFF else d[3],
+            manufacturer=_u16(d[4], d[5]),
+            product=_u16(d[6], d[7]),
+        )
+    if d[0] == 0x51:
+        serial = d[4] | (d[5] << 8) | (d[6] << 16) | (d[7] << 24)
+        return SensorIdentity(
+            software_version=_software_version(d[3], d[2]),
+            serial_number=None if serial == 0xFFFFFFFF else serial,
+        )
+    if d[0] == 0x52:
+        return _battery(d[6], d[7])
+    return None
+
+
+def decode_hrm_info(data: bytes | list[int], device_number: int | None) -> SensorIdentity | None:
+    """Heart-rate background pages (page number in bits 0-6, bit 7 is a toggle): 2 =
+    manufacturer and the upper 16 bits of the serial (the lower ones are the device number),
+    3 = hardware / software version and model, 7 = battery."""
+    d = list(data[:8])
+    page = d[0] & 0x7F
+    if page == 2:
+        upper = d[2] | (d[3] << 8)
+        serial = None if device_number is None else (upper << 16) | device_number
+        return SensorIdentity(manufacturer=d[1], serial_number=serial)
+    if page == 3:
+        return SensorIdentity(hardware_version=d[1], software_version=float(d[2]), product=d[3])
+    if page == 7:
+        return _battery(d[2], d[3])
+    return None
+
+
 # --- Heart rate ----------------------------------------------------------------------------
 def decode_hrm(data: bytes | list[int]) -> int | None:
     hr = data[7]

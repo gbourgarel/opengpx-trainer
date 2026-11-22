@@ -609,6 +609,13 @@ class RideSession:
                 self.state = "finished"
 
         if running:
+            # the sensors in use, declared in the FIT (device_info)
+            for role in SENSOR_ROLES:
+                if getattr(r, f"{role}_connected"):
+                    d = self.hub.devices[role]
+                    self.recorder.sensor_seen(
+                        role, d.transport, d.device_number, d.name, d.identity, time.time()
+                    )
             self.recorder.add(
                 Sample(
                     timestamp_s=time.time(),

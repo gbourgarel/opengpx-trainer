@@ -221,6 +221,12 @@ settings remembered in the browser (sound, wind, air) are kept.
 * FIT activity: one lap per workout step (avg / max power, NP, HR, cadence,
   `workout_step_index`), the target power as a `target_power` developer field on records and
   laps.
+* The sensors are declared like a Garmin head unit does: `product_name` "OpenGPX Trainer" in
+  `file_id`, a `device_info` for the app (index 0) and one per sensor that sent data during
+  the ride (ANT+ device type 17 / 11 / 120, device number, and what the sensor broadcasts
+  about itself: manufacturer, model, serial number, hardware / software version, battery from
+  the ANT+ common pages 80-82 and the heart-rate pages 2 / 3 / 7; over Bluetooth only the
+  advertised name). Simulated sensors are not declared.
 * The workout **as ridden** embedded in the activity (`workout` + one `workout_step` per
   workout lap: ridden duration, so skips / extensions are reflected; power target = range of
   the targets held, in watts; free-ride steps without target), like a Garmin head unit:

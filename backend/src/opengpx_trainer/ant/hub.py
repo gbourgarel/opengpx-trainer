@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .calibration import CalibrationError, CalibrationStatus, new_calibration
+from .profiles import SensorIdentity
 
 # A reading (and a device's "connected" flag) is dropped after this long without any message.
 # 5 s rides through short reception gaps (a real ride had all ANT+ devices silent for 4.2 s at
@@ -70,6 +71,8 @@ class DeviceInfo:
     last_seen: float = 0.0
     calibration_requested: bool = False  # the device itself asks for a calibration
     calibration: CalibrationStatus | None = None  # running or last calibration
+    # what the sensor says about itself (ANT+ common pages); a new object for a new device
+    identity: SensorIdentity = field(default_factory=SensorIdentity)
 
 
 @dataclass
@@ -202,6 +205,10 @@ class SensorHub(ABC):
         dev = self.devices[kind]
         dev.last_seen = time.monotonic()
         dev.connected = True
+        if (device_number is not None and device_number != dev.device_number) or (
+            ble_id is not None and ble_id != dev.ble_id
+        ):
+            dev.identity = SensorIdentity()  # another sensor: what we knew is not about it
         if device_number is not None:
             dev.device_number = device_number
         if transport is not None:

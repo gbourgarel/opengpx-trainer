@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import importlib.metadata
 import logging
 from collections import deque
 from dataclasses import dataclass
@@ -16,6 +18,7 @@ from fit_tool.fit_file import FitFile
 from fit_tool.fit_file_builder import FitFileBuilder
 from fit_tool.profile.messages.activity_message import ActivityMessage
 from fit_tool.profile.messages.developer_data_id_message import DeveloperDataIdMessage
+from fit_tool.profile.messages.device_info_message import DeviceInfoMessage
 from fit_tool.profile.messages.event_message import EventMessage
 from fit_tool.profile.messages.field_description_message import FieldDescriptionMessage
 from fit_tool.profile.messages.file_id_message import FileIdMessage
@@ -36,15 +39,94 @@ from fit_tool.profile.profile_type import (
     LapTrigger,
     Manufacturer,
     RiderPositionType,
+    SourceType,
     Sport,
     SubSport,
     WorkoutStepDuration,
     WorkoutStepTarget,
 )
 
+from .ant.profiles import SensorIdentity
 from .pedaling import pedal_summary, position_changes
 
 log = logging.getLogger(__name__)
+
+APP_NAME = "OpenGPX Trainer"
+# ANT+ device type of each role (FIT antplus_device_type)
+ANTPLUS_DEVICE_TYPE = {"trainer": 17, "power_meter": 11, "heart_rate": 120}
+
+
+def app_version() -> float | None:
+    try:
+        v = importlib.metadata.version("opengpx-trainer")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    parts = (v.split(".") + ["0"])[:2]
+    try:
+        return int(parts[0]) + int(parts[1]) / 100  # FIT software_version: scale 100
+    except ValueError:
+        return None
+
+
+@dataclass
+class UsedSensor:
+    """A sensor that provided data during the ride (one FIT ``device_info``)."""
+
+    role: str  # "trainer" | "power_meter" | "heart_rate"
+    transport: str | None  # "ant" | "ble" | "sim"
+    device_number: int | None  # ANT+
+    name: str | None  # BLE advertised name
+    identity: SensorIdentity
+    first_seen_s: float  # unix time
+
+
+def device_info_messages(sensors: list[UsedSensor], timestamp_s: float) -> list[DeviceInfoMessage]:
+    """``device_info`` of the app (index 0, the creator) and of each sensor, as a Garmin head
+    unit writes them: another app reading the file can tell where HR and power come from.
+    Simulated sensors are left out."""
+    creator = DeviceInfoMessage()
+    creator.timestamp = ms(timestamp_s)
+    creator.device_index = 0
+    creator.manufacturer = Manufacturer.DEVELOPMENT.value
+    creator.product = 0
+    creator.product_name = APP_NAME
+    creator.source_type = SourceType.LOCAL
+    if (v := app_version()) is not None:
+        creator.software_version = v
+    out = [creator]
+    for u in sensors:
+        if u.transport not in ("ant", "ble"):
+            continue
+        m = DeviceInfoMessage()
+        m.timestamp = ms(max(timestamp_s, u.first_seen_s))
+        m.device_index = len(out)
+        if u.transport == "ant":
+            m.source_type = SourceType.ANTPLUS
+            m.device_type = ANTPLUS_DEVICE_TYPE[u.role]
+            if u.device_number is not None:
+                m.ant_device_number = u.device_number
+        else:
+            m.source_type = SourceType.BLUETOOTH_LOW_ENERGY
+        if u.name:
+            m.product_name = u.name[:20]
+        i = u.identity
+        if i.manufacturer is not None:
+            m.manufacturer = i.manufacturer
+        if i.product is not None:
+            m.product = i.product
+        if i.serial_number is not None:
+            m.serial_number = i.serial_number
+        if i.hardware_version is not None:
+            m.hardware_version = i.hardware_version
+        if i.software_version is not None:
+            m.software_version = i.software_version
+        if i.battery_voltage is not None:
+            m.battery_voltage = i.battery_voltage
+        if i.battery_status is not None:
+            m.battery_status = i.battery_status
+        out.append(m)
+    return out
+
 
 # developer data: identifies this app's fields in the FIT file (16-byte application id)
 TARGET_POWER_APP_ID = b"opengpx-trainer\x01"
@@ -190,6 +272,31 @@ class Recorder:
     def __init__(self) -> None:
         self.samples: list[Sample] = []
         self._last_second: int | None = None
+        # sensors that provided data, in the order they appeared (FIT device_info)
+        self.sensors: list[UsedSensor] = []
+
+    def sensor_seen(
+        self,
+        role: str,
+        transport: str | None,
+        device_number: int | None,
+        name: str | None,
+        identity: SensorIdentity,
+        timestamp_s: float,
+    ) -> None:
+        """Note a sensor providing data now; once per (role, sensor). ``identity`` is kept by
+        reference: the pages telling it come in during the ride."""
+        for u in self.sensors:
+            if (u.role, u.transport, u.device_number, u.name) == (
+                role,
+                transport,
+                device_number,
+                name,
+            ):
+                if u.identity is not identity:
+                    u.identity = identity  # same sensor seen again (reconnected): latest
+                return
+        self.sensors.append(UsedSensor(role, transport, device_number, name, identity, timestamp_s))
 
     def add(self, s: Sample) -> None:
         sec = int(s.timestamp_s)
@@ -211,7 +318,11 @@ class Recorder:
 
     def snapshot(self) -> Recorder:
         """Copy of the samples recorded so far, to export without holding the session."""
-        return Recorder.from_samples(self.samples)
+        r = Recorder.from_samples(self.samples)
+        r.sensors = [copy.copy(u) for u in self.sensors]
+        for u in r.sensors:
+            u.identity = copy.copy(u.identity)
+        return r
 
     def summary(self) -> dict:
         if not self.samples:
@@ -248,7 +359,10 @@ class Recorder:
         fid.product = 0
         fid.serial_number = 0x48544E52
         fid.time_created = ms(first.timestamp_s)
+        fid.product_name = APP_NAME
         b.add(fid)
+        for m in device_info_messages(self.sensors, first.timestamp_s):
+            b.add(m)
 
         # the rider's weight, max HR and FTP, as a head unit writes them (analysis tools read
         # the FTP of the ride from here)

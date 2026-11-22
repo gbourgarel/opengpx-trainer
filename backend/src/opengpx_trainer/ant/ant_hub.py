@@ -510,6 +510,8 @@ class AntHub(SensorHub):
                     self._s.heart_rate.set(msg.heart_rate)  # HR relayed by the trainer
             elif isinstance(msg, pf.FecCommandStatus):
                 self.last_command_status = msg
+            elif msg is None and (ident := pf.decode_common(data)) is not None:
+                self.devices["trainer"].identity.merge(ident)
         if isinstance(msg, (pf.FecCalibrationProgress, pf.FecCalibrationResult)):
             self._calibration_page("trainer", msg)
             if isinstance(msg, pf.FecCalibrationResult):
@@ -539,6 +541,8 @@ class AntHub(SensorHub):
                 self._tx_queue.put(("pm", tuple(cmd)))
         with self._lock:
             self._seen("power_meter", num, transport="ant")
+            if msg is None and (ident := pf.decode_common(data)) is not None:
+                self.devices["power_meter"].identity.merge(ident)
             self._store_pedal(msg)
             if isinstance(msg, pf.CrankTorque):
                 # crank-torque pages: a fresh value at every crank revolution
@@ -588,6 +592,8 @@ class AntHub(SensorHub):
         rr = self._rr.update(data)
         with self._lock:
             self._seen("heart_rate", num, transport="ant")
+            if (ident := pf.decode_hrm_info(data, num)) is not None:
+                self.devices["heart_rate"].identity.merge(ident)
             self._s.heart_rate.set(hr)
             if rr:
                 self.add_rr(rr)
