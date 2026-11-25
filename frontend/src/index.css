@@ -1192,6 +1192,21 @@ b.warn {
 .dialog.calibration {
   width: 440px;
 }
+.battery-warning {
+  display: flex;
+  justify-content: center;
+  gap: 4px 16px;
+  flex-wrap: wrap;
+  margin: 12px 0 0;
+  color: var(--zone-high);
+}
+.battery-warning .critical {
+  color: var(--danger);
+}
+.battery-warning.start {
+  justify-content: flex-start;
+  margin: -4px 0 10px;
+}
 .cal-steps {
   margin: 0;
   padding-left: 22px;

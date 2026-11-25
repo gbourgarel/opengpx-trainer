@@ -115,3 +115,46 @@ def test_ant_hub_learns_who_the_sensors_are():
     assert h.devices["heart_rate"].identity.manufacturer == 123
     h._on_hrm([0, 0, 0, 0, 0, 0, 0, 80] + ext(11111, 120))  # another strap took the role
     assert h.devices["heart_rate"].identity == SensorIdentity()
+
+
+# the Assioma near the end of the ride of 2026-11-25: status 4 (low), 3 + 198/256 V
+ASSIOMA_82_LOW = [82, 255, 1, 32, 241, 0, 198, 195]
+
+
+def test_hub_status_shows_the_latest_battery_report():
+    from opengpx_trainer.ant.ant_hub import AntHub
+
+    ext = [0x80, 63426 & 0xFF, 63426 >> 8, 11, 5]
+    h = AntHub()
+    assert h.status()["power_meter"]["battery"] == {"status": None, "voltage": None, "level": None}
+    h._on_power(ASSIOMA_82 + ext)
+    assert h.status()["power_meter"]["battery"]["status"] == 3
+    h._on_power(ASSIOMA_82_LOW + ext)
+    bat = h.status()["power_meter"]["battery"]
+    assert (bat["status"], bat["voltage"]) == (4, pytest.approx(3.77, abs=0.01))
+
+
+def test_ble_battery_level_written_in_the_fit(tmp_path):
+    from opengpx_trainer.ble import protocols as bp
+
+    assert bp.parse_battery_level(b"\x0f") == 15
+    assert bp.parse_battery_level(b"") is None
+    assert bp.parse_battery_level(b"\xff") is None  # not a percentage
+    t0 = 1_795_000_000.0
+    rec = Recorder()
+    rec.sensor_seen("power_meter", "ble", None, "ASSIOMA", SensorIdentity(battery_level=15), t0)
+    _ride(rec, t0)
+    msgs = [r.message for r in FitFile.from_file(str(rec.write_fit(tmp_path / "r.fit"))).records]
+    pm = [m for m in msgs if isinstance(m, DeviceInfoMessage)][1]
+    assert pm.battery_level == 15
+
+
+def test_simulator_can_report_a_low_power_meter_battery():
+    from opengpx_trainer.ant.simulator import SimulatedHub
+
+    h = SimulatedHub()
+    h.step()
+    assert h.status()["power_meter"]["battery"]["status"] == 3
+    h.update_settings(pm_battery_low=True)
+    h.step()
+    assert h.status()["power_meter"]["battery"]["status"] == 4

@@ -5,6 +5,7 @@
 * Fitness Machine Service, FTMS (0x1826): Indoor Bike Data (0x2AD2), the Fitness Machine
   Control Point (0x2AD9), used for ERG (target power) and simulation control, and the
   Supported Power Range (0x2AD8), which bounds the targets sent.
+* Battery Service (0x180F): Battery Level (0x2A19), in %, on any of the devices.
 
 All multi-byte fields are little-endian.
 """
@@ -30,6 +31,7 @@ CYCLING_POWER_MEASUREMENT = uuid16(0x2A63)
 INDOOR_BIKE_DATA = uuid16(0x2AD2)
 FTMS_CONTROL_POINT = uuid16(0x2AD9)
 SUPPORTED_POWER_RANGE = uuid16(0x2AD8)
+BATTERY_LEVEL = uuid16(0x2A19)
 
 # which role(s) a device can fill, from the services it advertises
 SERVICE_ROLES = {
@@ -143,6 +145,12 @@ class CrankCadence:
     def stalled(self, now: float | None = None) -> bool:
         now = time.monotonic() if now is None else now
         return self.last is not None and now - self.last_change_at > self.stall_s
+
+
+# --- Battery -------------------------------------------------------------------------------
+def parse_battery_level(data: bytes) -> int | None:
+    """Battery Level: one uint8, 0-100 %; anything else is not a level."""
+    return data[0] if len(data) >= 1 and data[0] <= 100 else None
 
 
 # --- FTMS: indoor bike data ----------------------------------------------------------------

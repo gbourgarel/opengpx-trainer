@@ -196,6 +196,7 @@ class SensorIdentity:
     software_version: float | None = None
     battery_voltage: float | None = None
     battery_status: int | None = None  # FIT battery_status: 1 new ... 5 critical
+    battery_level: int | None = None  # % (BLE Battery Service; ANT+ gives a status instead)
 
     def merge(self, part: SensorIdentity) -> None:
         """Take the fields ``part`` (one decoded page) carries."""

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, type Profile, type RouteDetail, type Telemetry, type Workout } from '../api'
+import { BatteryWarning } from '../components/BatteryWarning'
 import { CalibrationOffer } from '../components/Calibration'
 import { ManualTarget } from '../components/ManualTarget'
 import { StopDialog } from '../components/StopDialog'
@@ -142,6 +143,7 @@ export function RidePage({
           </div>
         )}
         <CalibrationOffer devices={tel.devices} />
+        <BatteryWarning devices={tel.devices} />
       </div>
     )
   }
@@ -215,11 +217,17 @@ export function RidePage({
         <>
           <div className="hint">Start pedalling to begin — the clock starts automatically.</div>
           <CalibrationOffer devices={tel.devices} />
+          <BatteryWarning devices={tel.devices} start />
         </>
       )}
       {/* after the warm-up: calibrate while paused, the next pedal stroke resumes the ride */}
       {tel.state === 'paused' && <CalibrationOffer devices={tel.devices} />}
-      {tel.state === 'finished' && <div className="hint ok">Finished! {tel.saved ? `Ride saved (#${tel.saved.ride_id}).` : 'Saving the ride…'}</div>}
+      {tel.state === 'finished' && (
+        <>
+          <div className="hint ok">Finished! {tel.saved ? `Ride saved (#${tel.saved.ride_id}).` : 'Saving the ride…'}</div>
+          <BatteryWarning devices={tel.devices} start />
+        </>
+      )}
     </>
   )
 

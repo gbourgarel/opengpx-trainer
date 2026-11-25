@@ -35,6 +35,7 @@ class SimSettings:
     power_meter: bool = True  # simulated power meter present
     heart_rate: bool = True  # simulated HR strap present
     pm_bias: float = -0.03  # power meter reads 3 % below the trainer
+    pm_battery_low: bool = False  # the power meter reports a low battery (ANT+ status 4)
 
 
 class SimulatedHub(SensorHub):
@@ -185,6 +186,10 @@ class SimulatedHub(SensorHub):
                 self._seen("power_meter", 54321, transport="sim")
                 self._s.pm_power.set(max(0.0, p * (1 + s.pm_bias) + pm_noise))
                 self._s.pm_cadence.set(cad)
+                ident = self.devices["power_meter"].identity
+                ident.battery_voltage, ident.battery_status = (
+                    (3.77, 4) if s.pm_battery_low else (3.86, 3)
+                )
             if s.heart_rate:
                 self._seen("heart_rate", 777, transport="sim")
                 self._s.heart_rate.set(round(self._hr))

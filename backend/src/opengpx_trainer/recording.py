@@ -124,6 +124,8 @@ def device_info_messages(sensors: list[UsedSensor], timestamp_s: float) -> list[
             m.battery_voltage = i.battery_voltage
         if i.battery_status is not None:
             m.battery_status = i.battery_status
+        if i.battery_level is not None:
+            m.battery_level = i.battery_level
         out.append(m)
     return out
 

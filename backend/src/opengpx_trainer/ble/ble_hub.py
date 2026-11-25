@@ -9,7 +9,8 @@ trainer's Supported Power Range when it has one. Free ride uses the FTMS indoor-
 at 0 % grade, Sim mode the same with the route's grade. FTMS has no rider-weight command (the
 User Data Service would need a consent procedure few trainers implement), so the user
 configuration is not sent over BLE. Heart-rate straps give R-R intervals, power meters the
-L/R balance, into the same readings as over ANT+.
+L/R balance, into the same readings as over ANT+. The Battery Level, when a device has one,
+goes into the sensor's identity (shown before / after a ride, written in the FIT).
 """
 
 from __future__ import annotations
@@ -193,6 +194,28 @@ class BleHub(SensorHub):
                         self._s.heart_rate.set(d.heart_rate)  # relayed by the trainer
 
             await client.start_notify(bp.INDOOR_BIKE_DATA, on_bike)
+
+        await self._battery(client, dev)
+
+    async def _battery(self, client, dev: BleDevice) -> None:
+        """Battery Level (optional service): read now, then follow its notifications if the
+        device sends them (most only update it every few minutes, or on a new connection)."""
+
+        def store(data: bytes) -> None:
+            level = bp.parse_battery_level(data)
+            if level is None:
+                return
+            with self._lock:
+                for role in dev.roles:
+                    self.devices[role].identity.battery_level = level
+
+        try:
+            store(bytes(await client.read_gatt_char(bp.BATTERY_LEVEL)))
+        except Exception as e:
+            log.info("BLE: %s: no battery level (%s)", dev.name or dev.ble_id, e)
+            return
+        with contextlib.suppress(Exception):  # notify is optional for this characteristic
+            await client.start_notify(bp.BATTERY_LEVEL, lambda _s, data: store(bytes(data)))
 
     async def _control_loop(self, client, disconnected: asyncio.Event) -> None:
         def on_cp(_s, data: bytearray) -> None:

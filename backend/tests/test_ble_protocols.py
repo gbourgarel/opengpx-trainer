@@ -114,3 +114,34 @@ def test_ftms_control_point_commands():
     assert bp.parse_control_point_response(bytes([0x80, 0x05, 0x01])) == (0x05, "success")
     assert bp.parse_control_point_response(bytes([0x80, 0x00, 0x05]))[1] == "control not permitted"
     assert bp.parse_control_point_response(b"\x05\xfa\x00") is None
+
+
+def test_ble_hub_reads_then_follows_the_battery_level():
+    import asyncio
+
+    from opengpx_trainer.ble.ble_hub import BleDevice, BleHub
+
+    class Client:
+        notify = None
+
+        async def read_gatt_char(self, uuid):
+            assert uuid == bp.BATTERY_LEVEL
+            return bytearray([42])
+
+        async def start_notify(self, uuid, cb):
+            self.notify = cb
+
+    h = BleHub({"power_meter": ("P", "Assioma")})
+    c = Client()
+    asyncio.run(h._battery(c, BleDevice("P", "Assioma", {"power_meter"})))
+    assert h.status()["power_meter"]["battery"]["level"] == 42
+    c.notify(None, bytearray([18]))
+    assert h.status()["power_meter"]["battery"]["level"] == 18
+
+    class NoBattery(Client):
+        async def read_gatt_char(self, uuid):
+            raise RuntimeError("characteristic not found")
+
+    h = BleHub({"heart_rate": ("H", "Polar")})
+    asyncio.run(h._battery(NoBattery(), BleDevice("H", "Polar", {"heart_rate"})))
+    assert h.status()["heart_rate"]["battery"]["level"] is None

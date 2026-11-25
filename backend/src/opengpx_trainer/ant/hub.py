@@ -290,6 +290,12 @@ class SensorHub(ABC):
                 "wanted": d.wanted,
                 "calibration_requested": d.calibration_requested,
                 "calibration": d.calibration.to_dict() if d.calibration else None,
+                # latest heard, kept while the sensor is silent (a dead battery stops it)
+                "battery": {
+                    "status": d.identity.battery_status,
+                    "voltage": d.identity.battery_voltage,
+                    "level": d.identity.battery_level,
+                },
             }
             for k, d in self.devices.items()
         }

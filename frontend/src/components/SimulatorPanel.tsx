@@ -67,6 +67,9 @@ export function SimulatorPanel({ initial }: { initial: SimSettings }) {
         <label className="chk">
           <input type="checkbox" checked={sim.heart_rate} onChange={(e) => set({ heart_rate: e.target.checked })} /> HR strap
         </label>
+        <label className="chk" title="The power meter reports a low battery (shown before / after a ride)">
+          <input type="checkbox" checked={sim.pm_battery_low} onChange={(e) => set({ pm_battery_low: e.target.checked })} /> PM battery low
+        </label>
         <label className="chk">
           <input type="checkbox" checked={sim.noise} onChange={(e) => set({ noise: e.target.checked })} /> noise
         </label>

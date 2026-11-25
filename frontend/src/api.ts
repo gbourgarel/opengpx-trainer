@@ -154,6 +154,16 @@ export interface DeviceStatus {
   calibration_requested?: boolean
   /** running or last calibration of this sensor (since the sensors were connected) */
   calibration?: CalibrationInfo | null
+  /** latest the sensor reported (kept while it is silent); null fields = not reported */
+  battery?: BatteryInfo
+}
+
+export interface BatteryInfo {
+  /** ANT+ / FIT battery status: 1 new, 2 good, 3 ok, 4 low, 5 critical */
+  status: number | null
+  voltage: number | null
+  /** % (Bluetooth Battery Service) */
+  level: number | null
 }
 
 export type CalibrationRole = 'trainer' | 'power_meter'
@@ -205,6 +215,7 @@ export interface SimSettings {
   power_meter: boolean
   heart_rate: boolean
   pm_bias: number
+  pm_battery_low: boolean
 }
 
 export interface Telemetry {
