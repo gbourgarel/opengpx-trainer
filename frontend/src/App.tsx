@@ -3,6 +3,7 @@ import { api, type DeviceStatus, type Profile, type RideAir, type RouteDetail, t
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
 import type { ProfileGuard } from './profileDiff'
+import { loadAsked, rememberAsked } from './feedbackAsked'
 import { lostSensorText } from './sensorAlert'
 import { SimulatorPanel } from './components/SimulatorPanel'
 import { FeedbackDialog } from './components/FeedbackDialog'
@@ -91,25 +92,26 @@ export default function App() {
 
   // Once a ride is saved (it finished on its own, telemetry, or "Stop & save"): ask "How was
   // it?" (RPE / feel, written into the FIT file), then offer (never force) the upload to
-  // intervals.icu when a key is set. Asked once per ride in this window.
-  const [feedbackAsk, setFeedbackAsk] = useState<{ rideId: number; name?: string } | null>(null)
-  const [uploadAsk, setUploadAsk] = useState<{ rideId: number; name?: string } | null>(null)
-  const asked = useRef(new Set<number>())
+  // intervals.icu when a key is set. Asked once per ride in this browser, even across a page
+  // reload while the finished ride is still open.
+  type Ask = { rideId: number; name?: string }
+  const [asked, setAsked] = useState(loadAsked) // answered or skipped, in this browser
+  const [endedAsk, setEndedAsk] = useState<Ask | null>(null) // ride just stopped here
+  const [uploadAsk, setUploadAsk] = useState<Ask | null>(null)
   const canUpload = !!profile?.intervals_api_key_set
-  const offerUpload = useCallback((rideId: number, name?: string) => {
-    if (asked.current.has(rideId)) return
-    asked.current.add(rideId)
-    setFeedbackAsk({ rideId, name })
-  }, [])
-  const feedbackDone = () => {
-    if (feedbackAsk && canUpload) setUploadAsk(feedbackAsk)
-    setFeedbackAsk(null)
+  const offerUpload = (rideId: number, name?: string) => {
+    if (!asked.includes(rideId)) setEndedAsk({ rideId, name })
   }
+  // a ride that finished on its own (telemetry), else one stopped here
   const savedRideId = tel.saved?.ride_id
-  const rideName = tel.name
-  useEffect(() => {
-    if (savedRideId != null) offerUpload(savedRideId, rideName)
-  }, [savedRideId, rideName, offerUpload])
+  const feedbackAsk: Ask | null =
+    savedRideId != null && !asked.includes(savedRideId) ? { rideId: savedRideId, name: tel.name } : endedAsk && !asked.includes(endedAsk.rideId) ? endedAsk : null
+  const feedbackDone = () => {
+    if (!feedbackAsk) return
+    if (canUpload) setUploadAsk(feedbackAsk)
+    setAsked(rememberAsked(feedbackAsk.rideId))
+    setEndedAsk(null)
+  }
 
   const connect = (kind: 'devices' | 'simulator') => {
     if (connecting) return
@@ -280,7 +282,7 @@ export default function App() {
         )}
         {tab === 'workouts' && <WorkoutsPage profile={profile} canStart={!!hub} onStart={startWorkout} />}
         {tab === 'routes' && <RoutesPage canStart={!!hub} onStart={startRoute} />}
-        {tab === 'history' && <HistoryPage />}
+        {tab === 'history' && <HistoryPage canUpload={canUpload} />}
         {tab === 'profile' && <ProfilePage onSaved={setProfile} devices={dev} onGuard={setProfileGuard} />}
         {leaveTo && (
           <div className="dialog-backdrop">

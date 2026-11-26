@@ -424,16 +424,24 @@ export function RoutesPage({
 }
 
 // ---------------------------------------------------------------------------------------
-export function HistoryPage() {
+export function HistoryPage({ canUpload }: { canUpload: boolean }) {
   const [rides, setRides] = useState<Ride[]>([])
-  const [msg, setMsg] = useState<string | null>(null)
-  const reload = useCallback(() => api.rides().then(setRides), [])
+  const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null)
+  const fail = (e: Error) => setMsg({ text: e.message, error: true })
+  const reload = useCallback(
+    () =>
+      api
+        .rides()
+        .then(setRides)
+        .catch((e: Error) => setMsg({ text: `Cannot load the rides: ${e.message}`, error: true })),
+    [],
+  )
   useEffect(() => {
     reload()
   }, [reload])
   return (
     <div className="card">
-      {msg && <div className="hint">{msg}</div>}
+      {msg && <div className={msg.error ? 'error' : 'hint ok'}>{msg.text}</div>}
       <table>
         <thead>
           <tr>
@@ -468,14 +476,16 @@ export function HistoryPage() {
                     <span className="muted">uploaded</span>
                   ) : (
                     <button
+                      disabled={!canUpload}
+                      title={canUpload ? 'Send the FIT file to intervals.icu' : 'Set the intervals.icu API key in Profile first'}
                       onClick={() =>
                         api
                           .uploadRide(r.id)
                           .then(() => {
-                            setMsg('Uploaded to intervals.icu')
+                            setMsg({ text: 'Uploaded to intervals.icu' })
                             reload()
                           })
-                          .catch((e) => setMsg(e.message))
+                          .catch(fail)
                       }
                     >
                       Upload
@@ -489,7 +499,7 @@ export function HistoryPage() {
                         api
                           .deleteRide(r.id)
                           .then(reload)
-                          .catch((e: Error) => setMsg(e.message))
+                          .catch(fail)
                     }}
                   >
                     Delete
