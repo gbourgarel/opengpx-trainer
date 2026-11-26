@@ -12,9 +12,10 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -344,6 +345,28 @@ class StepBody(BaseModel):
     seconds: float = 60.0  # extend only
 
 
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def same_origin(origin: str | None, host: str | None) -> bool:
+    """Whether a request may act on the app: no ``Origin`` (curl, scripts, same-origin GETs)
+    or the app's own address (scheme://host[:port] matching the ``Host`` header).
+
+    Any page open in the same browser can send "simple" requests (a POST without a body, a
+    multipart form) to the app and open its WebSocket; CORS only hides the answer. Browsers
+    always send ``Origin`` on those, so refusing a foreign one blocks them. DNS rebinding
+    (a foreign name resolving to this machine) is not covered: it would need a list of
+    allowed host names, judged not worth it for an app on a private network (README)."""
+    if origin is None:
+        return True
+    parts = urlsplit(origin)  # "null" (sandboxed frame, file://) -> no netloc: refused
+    return (
+        host is not None
+        and parts.scheme in ("http", "https")
+        and parts.netloc.lower() == host.lower()
+    )
+
+
 def frontend_dir() -> Path | None:
     """The built UI to serve: ``OPENGPX_TRAINER_FRONTEND``, else the copy packaged in the wheel
     (``opengpx_trainer/web``, see ``hatch_build.py``), else ``frontend/dist`` of the
@@ -436,6 +459,15 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
     app = FastAPI(title="OpenGPX Trainer", lifespan=lifespan)
     app.state.st = st
+
+    @app.middleware("http")
+    async def refuse_cross_site(request: Request, call_next):
+        # reads are already protected by CORS (no CORS headers: the page cannot see them)
+        if request.method not in SAFE_METHODS and not same_origin(
+            request.headers.get("origin"), request.headers.get("host")
+        ):
+            return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
+        return await call_next(request)
 
     # -- profile ------------------------------------------------------------------------
     @app.get("/api/profile")
@@ -914,6 +946,10 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     # -- live telemetry -----------------------------------------------------------------
     @app.websocket("/ws/live")
     async def live(ws: WebSocket):
+        # not covered by CORS: any page could otherwise read the telemetry
+        if not same_origin(ws.headers.get("origin"), ws.headers.get("host")):
+            await ws.close(code=1008)  # policy violation
+            return
         await ws.accept()
         q: asyncio.Queue = asyncio.Queue(maxsize=1)
         st.clients[ws] = q

@@ -4,6 +4,7 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from opengpx_trainer.app import create_app
 from opengpx_trainer.storage import Storage
@@ -444,6 +445,41 @@ def test_live_websocket_sends_telemetry(client):
     while client.st.clients and time.monotonic() < deadline:
         time.sleep(0.05)
     assert not client.st.clients  # forgotten once closed
+
+
+@pytest.mark.parametrize(
+    "origin,host,ok",
+    [
+        (None, "127.0.0.1:8000", True),  # curl, scripts
+        ("http://127.0.0.1:8000", "127.0.0.1:8000", True),
+        ("http://192.168.1.20:8000", "192.168.1.20:8000", True),  # tablet on the LAN
+        ("http://LocalHost:5173", "localhost:5173", True),  # Vite dev proxy keeps the Host
+        ("https://evil.example", "127.0.0.1:8000", False),
+        ("http://127.0.0.1:9999", "127.0.0.1:8000", False),  # another local app
+        ("null", "127.0.0.1:8000", False),  # sandboxed frame, file://
+        ("http://127.0.0.1:8000", None, False),
+    ],
+)
+def test_same_origin(origin, host, ok):
+    from opengpx_trainer.app import same_origin
+
+    assert same_origin(origin, host) is ok
+
+
+def test_cross_site_requests_are_refused(client):
+    """Review #32: any page could stop the ride or read the telemetry."""
+    start_erg(client)
+    evil = {"Origin": "https://evil.example"}
+    assert client.post("/api/session/pause", headers=evil).status_code == 403
+    assert client.post("/api/session/stop?save=false", headers=evil).status_code == 403
+    assert client.st.session is not None
+    assert client.get("/api/profile", headers=evil).status_code == 200  # reads: CORS hides them
+    own = {"Origin": "http://testserver"}  # TestClient's Host
+    assert client.post("/api/session/pause", headers=own).status_code == 200
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect("/ws/live", headers=evil):
+        pass
+    with client.websocket_connect("/ws/live", headers=own) as ws:
+        assert "state" in ws.receive_json()
 
 
 @pytest.mark.parametrize("value,offered", [(None, False), ("1", True), ("0", False)])

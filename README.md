@@ -72,6 +72,12 @@ app, and the release wheel contains the UI and libusb.
 3. Run `opengpx-trainer`. The UI opens in the browser at http://127.0.0.1:8000 (`--no-browser`
    to skip, `--port` to use another port). Stop it with Ctrl+C.
 
+**Tablet or second device on the LAN**: start with `--host 0.0.0.0` and open
+`http://<computer's IP>:8000`. There is **no authentication**: anyone on the network can use
+the app (stop a ride, change the profile, upload to intervals.icu). Use it on a trusted
+private network only. Requests sent by other web sites open in the browser are refused (the
+`Origin` must be the app's own address), but DNS rebinding is not guarded against.
+
 Bluetooth sensors need nothing else (on macOS, allow Bluetooth for Terminal, see below). An
 ANT+ stick works as is on macOS. On Windows it needs the WinUSB driver once: plug the stick in,
 run [Zadig](https://zadig.akeo.ie/), pick the stick (*ANT USBStick2* or *ANT USB-m Stick*) and
