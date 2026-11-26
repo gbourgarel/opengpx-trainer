@@ -645,11 +645,12 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     @app.post("/api/workouts/import")
     async def import_workout(file: UploadFile = File(...)):
         text = (await file.read()).decode("utf-8", errors="replace")
+        # off the event loop, like the route import (the storage may wait for its lock)
         try:
-            w = parse_workout(text, file.filename or "workout.zwo")
+            w = await asyncio.to_thread(parse_workout, text, file.filename or "workout.zwo")
         except Exception as e:
             raise HTTPException(422, f"Cannot parse workout: {e}") from e
-        wid = st.storage.add_workout(w.to_dict())
+        wid = await asyncio.to_thread(st.storage.add_workout, w.to_dict())
         return {"id": wid, **w.to_dict()}
 
     @app.get("/api/workouts/{wid}")
@@ -696,7 +697,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             raise HTTPException(502, f"intervals.icu error: {e}") from e
         finally:
             await c.aclose()
-        wid = st.storage.add_workout(w.to_dict())
+        wid = await asyncio.to_thread(st.storage.add_workout, w.to_dict())
         return {"id": wid, **w.to_dict()}
 
     # -- routes -------------------------------------------------------------------------
@@ -760,13 +761,14 @@ def create_app(storage: Storage | None = None) -> FastAPI:
     @app.post("/api/routes/import")
     async def import_route(file: UploadFile = File(...)):
         text = (await file.read()).decode("utf-8", errors="replace")
+        # parsing + resampling a long GPX takes a while: off the event loop (engine ticks)
         try:
-            route = Route.from_gpx(text)
+            route = await asyncio.to_thread(Route.from_gpx, text)
         except Exception as e:
             raise HTTPException(422, f"Cannot parse GPX: {e}") from e
         if route.name == "Route" and file.filename:
             route.name = Path(file.filename).stem
-        rid = st.storage.add_route(route.name, text, route.summary())
+        rid = await asyncio.to_thread(st.storage.add_route, route.name, text, route.summary())
         return {"id": rid, **route.summary()}
 
     def load_route(rid: int, reverse: bool = False) -> Route:

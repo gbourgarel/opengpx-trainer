@@ -293,6 +293,33 @@ def test_route_list_estimates_survive_unrelated_profile_changes(client, monkeypa
     assert client.st.parsed_route(rid) is None  # forgotten, not served from the cache
 
 
+def test_imports_parse_off_the_event_loop(client, monkeypatch):
+    """Review #17: a long GPX parsed on the event loop stalled the 4 Hz engine."""
+    import asyncio
+
+    import opengpx_trainer.app as app_mod
+    from tests.test_gpx_workouts import make_gpx
+
+    on_loop = []
+
+    def watched(f):
+        def wrapper(*a, **k):
+            try:
+                asyncio.get_running_loop()
+                on_loop.append(f.__name__)
+            except RuntimeError:  # a worker thread: no loop running here
+                pass
+            return f(*a, **k)
+
+        return wrapper
+
+    monkeypatch.setattr(app_mod.Route, "from_gpx", watched(app_mod.Route.from_gpx))
+    monkeypatch.setattr(app_mod, "parse_workout", watched(app_mod.parse_workout))
+    assert client.post("/api/routes/import", files={"file": ("r.gpx", make_gpx())}).is_success
+    assert client.post("/api/workouts/import", files={"file": ("w.zwo", ZWO)}).is_success
+    assert on_loop == []
+
+
 SHORT_ZWO = """<workout_file><name>Short</name><workout>
 <SteadyState Duration="2" Power="0.5"/>
 </workout></workout_file>"""
