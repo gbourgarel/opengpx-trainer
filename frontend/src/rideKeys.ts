@@ -17,9 +17,13 @@ import { FIELD_STEP, keyField, type KeyField, type TargetSource } from './target
 // how long a sent value is preferred over the telemetry (which may not reflect it yet)
 const PENDING_MS = 1500
 
-/** A key press the ride shortcuts ignore: modifier held, or typing in a field. */
-function ignoredKey(e: KeyboardEvent): boolean {
-  if (e.ctrlKey || e.metaKey || e.altKey) return true
+/** A modal dialog is open (Stop, How was it?, calibration, unsaved profile…): its keys are
+ * its own (Space presses the focused button, Esc closes it), the ride's wait. */
+export const dialogOpen = () => typeof document !== 'undefined' && document.querySelector('.dialog-backdrop') != null
+
+/** A key press the ride shortcuts ignore: modifier held, typing in a field, or a dialog open. */
+export function ignoredKey(e: KeyboardEvent): boolean {
+  if (e.ctrlKey || e.metaKey || e.altKey || dialogOpen()) return true
   const el = e.target as HTMLElement | null
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
 }

@@ -195,7 +195,8 @@ settings remembered in the browser (sound, wind, air) are kept.
   rider configuration (weight, wheel size) is sent again whenever the trainer asks for it.
 * The screen is kept on with the Screen Wake Lock API, which needs `localhost` or HTTPS: a
   tablet opening the app over plain `http://` on the LAN shows "screen may sleep".
-* Keyboard (ignored while typing in a field):
+* Keyboard (ignored while typing in a field or while a dialog is open; Esc closes the Stop
+  dialog without stopping):
 
   | Key            | Action                                                              |
   |----------------|---------------------------------------------------------------------|

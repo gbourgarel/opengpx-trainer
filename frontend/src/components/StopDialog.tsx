@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { fmtTime } from '../api'
+import { useEscape } from '../useEscape'
 
 /** "Stop the ride?": Save, Discard (asked twice: it cannot be undone) or Keep riding. */
 export function StopDialog({ elapsedS, distanceM, onSave, onDiscard, onClose }: { elapsedS?: number; distanceM?: number; onSave: () => void; onDiscard: () => void; onClose: () => void }) {
   const [discarding, setDiscarding] = useState(false)
+  useEscape(discarding ? () => setDiscarding(false) : onClose) // Back, else Keep riding
   const km = distanceM != null && distanceM > 0 ? ` · ${(distanceM / 1000).toFixed(1)} km` : ''
   const ridden = `${fmtTime(elapsedS ?? 0)}${km}`
   return (
@@ -16,14 +18,18 @@ export function StopDialog({ elapsedS, distanceM, onSave, onDiscard, onClose }: 
         <div className="dialog-actions">
           {discarding ? (
             <>
-              <button onClick={() => setDiscarding(false)}>Back</button>
+              <button autoFocus onClick={() => setDiscarding(false)}>
+                Back
+              </button>
               <button className="danger" onClick={onDiscard}>
                 Discard
               </button>
             </>
           ) : (
             <>
-              <button onClick={onClose}>Keep riding</button>
+              <button autoFocus onClick={onClose}>
+                Keep riding
+              </button>
               <button className="danger" onClick={() => setDiscarding(true)}>
                 Discard
               </button>

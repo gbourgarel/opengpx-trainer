@@ -12,7 +12,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { fmtTime, wkg, type RouteDetail, type Telemetry, type Workout } from '../api'
 import { ElevationProfile, LocalProfile, WorkoutProfile } from '../components/charts'
-import { wakesRideControls } from '../rideKeys'
+import { ignoredKey, wakesRideControls } from '../rideKeys'
 import { WindBadge } from '../components/Wind'
 import { ATTRIBUTION } from '../scenery/tiles'
 import { targetZone, type TargetZone } from '../targetZone'
@@ -364,9 +364,7 @@ function useFullscreen() {
   useEffect(() => {
     const sync = () => setOn(!!document.fullscreenElement)
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      const el = e.target as HTMLElement | null
-      if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
+      if (ignoredKey(e)) return
       if (e.key === 'f' || e.key === 'F') {
         if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
         else void document.documentElement.requestFullscreen?.().catch(() => {})

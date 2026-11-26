@@ -12,6 +12,7 @@ import type { WindSetting } from './wind'
 import { RidePage, type ActiveRide } from './pages/RidePage'
 import { useLive } from './useLive'
 import { useWakeLock } from './wakeLock'
+import { useEscape } from './useEscape'
 
 type Tab = 'ride' | 'workouts' | 'routes' | 'history' | 'profile'
 const TABS: [Tab, string][] = [
@@ -57,6 +58,7 @@ export default function App() {
   }, [])
   const [leaveTo, setLeaveTo] = useState<Tab | null>(null)
   const [leaveBusy, setLeaveBusy] = useState(false)
+  useEscape(leaveTo && !leaveBusy ? () => setLeaveTo(null) : null) // Stay
   const goTab = (k: Tab) => {
     if (tab === 'profile' && k !== 'profile' && profileGuard.current?.dirty) setLeaveTo(k)
     else setTab(k)
