@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api } from '../api'
+import { FEELS } from '../feedback'
 
 /** Perceived effort (RPE, 1-10), with the words a Garmin Edge shows next to it. */
 const RPE_WORDS: Record<number, string> = {
@@ -14,15 +15,6 @@ const RPE_WORDS: Record<number, string> = {
   9: 'Very hard',
   10: 'Maximum',
 }
-
-/** How the rider felt (FIT `workout_feel`, 0-100 in five levels, as the Edge records it). */
-const FEELS: [number, string][] = [
-  [0, 'Very weak'],
-  [25, 'Weak'],
-  [50, 'Normal'],
-  [75, 'Strong'],
-  [100, 'Very strong'],
-]
 
 /** After a ride is saved: "How was it?" (RPE, feel, carbohydrates and water, all optional),
  * written into the FIT file before it may be uploaded. Skip leaves the file as it is. */

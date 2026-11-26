@@ -276,7 +276,8 @@ settings remembered in the browser (sound, wind, air) are kept.
   two undocumented fields read from an original Edge file: 177 = energy eaten in kcal, i.e.
   4 × the grams of carbohydrates, which intervals.icu shows as carbohydrates ingested; 179 =
   water in ml, shown in intervals.icu through a custom "Fluids in" field) and kept with the
-  ride in the history.
+  ride in the history (its *Feel* column). Asked once per ride in a browser, even after a page
+  reload; Skip counts as an answer.
 * Checkpoint: every 30 s the new samples are appended (and fsync'd) to
   `checkpoints/<session>.jsonl`; the file is deleted once the ride is saved or discarded. At
   startup, a leftover file becomes a ride named "… (recovered)".

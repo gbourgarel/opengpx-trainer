@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { WindPicker } from '../components/Wind'
 import { NumberInput } from '../components/NumberInput'
+import { feedbackText } from '../feedback'
 import { loadAir, loadWind, saveAir, saveWind, type WindSetting } from '../wind'
 import { api, fmtTime, type PlannedWorkout, type Profile, type Ride, type RideAir, type RouteDetail, type RouteEstimate, type RouteSummary, type Workout } from '../api'
 import { ElevationProfile, WorkoutProfile } from '../components/charts'
@@ -451,6 +452,7 @@ export function HistoryPage({ canUpload }: { canUpload: boolean }) {
             <th>Time</th>
             <th>Distance</th>
             <th>Avg / NP</th>
+            <th title="Answers to &quot;How was it?&quot;: perceived effort (RPE), feel, carbohydrates, water">Feel</th>
             <th />
           </tr>
         </thead>
@@ -465,6 +467,7 @@ export function HistoryPage({ canUpload }: { canUpload: boolean }) {
               <td>
                 {r.avg_power_w?.toFixed(0)} / {r.summary.normalized_power_w?.toFixed(0) ?? '—'} W
               </td>
+              <td className={feedbackText(r.summary) ? '' : 'muted'}>{feedbackText(r.summary) ?? '—'}</td>
               <td>
                 {/* flex inside the cell, not on it: a flex td leaves the table layout and
                     loses the row border */}
