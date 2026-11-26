@@ -139,8 +139,13 @@ export function RidePage({
   const pauseButton =
     tel.state === 'running' ? (
       <button onClick={() => act(api.pause)}>Pause</button>
-    ) : tel.state === 'paused' || tel.state === 'ready' ? (
+    ) : tel.state === 'paused' ? (
       <button onClick={() => act(api.resume)}>Resume</button>
+    ) : tel.state === 'ready' ? (
+      // starts the clock now, without waiting for the first pedal stroke
+      <button onClick={() => act(api.resume)} title="Start the clock now (pedalling also starts it)">
+        Start
+      </button>
     ) : null
   const stop = (save: boolean) => {
     setStopAsk(false)
