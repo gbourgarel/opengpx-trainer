@@ -320,6 +320,35 @@ def test_imports_parse_off_the_event_loop(client, monkeypatch):
     assert on_loop == []
 
 
+@pytest.mark.parametrize(
+    "name,text",
+    [
+        (
+            "empty.erg",
+            "[COURSE HEADER]\nMINUTES WATTS\n[END COURSE HEADER]\n[COURSE DATA]\n"
+            "[END COURSE DATA]\n",
+        ),
+        (
+            "zero.zwo",
+            '<workout_file><name>Zero</name><workout><SteadyState Duration="0" '
+            'Power="0.5"/></workout></workout_file>',
+        ),
+    ],
+)
+def test_empty_workouts_are_refused(client, name, text):
+    """Review #10: stored with duration 0, the ride finished on the first pedal stroke."""
+    r = client.post("/api/workouts/import", files={"file": (name, text)})
+    assert r.status_code == 422 and "empty" in r.json()["detail"]
+    assert client.get("/api/workouts").json() == []
+
+
+def test_a_stored_empty_workout_cannot_be_ridden(client):
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    wid = client.st.storage.add_workout({"name": "Old empty one", "steps": []})
+    r = client.post("/api/session/start", json={"mode": "erg", "workout_id": wid})
+    assert r.status_code == 422 and client.st.session is None
+
+
 SHORT_ZWO = """<workout_file><name>Short</name><workout>
 <SteadyState Duration="2" Power="0.5"/>
 </workout></workout_file>"""

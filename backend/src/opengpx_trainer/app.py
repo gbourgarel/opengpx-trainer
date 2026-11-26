@@ -377,6 +377,13 @@ class StepBody(BaseModel):
     seconds: float = 60.0  # extend only
 
 
+def require_steps(w: Workout) -> None:
+    """A workout with nothing to ride (no steps, or only zero-length ones) is refused: the
+    ride would finish, and save a one-sample activity, on the first pedal stroke."""
+    if w.duration_s <= 0:
+        raise HTTPException(422, "This workout is empty (no steps with a duration)")
+
+
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
@@ -650,6 +657,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             w = await asyncio.to_thread(parse_workout, text, file.filename or "workout.zwo")
         except Exception as e:
             raise HTTPException(422, f"Cannot parse workout: {e}") from e
+        require_steps(w)
         wid = await asyncio.to_thread(st.storage.add_workout, w.to_dict())
         return {"id": wid, **w.to_dict()}
 
@@ -697,6 +705,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             raise HTTPException(502, f"intervals.icu error: {e}") from e
         finally:
             await c.aclose()
+        require_steps(w)
         wid = await asyncio.to_thread(st.storage.add_workout, w.to_dict())
         return {"id": wid, **w.to_dict()}
 
@@ -804,6 +813,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             if d is None:
                 raise HTTPException(404, "Workout not found")
             workout = Workout.from_dict(d)
+            require_steps(workout)  # one stored before imports checked it
         if body.mode == "gpx":
             # parsing a GPX: done outside the lock
             route = load_route(body.route_id or -1, body.reverse)
