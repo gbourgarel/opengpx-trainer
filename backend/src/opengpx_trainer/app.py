@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime as dt
-import json
 import logging
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -27,7 +27,12 @@ from .ble.scan import scan_ble
 from .checkpoint import RideCheckpoint, load_checkpoint
 from .envvars import env
 from .gpx.route import Route
-from .physics.estimate import Estimate, estimate_route, estimate_workout_on_route
+from .physics.estimate import (
+    Estimate,
+    estimate_route,
+    estimate_workout_on_route,
+    profile_key,
+)
 from .profile import (
     BIKE_PRESETS,
     STANDARD_HUMIDITY,
@@ -49,6 +54,7 @@ TICK_S = 0.25
 # a client that has not taken a message for this long (asleep tablet, dead Wi-Fi) is dropped;
 # it reconnects by itself when it wakes up
 WS_SEND_TIMEOUT_S = 10.0
+ROUTE_CACHE_SIZE = 16  # parsed routes kept for the estimates (~2 MB per 100 km)
 
 
 def publish_latest(q: asyncio.Queue, msg: dict) -> None:
@@ -74,8 +80,12 @@ class AppState:
         # (see live()); the engine never waits for a client
         self.clients: dict[WebSocket, asyncio.Queue] = {}
         self.last_ride_id: int | None = None
-        # route time estimates, by (route, options, profile): a long route takes ~0.3 s
+        # route time estimates, by (route, options, the profile values they use): a long
+        # route takes ~0.3 s; and the parsed routes they were computed on (parsing and
+        # resampling the GPX is part of that cost; a Route is not changed once built and
+        # route ids are never reused)
         self._estimates: dict[tuple, Estimate] = {}
+        self._routes: OrderedDict[tuple[int, bool], Route] = OrderedDict()
         self._estimates_lock = threading.Lock()
         self._hub_lock = threading.Lock()
         # Last calibration results by hub kind, kept across reconnections while the app runs:
@@ -115,15 +125,14 @@ class AppState:
             workout_id,
             air,
             round(start_m),
-            json.dumps(p.to_dict()),
+            profile_key(p, air),
         )
         with self._estimates_lock:
             if key in self._estimates:
                 return self._estimates[key]
-        gpx = self.storage.get_route_gpx(rid)
-        if gpx is None:
+        route = self.parsed_route(rid, reverse)
+        if route is None:
             return None
-        route = Route.from_gpx(gpx, reverse=reverse)
         start_m = min(start_m, max(route.total_distance_m - 100.0, 0.0))  # as the ride does
         if workout_id is None:
             est = estimate_route(route, p, 100.0, wind_kmh, wind_from_deg, air, start_m)
@@ -140,6 +149,29 @@ class AppState:
                 self._estimates.clear()
             self._estimates[key] = est
         return est
+
+    def parsed_route(self, rid: int, reverse: bool = False) -> Route | None:
+        """The route as the estimates use it, parsed once (the most recent ones kept)."""
+        with self._estimates_lock:
+            route = self._routes.get((rid, reverse))
+            if route is not None:
+                self._routes.move_to_end((rid, reverse))
+                return route
+        gpx = self.storage.get_route_gpx(rid)
+        if gpx is None:
+            return None
+        route = Route.from_gpx(gpx, reverse=reverse)
+        with self._estimates_lock:
+            self._routes[(rid, reverse)] = route
+            while len(self._routes) > ROUTE_CACHE_SIZE:
+                self._routes.popitem(last=False)
+        return route
+
+    def forget_route(self, rid: int) -> None:
+        with self._estimates_lock:
+            for reverse in (False, True):
+                self._routes.pop((rid, reverse), None)
+            self._estimates = {k: e for k, e in self._estimates.items() if k[0] != rid}
 
     def connect(self, kind: str) -> None:
         # One connection attempt at a time: two concurrent requests (double click) used to
@@ -755,6 +787,7 @@ def create_app(storage: Storage | None = None) -> FastAPI:
             if st.session is not None and st.session.route_id == rid:
                 raise HTTPException(409, "This route is used by the ride in progress")
             st.storage.delete_route(rid)
+        st.forget_route(rid)
         return {"ok": True}
 
     # -- session ------------------------------------------------------------------------

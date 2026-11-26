@@ -263,6 +263,36 @@ def test_route_estimates_in_the_list_and_by_options(client):
     assert client.get("/api/routes/999/estimate").status_code == 404
 
 
+def test_route_list_estimates_survive_unrelated_profile_changes(client, monkeypatch):
+    """Review #33: any profile Save used to re-parse and re-estimate every route."""
+    import opengpx_trainer.app as app_mod
+    from tests.test_gpx_workouts import make_gpx
+
+    rid = client.post("/api/routes/import", files={"file": ("r.gpx", make_gpx())}).json()["id"]
+    calls = {"parse": 0, "estimate": 0}
+    parse, estimate = app_mod.Route.from_gpx, app_mod.estimate_route
+
+    def counting(name, f):
+        def wrapper(*a, **k):
+            calls[name] += 1
+            return f(*a, **k)
+
+        return wrapper
+
+    monkeypatch.setattr(app_mod.Route, "from_gpx", counting("parse", parse))
+    monkeypatch.setattr(app_mod, "estimate_route", counting("estimate", estimate))
+    first = client.get("/api/routes").json()[0]["estimate_s"]
+    assert calls == {"parse": 1, "estimate": 1}
+    client.put("/api/profile", json={"max_hr_bpm": 190})  # not used by the estimate
+    assert client.get("/api/routes").json()[0]["estimate_s"] == first
+    assert calls == {"parse": 1, "estimate": 1}
+    client.put("/api/profile", json={"ftp_w": 350})  # used: re-estimated, not re-parsed
+    assert client.get("/api/routes").json()[0]["estimate_s"] < first
+    assert calls == {"parse": 1, "estimate": 2}
+    client.delete(f"/api/routes/{rid}")
+    assert client.st.parsed_route(rid) is None  # forgotten, not served from the cache
+
+
 SHORT_ZWO = """<workout_file><name>Short</name><workout>
 <SteadyState Duration="2" Power="0.5"/>
 </workout></workout_file>"""

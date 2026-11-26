@@ -230,6 +230,50 @@ def test_estimate_follows_effort_wind_and_workout():
     assert e.laps > 2 and e.distance_m == pytest.approx(e.laps * r.total_distance_m)
 
 
+def test_estimate_memo_key_covers_every_profile_value_it_uses():
+    """Review #33: the key holds only what the estimate reads, but never misses one of them:
+    any profile field that changes an estimate (route or workout) changes the key."""
+    import dataclasses
+
+    from opengpx_trainer.physics.estimate import (
+        estimate_route,
+        estimate_workout_on_route,
+        profile_key,
+    )
+    from opengpx_trainer.profile import Profile
+    from opengpx_trainer.workouts.model import Step, Workout
+
+    r = _route(0.04, km=1)
+    w = Workout(name="w", steps=[Step(duration_s=300, start=0.6, end=0.9)])
+    air = (15.0, 0.5)
+
+    def run(p):
+        return (
+            estimate_route(r, p, air=air).duration_s,
+            estimate_workout_on_route(r, p, w, air=air).distance_m,
+        )
+
+    base = Profile()
+    ref = run(base)
+    used = set()
+    for f in dataclasses.fields(Profile):
+        v = getattr(base, f.name)
+        if f.name == "grade_curve":
+            changed = [(g, frac * 1.2) for g, frac in v]
+        elif isinstance(v, float) and not isinstance(v, bool):
+            changed = v * 1.2 if v else 5.0
+        else:
+            continue
+        p = dataclasses.replace(base, **{f.name: changed})
+        if run(p) != ref:
+            used.add(f.name)
+            assert profile_key(p, air) != profile_key(base, air), f.name
+    assert {"ftp_w", "cda_m2", "rider_mass_kg", "grade_curve"} <= used  # the test has teeth
+    # values the estimate does not read leave the key alone
+    other = dataclasses.replace(base, max_hr_bpm=190, intervals_api_key="k", power_match=False)
+    assert profile_key(other, air) == profile_key(base, air)
+
+
 def test_live_estimate_from_the_start_is_the_route_estimate():
     """estimate_remaining from standstill at the start = estimate_route; from half way at
     the steady speed, the closed form; with a workout, the workout estimate's distance."""

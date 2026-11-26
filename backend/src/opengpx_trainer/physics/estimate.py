@@ -22,9 +22,10 @@ Not modelled: a rider not holding the target, pauses.
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from ..gpx.route import Route
 from ..profile import STANDARD_HUMIDITY, STANDARD_TEMPERATURE_C, Profile
@@ -35,6 +36,21 @@ from .model import VirtualBike
 STEP_M = 10.0
 V_FLOOR = 0.5  # m/s: a stall on a wall is walked, not an infinite time
 MAX_LAPS = 50  # a workout on a short route: stop looping after this many laps
+
+
+def profile_key(profile: Profile, air: tuple[float, float]) -> str:
+    """The profile's values an estimate depends on, as a memo key: an estimate is only
+    recomputed when one of them changes (not on a new max HR or intervals.icu key). Keep in
+    step with what ``_ride`` and the target functions below read from the profile."""
+    return json.dumps(
+        [
+            asdict(profile.model_params(*air)),
+            asdict(profile.grade_power_curve()),
+            profile.ftp_w,
+            profile.speed_power_scale_pct,
+            profile.target_ramp_w_per_s,
+        ]
+    )
 
 
 @dataclass(frozen=True)
