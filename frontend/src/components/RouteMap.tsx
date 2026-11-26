@@ -1,4 +1,6 @@
-import { useEffect } from 'react'
+import { useContext, useEffect } from 'react'
+import { tileLayer } from '../mapTiles'
+import { MapTilesContext } from '../mapTilesContext'
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -44,14 +46,14 @@ export function RouteMap({
   /** click on the map (to choose a start point) */
   onPick?: (at: [number, number]) => void
 }) {
+  const tiles = useContext(MapTilesContext)
   if (!latlon.length) return null
   const from = start ?? 0
+  const layer = tileLayer(tiles.url, tiles.attribution)
   return (
     <MapContainer style={{ height }} className="map" center={latlon[0]} zoom={13} scrollWheelZoom>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+      {/* keyed: react-leaflet updates a mounted layer's URL but not its attribution */}
+      <TileLayer key={layer.url + layer.attribution} attribution={layer.attribution} url={layer.url} />
       <Polyline positions={latlon} pathOptions={{ color: '#4f7cff', weight: 4, opacity: 0.8 }} />
       {from > 0 && <Polyline positions={latlon.slice(0, from + 1)} pathOptions={{ color: '#8a93a6', weight: 4, opacity: 0.9 }} />}
       {done != null && done > from && (

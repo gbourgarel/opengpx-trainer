@@ -3,6 +3,7 @@ import { profileChanged, type ProfileGuard } from '../profileDiff'
 import { api, type BikePreset, type DeviceStatus, type Profile } from '../api'
 import { DevicesCard, type DeviceRole } from '../components/DevicesCard'
 import { NumberInput } from '../components/NumberInput'
+import { OSM_TILES } from '../mapTiles'
 
 type NumKey = Exclude<{ [K in keyof Profile]-?: Profile[K] extends number | null ? K : never }[keyof Profile], undefined>
 
@@ -268,6 +269,22 @@ export function ProfilePage({
           <label className="field">
             <span>API key {p.intervals_api_key_set && <em className="muted">(stored — leave blank to keep)</em>}</span>
             <input type="password" placeholder="Settings → Developer settings" onChange={(e) => set('intervals_api_key', e.target.value)} />
+          </label>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Map tiles</h3>
+        <div className="fields">
+          <label className="field">
+            <span>Tile URL</span>
+            <input defaultValue={p.map_tile_url} placeholder={OSM_TILES} onChange={(e) => set('map_tile_url', e.target.value)} />
+            <small>XYZ raster tiles, with {'{z}'}, {'{x}'}, {'{y}'} (and an API key if needed); empty = OpenStreetMap</small>
+          </label>
+          <label className="field">
+            <span>Attribution</span>
+            <input defaultValue={p.map_tile_attribution} placeholder="© the tile provider" onChange={(e) => set('map_tile_attribution', e.target.value)} />
+            <small>credit the provider asks for (shown on the map)</small>
           </label>
         </div>
       </div>

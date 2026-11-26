@@ -206,6 +206,11 @@ settings remembered in the browser (sound, wind, air) are kept.
   | V / Esc        | immersive 3D view on / off (GPX rides)                              |
   | F              | browser full screen (immersive view)                                |
 
+* GPX: the 2D map's background comes from openstreetmap.org (light use under the
+  [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/), no key, no
+  guarantee). Another provider can be set in Profile → Map tiles: any XYZ raster URL with
+  `{z}`, `{x}`, `{y}` (256 px tiles; an API key goes in the URL, e.g. Thunderforest or
+  MapTiler), with the attribution it asks for.
 * GPX: **Immersive** (or V) shows the route in 3D over the whole window: terrain draped with
   aerial imagery, a camera following the rider, wide angle. The camera is automatic: on flat,
   straight roads it rides low (3 m up) looking at the horizon, backing away until the rider is

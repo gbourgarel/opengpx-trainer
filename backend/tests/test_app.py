@@ -37,6 +37,9 @@ def start_erg(c) -> None:
         ("grade_curve", [[0, 0.7]]),
         ("trainer_device_number", 70000),
         ("bike_preset", "bmx"),
+        ("map_tile_url", "https://tiles.example.com/{z}/{x}.png"),  # no {y}
+        ("map_tile_url", "javascript:alert(1)//{z}{x}{y}"),
+        ("map_tile_attribution", "x" * 201),
     ],
 )
 def test_invalid_profile_is_rejected_and_not_saved(client, field, value):
@@ -53,6 +56,13 @@ def test_valid_profile_update_and_optional_fields(client):
     )
     assert r.status_code == 200
     assert (r.json()["ftp_w"], r.json()["power_meter_device_number"]) == (280, 63426)
+
+
+def test_map_tile_url_is_stored_and_can_be_cleared(client):
+    url = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    r = client.put("/api/profile", json={"map_tile_url": f" {url} ", "map_tile_attribution": "E"})
+    assert (r.json()["map_tile_url"], r.json()["map_tile_attribution"]) == (url, "E")
+    assert client.put("/api/profile", json={"map_tile_url": ""}).json()["map_tile_url"] == ""
 
 
 def test_bad_stored_profile_falls_back_to_defaults(tmp_path):

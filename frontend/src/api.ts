@@ -41,6 +41,8 @@ export interface Profile {
   intervals_athlete_id: string
   intervals_api_key: string
   intervals_api_key_set?: boolean
+  map_tile_url: string
+  map_tile_attribution: string
   devices_note?: string
 }
 

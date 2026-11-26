@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { MapTilesContext } from './mapTilesContext'
 import { api, type DeviceStatus, type Profile, type RideAir, type RouteDetail, type Workout } from './api'
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
@@ -101,6 +102,9 @@ export default function App() {
   const [endedAsk, setEndedAsk] = useState<Ask | null>(null) // ride just stopped here
   const [uploadAsk, setUploadAsk] = useState<Ask | null>(null)
   const canUpload = !!profile?.intervals_api_key_set
+  const tileUrl = profile?.map_tile_url ?? ''
+  const tileCredit = profile?.map_tile_attribution ?? ''
+  const tiles = useMemo(() => ({ url: tileUrl, attribution: tileCredit }), [tileUrl, tileCredit])
   const offerUpload = (rideId: number, name?: string) => {
     if (!asked.includes(rideId)) setEndedAsk({ rideId, name })
   }
@@ -261,6 +265,7 @@ export default function App() {
           ))}
         </div>
       )}
+      <MapTilesContext value={tiles}>
       <main className={tab === 'ride' ? 'ride-main' : ''}>
         {tab === 'ride' && tel.sim && <SimulatorPanel key={tel.hub ?? ''} initial={tel.sim} />}
         {feedbackAsk && <FeedbackDialog key={feedbackAsk.rideId} rideId={feedbackAsk.rideId} name={feedbackAsk.name} onDone={feedbackDone} />}
@@ -306,6 +311,7 @@ export default function App() {
           </div>
         )}
       </main>
+      </MapTilesContext>
     </div>
   )
 }

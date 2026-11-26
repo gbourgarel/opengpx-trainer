@@ -147,6 +147,21 @@ def _validate_field(name: str, value):
         if not isinstance(value, str):
             raise ValueError("must be text")
         return value.strip()
+    if name == "map_tile_url":
+        if not isinstance(value, str):
+            raise ValueError("must be text")
+        url = value.strip()
+        if url and (
+            not url.startswith(("https://", "http://"))
+            or any(p not in url for p in ("{z}", "{x}", "{y}"))
+            or len(url) > 500
+        ):
+            raise ValueError("must be an http(s) URL with {z}, {x} and {y}, or empty")
+        return url
+    if name == "map_tile_attribution":
+        if not isinstance(value, str) or len(value) > 200:
+            raise ValueError("must be text (max 200 characters)")
+        return value.strip()
     if name == "grade_curve":
         try:
             pts = [(float(_number(g)), float(_number(f))) for g, f in value]
@@ -211,6 +226,10 @@ class Profile:
     # intervals.icu
     intervals_athlete_id: str = "0"
     intervals_api_key: str = ""
+    # 2D map background: an XYZ raster tile URL (empty = openstreetmap.org) and the credit
+    # shown for it; an API key, if the provider needs one, is part of the URL
+    map_tile_url: str = ""
+    map_tile_attribution: str = ""
 
     @classmethod
     def from_dict(cls, d: dict, strict: bool = True) -> Profile:
