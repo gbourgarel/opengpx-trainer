@@ -193,11 +193,13 @@ class AppState:
                 raise
             for role, cal in self._last_calibrations.get(kind, {}).items():
                 hub.devices[role].calibration = cal
-            self.hub, self.hub_kind = hub, kind
-            if self.session is not None:
-                # keep an existing ride driving the trainer through the *new* hub; otherwise
-                # it would keep reading/commanding the stopped one
-                self.session.attach_hub(hub)
+            # the swap only (hub.start() above is slow): never in the middle of a tick
+            with self.session_lock:
+                self.hub, self.hub_kind = hub, kind
+                if self.session is not None:
+                    # keep an existing ride driving the trainer through the *new* hub;
+                    # otherwise it would keep reading/commanding the stopped one
+                    self.session.attach_hub(hub)
         finally:
             self._hub_lock.release()
 
@@ -220,14 +222,19 @@ class AppState:
             self._hub_lock.release()
 
     def _disconnect_locked(self) -> None:
-        if self.hub is not None:
-            self._last_calibrations[self.hub_kind] = {
-                role: d.calibration
-                for role, d in self.hub.devices.items()
-                if d.calibration is not None and not d.calibration.active
-            }
-            self.hub.stop()
-        self.hub, self.hub_kind = None, None
+        # unhooked under the session lock (the engine and the endpoints read self.hub), then
+        # stopped outside it: stopping the ANT+ node / BLE clients takes a while
+        with self.session_lock:
+            old, kind = self.hub, self.hub_kind
+            self.hub, self.hub_kind = None, None
+            if old is not None:
+                self._last_calibrations[kind] = {
+                    role: d.calibration
+                    for role, d in old.devices.items()
+                    if d.calibration is not None and not d.calibration.active
+                }
+        if old is not None:
+            old.stop()
 
     def save_session(self, s: RideSession) -> dict | None:
         """Write a finished ride's FIT file and history row, at most once per session.

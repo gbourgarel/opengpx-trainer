@@ -634,7 +634,7 @@ def test_concurrent_connect_is_rejected():
 
     st = AppState.__new__(AppState)
     st.hub, st.hub_kind, st._hub_lock = None, None, threading.Lock()
-    st.session = None
+    st.session, st.session_lock = None, threading.RLock()
     st._last_calibrations = {}
     import opengpx_trainer.app as appmod
 

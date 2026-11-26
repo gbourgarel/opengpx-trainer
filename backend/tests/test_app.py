@@ -119,6 +119,23 @@ def test_reconnect_rebinds_existing_session_to_new_hub(client):
     assert client.st.session.hub is client.st.hub
 
 
+def test_hub_swap_holds_the_session_lock_but_not_the_slow_stop(client, monkeypatch):
+    """Review #18: the engine ticks the session (reading its hub) under session_lock."""
+    start_erg(client)
+    lock = client.st.session_lock
+    seen = {}
+    old = client.st.hub
+    stop = old.stop
+    monkeypatch.setattr(old, "stop", lambda: (seen.update(stop=lock._is_owned()), stop()))
+    attach = client.st.session.attach_hub
+    monkeypatch.setattr(
+        client.st.session, "attach_hub", lambda h: (seen.update(attach=lock._is_owned()), attach(h))
+    )
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    assert seen == {"stop": False, "attach": True}
+    assert client.st.session.hub is client.st.hub is not old
+
+
 def test_session_identity_lets_a_client_rebuild_the_ride_view(client):
     """Review #3: after a reload the ride screen was lost (view state lived only in React)."""
     assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
