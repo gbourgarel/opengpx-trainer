@@ -127,27 +127,34 @@ export default function App() {
   const sessionId = tel.session_id
   const { mode, workout_id: workoutId, route_id: routeId } = tel
   const routeReversed = !!tel.route_reversed
+  // Until it is rebuilt, the Ride tab shows the ride's head from the telemetry alone (Pause /
+  // Stop always reachable), with this error and a Retry if the rebuild failed.
+  const [restoreError, setRestoreError] = useState<{ sessionId: string; message: string } | null>(null)
+  const [restoreTry, setRestoreTry] = useState(0)
   useEffect(() => {
     if (!sessionId || !mode || active?.sessionId === sessionId) return
     let cancelled = false
-    // ERG: workout only; GPX: route, plus the workout in mixed mode
+    // the session's own copy of the workout (as edited during the ride, and still there if
+    // the library's copy is gone); GPX: the route, plus the workout in mixed mode
+    const workout = () =>
+      api.sessionWorkout().then(({ workout_rev, ...w }) => ({ workout: w as Workout, workoutRev: workout_rev }))
     const load =
       mode === 'erg' && workoutId != null
-        ? api.workout(workoutId).then((workout) => ({ sessionId, mode, workout }) as ActiveRide)
+        ? workout().then((w) => ({ sessionId, mode, ...w }) as ActiveRide)
         : mode === 'gpx' && routeId != null
-          ? Promise.all([api.route(routeId, routeReversed), workoutId != null ? api.workout(workoutId) : Promise.resolve(undefined)]).then(
-              ([route, workout]) => ({ sessionId, mode, route, workout }) as ActiveRide,
+          ? Promise.all([api.route(routeId, routeReversed), workoutId != null ? workout() : Promise.resolve(undefined)]).then(
+              ([route, w]) => ({ sessionId, mode, route, ...w }) as ActiveRide,
             )
           : null
     load
       ?.then((a) => {
         if (!cancelled) setActive(a)
       })
-      .catch((e: Error) => !cancelled && setError(`Cannot restore the ride view: ${e.message}`))
+      .catch((e: Error) => !cancelled && setRestoreError({ sessionId, message: `Cannot restore the ride view: ${e.message}` }))
     return () => {
       cancelled = true
     }
-  }, [sessionId, mode, workoutId, routeId, routeReversed, active?.sessionId])
+  }, [sessionId, mode, workoutId, routeId, routeReversed, active?.sessionId, restoreTry])
 
   // The rider skipped / extended a step (here or on another device): reload the session's
   // copy of the workout so the profile, the total time and the step list follow.
@@ -260,6 +267,11 @@ export default function App() {
             active={active}
             profile={profile}
             wake={wake}
+            restoreError={restoreError && restoreError.sessionId === sessionId ? restoreError.message : null}
+            onRetryRestore={() => {
+              setRestoreError(null)
+              setRestoreTry((n) => n + 1)
+            }}
             onEnd={(rideId) => {
               setActive(null)
               if (rideId != null) offerUpload(rideId, tel.name)

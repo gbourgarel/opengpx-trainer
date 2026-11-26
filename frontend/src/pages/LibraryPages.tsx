@@ -339,10 +339,13 @@ export function RoutesPage({
                 className="ghost"
                 onClick={() =>
                   confirm(`Delete ${sel.name}?`) &&
-                  api.deleteRoute(sel.id).then(() => {
-                    setSel(null)
-                    reload()
-                  })
+                  api
+                    .deleteRoute(sel.id)
+                    .then(() => {
+                      setSel(null)
+                      reload()
+                    })
+                    .catch((e: Error) => setError(e.message))
                 }
               >
                 Delete

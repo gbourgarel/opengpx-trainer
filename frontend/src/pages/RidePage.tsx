@@ -73,12 +73,17 @@ export function RidePage({
   active,
   profile,
   wake,
+  restoreError,
+  onRetryRestore,
   onEnd,
 }: {
   tel: Telemetry
   active: ActiveRide | null
   profile: Profile | null
   wake: WakeLockStatus
+  /** the ride view (workout / route) of a ride started elsewhere could not be rebuilt */
+  restoreError: string | null
+  onRetryRestore: () => void
   /** the ride view is closed; ``rideId`` of the ride saved, if any */
   onEnd: (rideId?: number) => void
 }) {
@@ -129,6 +134,58 @@ export function RidePage({
 
   const act = (f: () => Promise<unknown>) => f().catch((e: Error) => setError(e.message))
 
+  // Pause / Stop need nothing but the telemetry: they stay reachable while the ride view is
+  // being rebuilt (or could not be)
+  const pauseButton =
+    tel.state === 'running' ? (
+      <button onClick={() => act(api.pause)}>Pause</button>
+    ) : tel.state === 'paused' || tel.state === 'ready' ? (
+      <button onClick={() => act(api.resume)}>Resume</button>
+    ) : null
+  const stop = (save: boolean) => {
+    setStopAsk(false)
+    act(() => api.stop(save).then((r) => onEnd(r.saved?.ride_id)))
+  }
+  const stopButton = (
+    <button className="danger" onClick={() => (tel.state === 'finished' ? stop(true) : setStopAsk(true))}>
+      {tel.state === 'finished' ? 'Close' : 'Stop'}
+    </button>
+  )
+  const stopDialog = stopAsk && tel.state !== 'finished' && (
+    <StopDialog elapsedS={tel.elapsed_s} distanceM={tel.mode === 'gpx' ? tel.distance_m : undefined} onSave={() => stop(true)} onDiscard={() => stop(false)} onClose={() => setStopAsk(false)} />
+  )
+
+  if (inSession && !active) {
+    return (
+      <div className="card">
+        <div className="ride-head">
+          <div>
+            <h2 title={tel.name}>{tel.name}</h2>
+            <span className={`badge state-${tel.state}`}>{tel.state}</span>
+          </div>
+          <div className="controls">
+            {pauseButton}
+            {stopButton}
+          </div>
+        </div>
+        {error && <div className="error">{error}</div>}
+        {restoreError ? (
+          <div className="error">
+            {restoreError} <button onClick={onRetryRestore}>Retry</button>
+          </div>
+        ) : (
+          <div className="hint">Loading the ride view…</div>
+        )}
+        <div className="row">
+          <Metric label="Power" value={tel.power_w} unit="W" sub={tel.target_w != null ? `target ${Math.round(tel.target_w)} W` : undefined} />
+          <Metric label="Cadence" value={tel.cadence_rpm} unit="rpm" />
+          <Metric label="Heart rate" value={tel.heart_rate_bpm} unit="bpm" />
+        </div>
+        {stopDialog}
+      </div>
+    )
+  }
+
   if (!inSession || !active) {
     return (
       <div className="card empty">
@@ -156,25 +213,6 @@ export function RidePage({
   // under the power dial: where the target comes from (GPX rides; in ERG it is the workout)
   const sourceLabel = tel.mode === 'gpx' ? SOURCE_LABEL[source] : undefined
   const modeLabel = tel.mode === 'erg' ? 'ERG workout' : workout ? 'GPX + workout' : tel.target_mode === 'sim' ? 'GPX · Sim' : 'GPX · Slope ERG'
-
-  const pauseButton =
-    tel.state === 'running' ? (
-      <button onClick={() => act(api.pause)}>Pause</button>
-    ) : tel.state === 'paused' || tel.state === 'ready' ? (
-      <button onClick={() => act(api.resume)}>Resume</button>
-    ) : null
-  const stop = (save: boolean) => {
-    setStopAsk(false)
-    act(() => api.stop(save).then((r) => onEnd(r.saved?.ride_id)))
-  }
-  const stopButton = (
-    <button className="danger" onClick={() => (tel.state === 'finished' ? stop(true) : setStopAsk(true))}>
-      {tel.state === 'finished' ? 'Close' : 'Stop'}
-    </button>
-  )
-  const stopDialog = stopAsk && tel.state !== 'finished' && (
-    <StopDialog elapsedS={tel.elapsed_s} distanceM={tel.mode === 'gpx' ? tel.distance_m : undefined} onSave={() => stop(true)} onDiscard={() => stop(false)} onClose={() => setStopAsk(false)} />
-  )
 
   // head (title, badges, pause/stop) and controls, laid out by RideCockpit
   const head = (

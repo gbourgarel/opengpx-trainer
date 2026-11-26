@@ -597,7 +597,11 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
     @app.delete("/api/workouts/{wid}")
     def delete_workout(wid: int):
-        st.storage.delete_workout(wid)
+        # under the lock: a ride cannot start on this workout between the check and the delete
+        with st.session_lock:
+            if st.session is not None and st.session.workout_id == wid:
+                raise HTTPException(409, "This workout is used by the ride in progress")
+            st.storage.delete_workout(wid)
         return {"ok": True}
 
     def intervals_client() -> IntervalsIcuClient:
@@ -714,7 +718,11 @@ def create_app(storage: Storage | None = None) -> FastAPI:
 
     @app.delete("/api/routes/{rid}")
     def delete_route(rid: int):
-        st.storage.delete_route(rid)
+        # the other devices rebuild the ride view from this route: keep it while it is ridden
+        with st.session_lock:
+            if st.session is not None and st.session.route_id == rid:
+                raise HTTPException(409, "This route is used by the ride in progress")
+            st.storage.delete_route(rid)
         return {"ok": True}
 
     # -- session ------------------------------------------------------------------------

@@ -147,6 +147,24 @@ def test_start_gpx_ride_with_workout(client):
     assert client.post("/api/session/start", json=bad).status_code == 404
 
 
+def test_workout_and_route_of_the_ride_cannot_be_deleted(client):
+    """Review #31: other devices rebuild the ride view from them."""
+    from tests.test_gpx_workouts import make_gpx
+
+    assert client.post("/api/devices/connect", json={"kind": "simulator"}).status_code == 200
+    wid = client.post("/api/workouts/import", files={"file": ("w.zwo", ZWO)}).json()["id"]
+    other = client.post("/api/workouts/import", files={"file": ("o.zwo", ZWO)}).json()["id"]
+    rid = client.post("/api/routes/import", files={"file": ("r.gpx", make_gpx())}).json()["id"]
+    r = client.post("/api/session/start", json={"mode": "gpx", "route_id": rid, "workout_id": wid})
+    assert r.status_code == 200
+    assert client.delete(f"/api/workouts/{wid}").status_code == 409
+    assert client.delete(f"/api/routes/{rid}").status_code == 409
+    assert client.delete(f"/api/workouts/{other}").status_code == 200
+    client.post("/api/session/stop?save=false")
+    assert client.delete(f"/api/workouts/{wid}").status_code == 200
+    assert client.delete(f"/api/routes/{rid}").status_code == 200
+
+
 def test_start_gpx_ride_in_reverse(client):
     from tests.test_gpx_workouts import make_gpx
 
