@@ -3,6 +3,7 @@
 import { checks as battery } from './battery.check.ts'
 import { checks as calibration } from './calibration.check.ts'
 import { checks as fileDrop } from './fileDrop.check.ts'
+import { checks as numberDraft } from './numberDraft.check.ts'
 import { checks as nudge } from './nudge.check.ts'
 import { checks as profile } from './profile.check.ts'
 import { checks as route3d } from './route3d.check.ts'
@@ -13,7 +14,7 @@ import { checks as tiles } from './tiles.check.ts'
 import { checks as zones } from './zones.check.ts'
 
 type Check = Record<string, () => void | Promise<void>>
-const groups: Record<string, Check> = { battery, calibration, fileDrop, nudge, profile, route3d, routeStart, stepCues, targetSource, tiles, zones }
+const groups: Record<string, Check> = { battery, calibration, fileDrop, numberDraft, nudge, profile, route3d, routeStart, stepCues, targetSource, tiles, zones }
 
 let failed = 0
 for (const [group, checks] of Object.entries(groups)) {

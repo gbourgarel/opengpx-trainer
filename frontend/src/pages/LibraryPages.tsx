@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { WindPicker } from '../components/Wind'
+import { NumberInput } from '../components/NumberInput'
 import { loadAir, loadWind, saveAir, saveWind, type WindSetting } from '../wind'
 import { api, fmtTime, type PlannedWorkout, type Profile, type Ride, type RideAir, type RouteDetail, type RouteEstimate, type RouteSummary, type Workout } from '../api'
 import { ElevationProfile, WorkoutProfile } from '../components/charts'
@@ -375,13 +376,12 @@ export function RoutesPage({
               <WindPicker value={wind} onChange={setWind} />
               <span className="air-pick" title="Air of the ride: temperature and humidity set its density (aerodynamic drag). Remembered for the next ride.">
                 <span className="muted">Air</span>
-                <input
-                  type="number"
+                <NumberInput
                   step={0.5}
                   min={-30}
                   max={50}
                   value={air.temperature_c}
-                  onChange={(e) => setAir({ ...air, temperature_c: Math.max(-30, Math.min(50, Number(e.target.value) || 0)) })}
+                  onChange={(t) => setAir({ ...air, temperature_c: Math.max(-30, Math.min(50, t)) })}
                 />
                 <span className="muted">°C</span>
                 <input

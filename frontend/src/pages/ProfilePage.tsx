@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { profileChanged, type ProfileGuard } from '../profileDiff'
 import { api, type BikePreset, type DeviceStatus, type Profile } from '../api'
 import { DevicesCard, type DeviceRole } from '../components/DevicesCard'
+import { NumberInput } from '../components/NumberInput'
 
 type NumKey = Exclude<{ [K in keyof Profile]-?: Profile[K] extends number | null ? K : never }[keyof Profile], undefined>
 
@@ -230,10 +231,10 @@ export function ProfilePage({
             {curve.map(([g, f], i) => (
               <tr key={i}>
                 <td>
-                  <input type="number" step={0.5} value={g} onChange={(e) => setCurve(curve.map((c, j) => (j === i ? [Number(e.target.value), c[1]] : c)))} />
+                  <NumberInput step={0.5} value={g} onChange={(n) => setCurve(curve.map((c, j) => (j === i ? [n, c[1]] : c)))} />
                 </td>
                 <td>
-                  <input type="number" step={1} value={Math.round(f * 100)} onChange={(e) => setCurve(curve.map((c, j) => (j === i ? [c[0], Number(e.target.value) / 100] : c)))} />
+                  <NumberInput step={1} value={Math.round(f * 100)} onChange={(n) => setCurve(curve.map((c, j) => (j === i ? [c[0], n / 100] : c)))} />
                 </td>
                 <td className="muted">{Math.round(f * p.ftp_w)}</td>
                 <td>
