@@ -113,15 +113,26 @@ class Storage:
     def close(self) -> None:
         self._db.close()
 
-    def _exec(self, sql: str, args: tuple = ()) -> sqlite3.Cursor:
+    # One connection shared by the threads (threadpool endpoints, FIT save): every statement
+    # runs, and its rows are fetched, under the lock; a cursor never leaves it.
+    def _exec(self, sql: str, args: tuple = ()) -> int | None:
+        """Run a statement that changes the database; the id of the row inserted, if any."""
         with self._lock:
             cur = self._db.execute(sql, args)
             self._db.commit()
-            return cur
+            return cur.lastrowid
+
+    def _query(self, sql: str, args: tuple = ()) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._db.execute(sql, args).fetchall()
+
+    def _query_one(self, sql: str, args: tuple = ()) -> sqlite3.Row | None:
+        with self._lock:
+            return self._db.execute(sql, args).fetchone()
 
     # -- profile ------------------------------------------------------------------------
     def load_profile(self) -> Profile:
-        row = self._exec("SELECT value FROM settings WHERE key='profile'").fetchone()
+        row = self._query_one("SELECT value FROM settings WHERE key='profile'")
         if not row:
             return Profile()
         data = json.loads(row["value"])
@@ -141,14 +152,14 @@ class Storage:
 
     # -- workouts -----------------------------------------------------------------------
     def add_workout(self, data: dict) -> int:
-        cur = self._exec(
+        rid = self._exec(
             "INSERT INTO workouts(name, source, data, created_at) VALUES(?,?,?,?)",
             (data["name"], data.get("source", ""), json.dumps(data), _now()),
         )
-        return int(cur.lastrowid)
+        return int(rid or 0)
 
     def list_workouts(self) -> list[dict]:
-        rows = self._exec("SELECT id, data, created_at FROM workouts ORDER BY id DESC").fetchall()
+        rows = self._query("SELECT id, data, created_at FROM workouts ORDER BY id DESC")
         out = []
         for r in rows:
             d = json.loads(r["data"])
@@ -156,7 +167,7 @@ class Storage:
         return out
 
     def get_workout(self, wid: int) -> dict | None:
-        r = self._exec("SELECT data FROM workouts WHERE id=?", (wid,)).fetchone()
+        r = self._query_one("SELECT data FROM workouts WHERE id=?", (wid,))
         return json.loads(r["data"]) if r else None
 
     def delete_workout(self, wid: int) -> None:
@@ -164,14 +175,14 @@ class Storage:
 
     # -- routes -------------------------------------------------------------------------
     def add_route(self, name: str, gpx: str, summary: dict) -> int:
-        cur = self._exec(
+        rid = self._exec(
             "INSERT INTO routes(name, gpx, summary, created_at) VALUES(?,?,?,?)",
             (name, gpx, json.dumps(summary), _now()),
         )
-        return int(cur.lastrowid)
+        return int(rid or 0)
 
     def list_routes(self) -> list[dict]:
-        rows = self._exec("SELECT id, name, summary, created_at FROM routes ORDER BY id DESC")
+        rows = self._query("SELECT id, name, summary, created_at FROM routes ORDER BY id DESC")
         return [
             {
                 "id": r["id"],
@@ -179,11 +190,11 @@ class Storage:
                 "created_at": r["created_at"],
                 **json.loads(r["summary"]),
             }
-            for r in rows.fetchall()
+            for r in rows
         ]
 
     def get_route_gpx(self, rid: int) -> str | None:
-        r = self._exec("SELECT gpx FROM routes WHERE id=?", (rid,)).fetchone()
+        r = self._query_one("SELECT gpx FROM routes WHERE id=?", (rid,))
         return r["gpx"] if r else None
 
     def delete_route(self, rid: int) -> None:
@@ -199,7 +210,7 @@ class Storage:
         fit_path: str,
         session_id: str | None = None,
     ) -> int:
-        cur = self._exec(
+        rid = self._exec(
             "INSERT INTO rides(started_at, mode, name, duration_s, distance_m, avg_power_w, "
             "fit_path, summary, session_id) VALUES(?,?,?,?,?,?,?,?,?)",
             (
@@ -214,14 +225,14 @@ class Storage:
                 session_id,
             ),
         )
-        return int(cur.lastrowid)
+        return int(rid or 0)
 
     def ride_for_session(self, session_id: str) -> dict | None:
-        r = self._exec("SELECT * FROM rides WHERE session_id=?", (session_id,)).fetchone()
+        r = self._query_one("SELECT * FROM rides WHERE session_id=?", (session_id,))
         return dict(r) if r else None
 
     def list_rides(self) -> list[dict]:
-        rows = self._exec("SELECT * FROM rides ORDER BY id DESC").fetchall()
+        rows = self._query("SELECT * FROM rides ORDER BY id DESC")
         out = []
         for r in rows:
             d = dict(r)
@@ -230,7 +241,7 @@ class Storage:
         return out
 
     def get_ride(self, ride_id: int) -> dict | None:
-        r = self._exec("SELECT * FROM rides WHERE id=?", (ride_id,)).fetchone()
+        r = self._query_one("SELECT * FROM rides WHERE id=?", (ride_id,))
         return dict(r) if r else None
 
     def set_ride_feedback(
@@ -243,12 +254,16 @@ class Storage:
     ) -> None:
         """What the rider told after a ride (RPE, feel, carbohydrates, water), kept in its
         summary (shown with the history)."""
-        r = self.get_ride(ride_id)
-        if r is None:
-            return
-        summary = json.loads(r["summary"] or "{}")
-        summary.update(rpe=rpe, feel=feel, carbs_g=carbs_g, water_ml=water_ml)
-        self._exec("UPDATE rides SET summary=? WHERE id=?", (json.dumps(summary), ride_id))
+        with self._lock:  # read-modify-write: no other change of the summary in between
+            r = self._db.execute("SELECT summary FROM rides WHERE id=?", (ride_id,)).fetchone()
+            if r is None:
+                return
+            summary = json.loads(r["summary"] or "{}")
+            summary.update(rpe=rpe, feel=feel, carbs_g=carbs_g, water_ml=water_ml)
+            self._db.execute(
+                "UPDATE rides SET summary=? WHERE id=?", (json.dumps(summary), ride_id)
+            )
+            self._db.commit()
 
     def delete_ride(self, ride_id: int) -> bool:
         """Remove a ride from the history and its FIT file (when it is in ``rides/``; a path
