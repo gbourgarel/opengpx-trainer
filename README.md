@@ -61,6 +61,9 @@ samples/   sample GPX route and ZWO workout
 No Node or Python needed beforehand: [uv](https://docs.astral.sh/uv/) installs Python for the
 app, and the release wheel contains the UI and libusb.
 
+New to the terminal? Step-by-step guide: [English](docs/install.md) /
+[Français](docs/install.fr.md).
+
 Windows: the tests pass on Windows, but the app has not been tried on a real PC with sensors
 yet. Feedback welcome.
 
@@ -87,7 +90,8 @@ ANT+ stick works as is on macOS. On Windows it needs the WinUSB driver once: plu
 run [Zadig](https://zadig.akeo.ie/), pick the stick (*ANT USBStick2* or *ANT USB-m Stick*) and
 install *WinUSB*. Garmin Express then no longer sees the stick.
 
-A release is made by pushing a tag: `git tag v1.0.1 && git push origin v1.0.1` (after bumping `version` in `backend/pyproject.toml`). The
+A release is made by pushing a tag: `git tag v1.0.1 && git push origin v1.0.1` (after bumping
+`version` in `backend/pyproject.toml` and the wheel links in this README and in `docs/`). The
 `release` workflow builds the UI and the wheel and attaches it to a GitHub release. By hand:
 `cd frontend && npm run build`, then `cd backend && uv build --wheel` (the wheel lands in
 `backend/dist/`).
