@@ -44,7 +44,7 @@ step 1). Otherwise the next step does not work.
 In the new window, paste this line (the same on Mac and Windows) and press **Enter**:
 
 ```
-uv tool install https://github.com/gbourgarel/opengpx-trainer/releases/download/v1.0.0/opengpx_trainer-1.0.0-py3-none-any.whl
+uv tool install https://github.com/gbourgarel/opengpx-trainer/releases/download/v1.0.1/opengpx_trainer-1.0.1-py3-none-any.whl
 ```
 
 It takes a minute. It is done when you see `Installed 1 executable: opengpx-trainer`.

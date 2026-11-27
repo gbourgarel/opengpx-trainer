@@ -74,8 +74,8 @@ yet. Feedback welcome.
    `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`.
    Then open a new terminal.
 2. Install the app from a [release](https://github.com/gbourgarel/opengpx-trainer/releases),
-   e.g. 1.0.0:
-   `uv tool install https://github.com/gbourgarel/opengpx-trainer/releases/download/v1.0.0/opengpx_trainer-1.0.0-py3-none-any.whl`.
+   e.g. 1.0.1:
+   `uv tool install https://github.com/gbourgarel/opengpx-trainer/releases/download/v1.0.1/opengpx_trainer-1.0.1-py3-none-any.whl`.
    An update is the same command with the newer wheel's link (from the Releases page). (Coming from the former `hometrainer`
    wheel: `uv tool uninstall hometrainer` first; the data is moved over at the first start.)
 3. Run `opengpx-trainer`. The UI opens in the browser at http://127.0.0.1:8000 (`--no-browser`
