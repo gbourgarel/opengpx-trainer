@@ -44,12 +44,12 @@ def test_spin_down_happy_path():
     assert c.poll(0.0) == pf.encode_fec_calibration_request()
     assert c.poll(1.0) is None  # re-sent every 2 s until the trainer answers
     assert c.poll(2.0) is not None
-    c.on_page(progress(1))
+    c.on_page(progress(1), now=9.0)
     assert c.status.phase == "speed_up" and c.status.target_speed_kmh == 32.0
     assert c.poll(10.0) is None  # answered: no more requests
-    c.on_page(progress(2))
+    c.on_page(progress(2), now=11.0)
     assert c.status.phase == "coast"
-    c.on_page(progress(1))  # slowing down while coasting: still coasting
+    c.on_page(progress(1), now=12.0)  # slowing down while coasting: still coasting
     assert c.status.phase == "coast"
     c.on_page(pf.FecCalibrationResult(False, True, 21.0, None, 9800))
     s = c.status
@@ -71,7 +71,7 @@ def test_spin_down_failures():
     assert silent.status.phase == "failed" and "does not answer" in silent.status.message
 
     slow = SpinDown(now=0.0)
-    slow.on_page(progress(1))
+    slow.on_page(progress(1), now=119.0)  # still answering, never finishing
     slow.poll(121.0)
     assert slow.status.phase == "failed" and "Timed out" in slow.status.message
 
