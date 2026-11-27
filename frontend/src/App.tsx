@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MapTilesContext } from './mapTilesContext'
 import { setFallbackImagery } from './scenery/tiles'
 import { api, type DeviceStatus, type Profile, type RideAir, type RouteDetail, type Workout } from './api'
@@ -16,13 +16,17 @@ import { useLive } from './useLive'
 import { useWakeLock } from './wakeLock'
 import { useEscape } from './useEscape'
 
-type Tab = 'ride' | 'workouts' | 'routes' | 'history' | 'profile'
+// the guide (marked + both languages) is its own chunk, downloaded when the tab is opened
+const HelpPage = lazy(() => import('./pages/HelpPage').then((m) => ({ default: m.HelpPage })))
+
+type Tab = 'ride' | 'workouts' | 'routes' | 'history' | 'profile' | 'help'
 const TABS: [Tab, string][] = [
   ['ride', 'Ride'],
   ['workouts', 'Workouts (ERG)'],
   ['routes', 'Routes (GPX)'],
   ['history', 'History'],
   ['profile', 'Profile'],
+  ['help', 'Help'],
 ]
 
 function Dot({ status, label }: { status?: DeviceStatus; label: string }) {
@@ -295,6 +299,11 @@ export default function App() {
         {tab === 'routes' && <RoutesPage canStart={!!hub} onStart={startRoute} />}
         {tab === 'history' && <HistoryPage canUpload={canUpload} />}
         {tab === 'profile' && <ProfilePage onSaved={setProfile} devices={dev} onGuard={setProfileGuard} />}
+        {tab === 'help' && (
+          <Suspense fallback={<div className="hint">Loading the guide…</div>}>
+            <HelpPage />
+          </Suspense>
+        )}
         {leaveTo && (
           <div className="dialog-backdrop">
             <div className="dialog" role="dialog" aria-label="Unsaved profile changes">

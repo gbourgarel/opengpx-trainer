@@ -62,7 +62,9 @@ No Node or Python needed beforehand: [uv](https://docs.astral.sh/uv/) installs P
 app, and the release wheel contains the UI and libusb.
 
 New to the terminal? Step-by-step guide: [English](docs/install.md) /
-[Français](docs/install.fr.md).
+[Français](docs/install.fr.md). Once installed, the user guide (first setup in order, first
+rides) is in the app's **Help** tab, and here: [English](docs/guide.md) /
+[Français](docs/guide.fr.md).
 
 Windows: the tests pass on Windows, but the app has not been tried on a real PC with sensors
 yet. Feedback welcome.
