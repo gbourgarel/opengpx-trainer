@@ -61,6 +61,9 @@ samples/   sample GPX route and ZWO workout
 No Node or Python needed beforehand: [uv](https://docs.astral.sh/uv/) installs Python for the
 app, and the release wheel contains the UI and libusb.
 
+Windows: the tests pass on Windows, but the app has not been tried on a real PC with sensors
+yet. Feedback welcome.
+
 1. Install uv, once. macOS (Terminal):
    `curl -LsSf https://astral.sh/uv/install.sh | sh`; Windows (PowerShell):
    `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`.
