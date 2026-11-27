@@ -4,6 +4,7 @@ import { api, type BikePreset, type DeviceStatus, type Profile } from '../api'
 import { DevicesCard, type DeviceRole } from '../components/DevicesCard'
 import { NumberInput } from '../components/NumberInput'
 import { OSM_TILES } from '../mapTiles'
+import { ESRI_IMAGERY } from '../scenery/tiles'
 
 type NumKey = Exclude<{ [K in keyof Profile]-?: Profile[K] extends number | null ? K : never }[keyof Profile], undefined>
 
@@ -285,6 +286,15 @@ export function ProfilePage({
             <span>Attribution</span>
             <input defaultValue={p.map_tile_attribution} placeholder="© the tile provider" onChange={(e) => set('map_tile_attribution', e.target.value)} />
             <small>credit the provider asks for (shown on the map)</small>
+          </label>
+          <label className="field">
+            <span>3D imagery outside France</span>
+            <input defaultValue={p.imagery_tile_url} placeholder={ESRI_IMAGERY} onChange={(e) => set('imagery_tile_url', e.target.value)} />
+            <small>empty = Esri World Imagery, whose terms ask for an ArcGIS subscription: prefer your own provider (see README)</small>
+          </label>
+          <label className="field">
+            <span>3D imagery attribution</span>
+            <input defaultValue={p.imagery_tile_attribution} placeholder="© the imagery provider" onChange={(e) => set('imagery_tile_attribution', e.target.value)} />
           </label>
         </div>
       </div>

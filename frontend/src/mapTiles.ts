@@ -3,8 +3,13 @@
 export const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
-const escapeHtml = (s: string) =>
+export const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+/** URL of one tile from an XYZ template ({z}, {x}, {y}, in any order). */
+export function tileUrl(template: string, z: number, x: number, y: number): string {
+  return template.replaceAll('{z}', String(z)).replaceAll('{x}', String(x)).replaceAll('{y}', String(y))
+}
 
 /** Leaflet tile layer options; the attribution is HTML for Leaflet, so the user's text is escaped. */
 export function tileLayer(url: string, attribution: string): { url: string; attribution: string } {

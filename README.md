@@ -218,7 +218,7 @@ settings remembered in the browser (sound, wind, air) are kept.
   70 m), looks at the road ahead and swings to the outside of the bends; it stays above the
   terrain and keeps the rider in the frame. Imagery: IGN orthophotos where IGN
   has data (France: Géoplateforme, Licence Ouverte Etalab 2.0, no key), Esri World Imagery
-  elsewhere, chosen per tile; the finest IGN level (~30 cm/px) is used where IGN has it and
+  elsewhere (or your own provider, see the warning below), chosen per tile; the finest IGN level (~30 cm/px) is used where IGN has it and
   the network keeps up (prefetched last), otherwise the view stays one level coarser rather
   than switching source; terrain: AWS Terrain Tiles (Terrarium). Needs an internet
   connection; MapLibre GL (WebGL) is only downloaded when the view is opened. On high-density
@@ -234,6 +234,15 @@ settings remembered in the browser (sound, wind, air) are kept.
   (pause, stop, step, effort or manual target) sit at the top centre and hide after 3 s without
   moving the mouse; pressing Space or ↑ / ↓ shows them again, so the change can be seen. The
   view closes by itself when the ride ends.
+
+  > **Warning — Esri imagery outside France.** The default imagery outside IGN's coverage is
+  > Esri World Imagery, loaded without a key. Esri's terms
+  > ([FAQ](https://www.esri.com/content/dam/arcgisonline/docs/tou_summary.pdf)) say: "If you
+  > do not have Esri software, you must purchase an ArcGIS Online subscription". Using it this
+  > way is your own responsibility. To use another provider, set Profile → Map tiles →
+  > *3D imagery outside France* to an XYZ raster URL with `{z}`, `{x}`, `{y}` (e.g. MapTiler
+  > Satellite with a free key, or Esri itself with an ArcGIS developer account's key), and its
+  > attribution.
 
 * When a ride ends (end of the workout or route, or *Stop* → *Save*) the trainer goes back to
   free ride, the FIT file is written in the background, and the upload to intervals.icu is
@@ -421,4 +430,5 @@ Settings → Developer settings). The app uses:
 ## License
 
 [MIT](LICENSE). Map data and imagery keep their own terms: OpenStreetMap (ODbL) for the 2D map,
-IGN Géoplateforme (Licence Ouverte Etalab 2.0) and AWS Terrain Tiles for the 3D view.
+IGN Géoplateforme (Licence Ouverte Etalab 2.0), AWS Terrain Tiles and Esri World Imagery (see
+the warning in "Ride screen") for the 3D view.

@@ -14,7 +14,7 @@ import { fmtTime, wkg, type RouteDetail, type Telemetry, type Workout } from '..
 import { ElevationProfile, LocalProfile, WorkoutProfile } from '../components/charts'
 import { ignoredKey, wakesRideControls } from '../rideKeys'
 import { WindBadge } from '../components/Wind'
-import { ATTRIBUTION } from '../scenery/tiles'
+import { attribution } from '../scenery/tiles'
 import { targetZone, type TargetZone } from '../targetZone'
 import { DIST_LEFT_TITLE, TIME_LEFT_TITLE } from '../liveEstimate'
 import { hrZone, powerZone } from '../zones'
@@ -97,7 +97,7 @@ export function Immersive(p: ImmersiveProps) {
         )}
       </div>
       <RouteBlock {...p} />
-      <div className="im-attrib" dangerouslySetInnerHTML={{ __html: ATTRIBUTION }} />
+      <div className="im-attrib" dangerouslySetInnerHTML={{ __html: attribution() }} />
     </div>
   )
 }

@@ -2,12 +2,14 @@
 //
 // * Imagery: IGN orthophotos (Géoplateforme WMTS, Licence Ouverte Etalab 2.0, no key) where IGN
 //   has data, i.e. France; the service answers 404 elsewhere and the same tile is then taken
-//   from Esri World Imagery. Chosen per tile, so a route crossing a border gets both.
+//   from Esri World Imagery, or from the provider set in Profile (Esri's terms ask for an
+//   ArcGIS subscription; README). Chosen per tile, so a route crossing a border gets both.
 // * The finest level (z19, ~30 cm/px) is a bonus, IGN only: where IGN has no z19 tile the view
 //   stays at z18 there (MapLibre shows the parent tile) rather than switching source for a
 //   finer level (user's choice); and it is prefetched last, when the network keeps up.
 // * Terrain: AWS Terrain Tiles (Terrarium encoding).
 import type { AddProtocolAction } from 'maplibre-gl'
+import { escapeHtml, tileUrl } from '../mapTiles'
 
 export const IMAGERY_URL = 'ht://sat/{z}/{x}/{y}'
 export const DEM_URL = 'ht://dem/{z}/{x}/{y}'
@@ -23,15 +25,30 @@ export class NoTile extends Error {
 }
 const missing = new Set<string>() // tiles known not to exist: never asked again
 export const DEM_MAX_ZOOM = 14
-export const ATTRIBUTION =
-  'Imagery © <a href="https://www.ign.fr/">IGN</a> (France), © Esri, Maxar, Earthstar Geographics · ' +
-  'Terrain: Mapzen / AWS Terrain Tiles · Route © OpenStreetMap contributors'
+export const ESRI_IMAGERY = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+const ESRI_CREDIT = 'Esri, Vantor, Earthstar Geographics, and the GIS User Community'
+
+// imagery where IGN has none: Esri unless the profile names another provider (set by App)
+let fallback = { url: ESRI_IMAGERY, credit: ESRI_CREDIT }
+export function setFallbackImagery(url: string, credit: string): void {
+  const next = url.trim()
+    ? { url: url.trim(), credit: credit.trim() || new URL(url.trim().replace(/[{}]/g, '')).hostname }
+    : { url: ESRI_IMAGERY, credit: ESRI_CREDIT }
+  if (next.url === fallback.url && next.credit === fallback.credit) return
+  fallback = next
+  clearTileCache() // tiles of the former provider
+}
+
+export function attribution(): string {
+  return (
+    `Imagery © <a href="https://www.ign.fr/">IGN</a> (France), © ${escapeHtml(fallback.credit)} · ` +
+    'Terrain: Mapzen / AWS Terrain Tiles · Route © OpenStreetMap contributors'
+  )
+}
 
 const ign = (z: number, x: number, y: number) =>
   'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS' +
   `&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}`
-const esri = (z: number, x: number, y: number) =>
-  `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
 const terrarium = (z: number, x: number, y: number) =>
   `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`
 
@@ -59,11 +76,11 @@ export async function fetchTile(key: string, signal: AbortSignal): Promise<Array
     missing.add(key) // no finer IGN tile here: stay at the coarser level, same source
     throw new NoTile(key)
   }
-  fail('IGN 404 -> Esri')
-  const r = await fetch(esri(z, x, y), { signal }) // outside IGN's coverage
+  fail('IGN 404 -> fallback')
+  const r = await fetch(tileUrl(fallback.url, z, x, y), { signal }) // outside IGN's coverage
   if (!r.ok) {
-    fail(`Esri ${r.status}`)
-    throw new Error(`Esri tile ${key}: ${r.status}`)
+    fail(`fallback ${r.status}`)
+    throw new Error(`imagery tile ${key}: ${r.status}`)
   }
   return body(r)
 }
@@ -94,7 +111,7 @@ export const tileStats = {
   // everything fetched from the network (prefetch + direct loads), and the failed answers
   downloadedBytes: 0,
   downloadedTiles: 0,
-  failures: {} as Record<string, number>, // "IGN 502", "Esri 404", "IGN z19 404"...
+  failures: {} as Record<string, number>, // "IGN 502", "fallback 404", "IGN z19 404"...
 }
 
 const fail = (what: string) => (tileStats.failures[what] = (tileStats.failures[what] ?? 0) + 1)

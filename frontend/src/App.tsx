@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MapTilesContext } from './mapTilesContext'
+import { setFallbackImagery } from './scenery/tiles'
 import { api, type DeviceStatus, type Profile, type RideAir, type RouteDetail, type Workout } from './api'
 import { HistoryPage, RoutesPage, WorkoutsPage } from './pages/LibraryPages'
 import { ProfilePage } from './pages/ProfilePage'
@@ -105,6 +106,9 @@ export default function App() {
   const tileUrl = profile?.map_tile_url ?? ''
   const tileCredit = profile?.map_tile_attribution ?? ''
   const tiles = useMemo(() => ({ url: tileUrl, attribution: tileCredit }), [tileUrl, tileCredit])
+  const imageryUrl = profile?.imagery_tile_url ?? ''
+  const imageryCredit = profile?.imagery_tile_attribution ?? ''
+  useEffect(() => setFallbackImagery(imageryUrl, imageryCredit), [imageryUrl, imageryCredit])
   const offerUpload = (rideId: number, name?: string) => {
     if (!asked.includes(rideId)) setEndedAsk({ rideId, name })
   }

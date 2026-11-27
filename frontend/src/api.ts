@@ -43,6 +43,8 @@ export interface Profile {
   intervals_api_key_set?: boolean
   map_tile_url: string
   map_tile_attribution: string
+  imagery_tile_url: string
+  imagery_tile_attribution: string
   devices_note?: string
 }
 

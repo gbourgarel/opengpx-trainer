@@ -147,7 +147,7 @@ def _validate_field(name: str, value):
         if not isinstance(value, str):
             raise ValueError("must be text")
         return value.strip()
-    if name == "map_tile_url":
+    if name in ("map_tile_url", "imagery_tile_url"):
         if not isinstance(value, str):
             raise ValueError("must be text")
         url = value.strip()
@@ -158,7 +158,7 @@ def _validate_field(name: str, value):
         ):
             raise ValueError("must be an http(s) URL with {z}, {x} and {y}, or empty")
         return url
-    if name == "map_tile_attribution":
+    if name in ("map_tile_attribution", "imagery_tile_attribution"):
         if not isinstance(value, str) or len(value) > 200:
             raise ValueError("must be text (max 200 characters)")
         return value.strip()
@@ -230,6 +230,9 @@ class Profile:
     # shown for it; an API key, if the provider needs one, is part of the URL
     map_tile_url: str = ""
     map_tile_attribution: str = ""
+    # 3D view imagery where IGN has none (outside France): empty = Esri World Imagery
+    imagery_tile_url: str = ""
+    imagery_tile_attribution: str = ""
 
     @classmethod
     def from_dict(cls, d: dict, strict: bool = True) -> Profile:

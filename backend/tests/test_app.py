@@ -40,6 +40,7 @@ def start_erg(c) -> None:
         ("map_tile_url", "https://tiles.example.com/{z}/{x}.png"),  # no {y}
         ("map_tile_url", "javascript:alert(1)//{z}{x}{y}"),
         ("map_tile_attribution", "x" * 201),
+        ("imagery_tile_url", "ftp://tiles.example.com/{z}/{x}/{y}"),
     ],
 )
 def test_invalid_profile_is_rejected_and_not_saved(client, field, value):
