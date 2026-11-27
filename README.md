@@ -65,9 +65,10 @@ app, and the release wheel contains the UI and libusb.
    `curl -LsSf https://astral.sh/uv/install.sh | sh`; Windows (PowerShell):
    `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`.
    Then open a new terminal.
-2. Install the app from the latest release:
-   `uv tool install <URL of the opengpx_trainer-….whl from the Releases page>`.
-   An update is the same command with the newer wheel. (Coming from the former `hometrainer`
+2. Install the app from a [release](https://github.com/gbourgarel/opengpx-trainer/releases),
+   e.g. 1.0.0:
+   `uv tool install https://github.com/gbourgarel/opengpx-trainer/releases/download/v1.0.0/opengpx_trainer-1.0.0-py3-none-any.whl`.
+   An update is the same command with the newer wheel's link (from the Releases page). (Coming from the former `hometrainer`
    wheel: `uv tool uninstall hometrainer` first; the data is moved over at the first start.)
 3. Run `opengpx-trainer`. The UI opens in the browser at http://127.0.0.1:8000 (`--no-browser`
    to skip, `--port` to use another port). Stop it with Ctrl+C.
@@ -83,7 +84,7 @@ ANT+ stick works as is on macOS. On Windows it needs the WinUSB driver once: plu
 run [Zadig](https://zadig.akeo.ie/), pick the stick (*ANT USBStick2* or *ANT USB-m Stick*) and
 install *WinUSB*. Garmin Express then no longer sees the stick.
 
-A release is made by pushing a tag: `git tag v0.2.0 && git push origin v0.2.0`. The
+A release is made by pushing a tag: `git tag v1.0.1 && git push origin v1.0.1` (after bumping `version` in `backend/pyproject.toml`). The
 `release` workflow builds the UI and the wheel and attaches it to a GitHub release. By hand:
 `cd frontend && npm run build`, then `cd backend && uv build --wheel` (the wheel lands in
 `backend/dist/`).

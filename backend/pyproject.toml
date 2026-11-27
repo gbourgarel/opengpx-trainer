@@ -20,6 +20,10 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/gbourgarel/opengpx-trainer"
+Issues = "https://github.com/gbourgarel/opengpx-trainer/issues"
+
 [project.scripts]
 opengpx-trainer = "opengpx_trainer.__main__:main"
 
