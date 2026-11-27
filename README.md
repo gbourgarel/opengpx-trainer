@@ -417,3 +417,8 @@ Settings → Developer settings). The app uses:
 * `GET /api/v1/athlete/{id}/events/{eventId}/download.zwo` to import one,
 * `POST /api/v1/athlete/{id}/activities` (multipart `file`) to upload a ride: from the prompt
   shown when a ride is saved, or from History. A ride already uploaded is never sent twice.
+
+## License
+
+[MIT](LICENSE). Map data and imagery keep their own terms: OpenStreetMap (ODbL) for the 2D map,
+IGN Géoplateforme (Licence Ouverte Etalab 2.0) and AWS Terrain Tiles for the 3D view.

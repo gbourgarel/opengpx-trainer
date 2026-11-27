@@ -19,3 +19,7 @@ class FrontendBuildHook(BuildHookInterface):
         if not (dist / "index.html").is_file():
             raise RuntimeError(f"{dist} not found: run `npm run build` in frontend/ first")
         build_data["force_include"][str(dist)] = "opengpx_trainer/web"
+        # MIT: the notice goes with every copy (the file is at the repository root)
+        build_data["force_include"][str(Path(self.root).parent / "LICENSE")] = (
+            "opengpx_trainer/LICENSE"
+        )

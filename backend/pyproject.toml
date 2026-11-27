@@ -1,7 +1,8 @@
 [project]
 name = "opengpx-trainer"
-version = "0.1.0"
+version = "1.0.0"
 description = "Ride any GPX route or ERG workout on a home trainer (ANT+ / BLE), with a 3D view"
+license = "MIT"  # the LICENSE file sits at the repository root: hatch_build.py ships it
 authors = [
     { name = "Guillaume Bourgarel", email = "guillaume.bourgarel@gmail.com" }
 ]
